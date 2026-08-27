@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vibe Kit Bootstrap"
+  short_description: "Plan and install the bundled Vibe Kit into a repository"
+  default_prompt: "Use $vibe-bootstrap to plan and install Vibe Kit in this repository."

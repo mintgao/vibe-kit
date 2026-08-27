@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vibe Kit Maintenance"
+  short_description: "Plan upgrades and diagnose repository-pinned Vibe Kit"
+  default_prompt: "Use $vibe-maintain to diagnose or safely upgrade Vibe Kit in this repository."

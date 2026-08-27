@@ -1,0 +1,14 @@
+schema_version: 1
+project:
+  name: "Vibe Coding Projects Scaffold"
+  lifecycle: "existing"
+stack:
+  language: "Python"
+  framework: "Standard library CLI"
+commands:
+  lint: ""
+  typecheck: ""
+  test: "python3 -m unittest discover -s tests -v"
+  build: ""
+feedback:
+  mode: "ask"
