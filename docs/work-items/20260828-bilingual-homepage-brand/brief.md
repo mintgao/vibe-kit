@@ -2,7 +2,7 @@
 
 - ID: `20260828-bilingual-homepage-brand`
 - Size: `M`
-- Status: verified; ready to publish
+- Status: complete
 - Created: 2026-08-28
 
 ## Technical decision readiness

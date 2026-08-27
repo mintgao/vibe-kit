@@ -44,9 +44,17 @@
 2. Both drafts linked to nonexistent `.vibe/core/feedback-policy.md`. They now link to the existing proactive feedback-loop design.
 3. Both drafts said an exact tag or Release URL selects an immutable version. Live GitHub evidence showed `immutable: false`; the copy now says it selects a specific published version whose Release metadata and SHA-256 are checked before installation.
 
+## Publication evidence
+
+- Homepage implementation commit: `4e4ccff350c70f931a2fbe28b045e1537448ef82`.
+- Remote `main` read-back after push resolved to the same commit.
+- GitHub rendered the English default homepage with the selected Logo, centered title, language switch, current Pre-release link, and four-part content hierarchy.
+- `https://github.com/mintgao/vibe-kit/blob/main/README.zh-CN.md` rendered the complete Chinese counterpart with the same Logo and content hierarchy.
+- GitHub API confirmed `README.md` at 9,916 bytes, `README.zh-CN.md` at 9,199 bytes, and `docs/assets/vibe-kit-logo.png` at 454,680 bytes.
+
 ## Limitations and follow-ups
 
 - Real Agent installation, task handoff, and Plugin-host scenarios were not rerun because this change does not modify those behaviors. The homepage explicitly says static string tests cannot replace behavioral evidence.
-- The uncommitted README could not be visually rendered on github.com before publication. Markdown/HTML hierarchy, asset transparency, dark-background legibility, and mobile-friendly no-table main layout were checked locally; the live page must be inspected after push.
+- GitHub live rendering was inspected after push for both language pages. The main layout remains table-free and mobile-friendly; broader device/browser sampling was not required for this Markdown-only change.
 - `AGENT_INSTALL.md` and ADR 0007 still use immutable-source wording that does not match the GitHub API's current Release immutability state. This is outside the homepage scope and should be tracked through the Vibe feedback close flow.
-- Final staging and publication must exclude the existing atomic-upgrade worktree changes.
+- Final staging and publication excluded the existing atomic-upgrade worktree changes.
