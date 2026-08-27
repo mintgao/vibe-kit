@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-08-27
+
+- Made Codex the primary adoption interface through a packaged `AGENT_INSTALL.md` and versioned `agent-install.json` contract.
+- Added additive JSON results for install-critical plan, init/adopt, upgrade, doctor and release-validation paths while preserving default text output and exit codes.
+- Added validated installation source provenance and project-owned onboarding readiness with automatic first-run routing that resumes ordinary user requests.
+- Bumped the core and Codex adapter protocols to 3 and added Agent install protocol 1; kept the local CLI offline and repository-pinned.
+- Updated the bootstrap Plugin, release validator, documentation and scenarios for Agent-first adoption.
+- Added a size-aware technical-decision readiness gate, project-owned readiness record, read-only Tech Lead author/reviewer role, and fail-closed feature, debug-to-fix, and direct implementation handoffs.
+
 ## 0.4.0 — 2026-08-27
 
 - Made `feedback.mode: ask` an observable, proactive Close behavior while keeping every GitHub write bound to adjacent approval of one exact payload.

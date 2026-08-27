@@ -1,6 +1,6 @@
 {
   "name": "vibe-kit",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Install and maintain a repository-pinned Vibe Kit workflow from a bundled offline payload.",
   "author": {
     "name": "mintgao",
@@ -14,11 +14,11 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Vibe Kit",
-    "shortDescription": "Install a repository-pinned Vibe Kit workflow.",
-    "longDescription": "Plan, install, adopt, upgrade, and diagnose Vibe Kit from a version-matched offline payload. Project-local rules remain the runtime source of truth.",
+    "shortDescription": "Let Codex adopt the Vibe Kit operating protocol.",
+    "longDescription": "Agent-first bootstrap and maintenance from a version-matched offline payload. Codex keeps CLI operations internal; repository-pinned rules remain the runtime source of truth.",
     "developerName": "mintgao",
     "category": "Productivity",
     "capabilities": ["offline-bootstrap", "repository-pinned-workflow"],
-    "defaultPrompt": "Use the Vibe Kit bootstrap or maintenance workflow for this repository."
+    "defaultPrompt": "Adopt or maintain Vibe Kit for this repository, then let me continue in ordinary development language."
   }
 }

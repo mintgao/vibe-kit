@@ -24,6 +24,7 @@ AGENTS_START = "<!-- vibe-kit:managed:start -->"
 AGENTS_END = "<!-- vibe-kit:managed:end -->"
 MANIFEST_PATH = Path(".vibe/manifest.json")
 INSTALLED_VERSION_PATH = Path(".vibe/version")
+ONBOARDING_PATH = Path(".vibe/onboarding.json")
 VERIFY_ORDER = ("lint", "typecheck", "test", "build")
 FEEDBACK_ROOT = Path(".vibe/local/feedback")
 FEEDBACK_CONFIG_PATH = Path(".vibe/core/feedback.json")
@@ -31,7 +32,26 @@ FEEDBACK_SCHEMA_VERSION = 2
 FEEDBACK_STATE_SCHEMA_VERSION = 2
 FEEDBACK_MODES = ("ask", "local", "off")
 RELEASE_MANIFEST_SCHEMA = 1
-RELEASE_STATUSES = ("release-candidate-unpublished", "prerelease")
+RELEASE_STATUSES = ("release-candidate-unpublished", "prerelease", "stable")
+AGENT_RESULT_SCHEMA = 1
+AGENT_INSTALL_PROTOCOL = 1
+SOURCE_TYPES = ("local-payload", "github-release", "plugin-bundled", "offline-bundle")
+ONBOARDING_STATUSES = ("pending", "complete", "refresh-needed")
+DERIVED_ONBOARDING_STATUSES = ("review-required", "invalid")
+WRITE_STATES = (
+    "none",
+    "project-files-written",
+    "conflict-evidence-written",
+    "unknown-partial",
+)
+AGENT_COMMAND_STATUSES = {
+    "plan": ("safe", "blocked", "error"),
+    "init": ("success", "error"),
+    "adopt": ("success", "error"),
+    "upgrade": ("success", "blocked", "error"),
+    "doctor": ("healthy", "warning", "broken", "error"),
+    "validate-release": ("valid", "invalid", "error"),
+}
 RELEASE_ARCHIVE_MAX_FILES = 5000
 RELEASE_ARCHIVE_MAX_FILE_SIZE = 2 * 1024 * 1024
 RELEASE_ARCHIVE_MAX_TOTAL_SIZE = 20 * 1024 * 1024
@@ -66,6 +86,20 @@ SECRET_PATTERNS = (
 
 class VibeError(RuntimeError):
     """A user-facing CLI error."""
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "operation_error",
+        write_state: str = "none",
+        recovery: Optional[Dict[str, object]] = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        if write_state not in WRITE_STATES:
+            raise ValueError(f"unknown write state: {write_state}")
+        self.write_state = write_state
+        self.recovery = recovery
 
 
 class RemoteFeedbackError(RuntimeError):
@@ -134,6 +168,182 @@ def atomic_write_json(path: Path, value: object) -> None:
         path,
         json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
     )
+
+
+def print_json(value: object) -> None:
+    print(json.dumps(value, ensure_ascii=False, sort_keys=True))
+
+
+def result_envelope(command: str, status: str, **values: object) -> Dict[str, object]:
+    allowed_statuses = AGENT_COMMAND_STATUSES.get(command)
+    if allowed_statuses is not None and status not in allowed_statuses:
+        raise ValueError(f"unknown {command} result status: {status}")
+    result: Dict[str, object] = {
+        "schema_version": AGENT_RESULT_SCHEMA,
+        "command": command,
+        "status": status,
+    }
+    result.update(values)
+    return result
+
+
+def writes_performed(write_state: str) -> bool:
+    if write_state not in WRITE_STATES:
+        raise ValueError(f"unknown write state: {write_state}")
+    return write_state != "none"
+
+
+def mutation_recovery(target: Path) -> Dict[str, object]:
+    return {
+        "action": "inspect-before-retry",
+        "target": str(target),
+        "steps": [
+            "Inspect the scoped Vibe Kit paths and preserve any conflict evidence.",
+            f"Run {target / 'bin/vibe'} doctor {target} when the installed CLI is runnable.",
+            "Recover with Git or the same selected trusted payload; do not blindly retry.",
+        ],
+    }
+
+
+def mutation_filesystem_error(
+    operation: str, target: Path, error: BaseException
+) -> VibeError:
+    return VibeError(
+        f"{operation} encountered a filesystem error after project mutation began: {error}",
+        "filesystem_error",
+        "unknown-partial",
+        mutation_recovery(target),
+    )
+
+
+def validate_source_provenance(
+    source_type: str,
+    source_ref: Optional[str],
+    artifact_sha256: Optional[str],
+    version: str,
+) -> Dict[str, object]:
+    if source_type not in SOURCE_TYPES:
+        raise VibeError(
+            f"source type must be one of {', '.join(SOURCE_TYPES)}",
+            "invalid_source_type",
+        )
+    normalized_ref = source_ref.strip() if source_ref is not None else None
+    normalized_digest = (
+        artifact_sha256.strip().lower() if artifact_sha256 is not None else None
+    )
+    if source_ref is not None and not normalized_ref:
+        raise VibeError("source ref must not be empty", "invalid_source_ref")
+    if artifact_sha256 is not None and not re.fullmatch(
+        r"[0-9a-f]{64}", normalized_digest or ""
+    ):
+        raise VibeError(
+            "artifact SHA-256 must contain exactly 64 hexadecimal characters",
+            "invalid_artifact_sha256",
+        )
+    immutable_ref = False
+    if normalized_ref is not None:
+        immutable_ref = bool(
+            re.fullmatch(r"[0-9a-fA-F]{40,64}", normalized_ref)
+            or re.fullmatch(r"v?\d+\.\d+\.\d+", normalized_ref)
+            or re.fullmatch(
+                r"https://github\.com/mintgao/vibe-kit/(?:releases/tag|tree)/v?\d+\.\d+\.\d+/?",
+                normalized_ref,
+            )
+        )
+        if not immutable_ref:
+            raise VibeError(
+                "source ref must be an exact SemVer tag, canonical Release/tag URL, or commit digest",
+                "invalid_source_ref",
+            )
+        ref_version_match = re.search(r"v?(\d+\.\d+\.\d+)/?$", normalized_ref)
+        if ref_version_match and ref_version_match.group(1) != version:
+            raise VibeError(
+                f"source ref version {ref_version_match.group(1)} does not match payload version {version}",
+                "source_version_mismatch",
+            )
+    if source_type in ("github-release", "offline-bundle"):
+        if normalized_ref is None:
+            raise VibeError(
+                f"{source_type} requires an immutable source ref",
+                "missing_source_ref",
+            )
+        if normalized_digest is None:
+            raise VibeError(
+                f"{source_type} requires the verified artifact SHA-256",
+                "missing_artifact_sha256",
+            )
+    if source_type == "plugin-bundled" and normalized_ref is None:
+        normalized_ref = version
+    return {
+        "type": source_type,
+        "ref": normalized_ref,
+        "artifact_sha256": normalized_digest,
+    }
+
+
+def is_iso8601(value: object) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    candidate = value.strip()
+    try:
+        dt.datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        return True
+    except ValueError:
+        try:
+            dt.date.fromisoformat(candidate)
+            return True
+        except ValueError:
+            return False
+
+
+def onboarding_readiness(target: Path) -> Tuple[str, List[str]]:
+    path = target / ONBOARDING_PATH
+    if not path.is_file():
+        return "review-required", [
+            "onboarding state is missing; review repository context before substantive work"
+        ]
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise VibeError(
+            f"invalid onboarding state {path}: {error}",
+            "invalid_onboarding_state",
+        ) from error
+    if not isinstance(value, dict) or value.get("schema_version") != 1:
+        raise VibeError(
+            f"invalid onboarding state {path}: expected schema_version 1 object",
+            "invalid_onboarding_state",
+        )
+    status = value.get("status")
+    if status not in ONBOARDING_STATUSES:
+        raise VibeError(
+            f"invalid onboarding status in {path}; expected one of {', '.join(ONBOARDING_STATUSES)}",
+            "invalid_onboarding_state",
+        )
+    if status == "complete":
+        evidence = value.get("evidence")
+        if not is_iso8601(value.get("updated_at")):
+            raise VibeError(
+                f"invalid onboarding state {path}: complete requires an ISO-8601 updated_at value",
+                "invalid_onboarding_state",
+            )
+        if not isinstance(evidence, list) or not evidence or any(
+            not isinstance(item, str) or not item.strip() for item in evidence
+        ):
+            raise VibeError(
+                f"invalid onboarding state {path}: complete requires a non-empty string list of evidence paths",
+                "invalid_onboarding_state",
+            )
+    return str(status), []
+
+
+def onboarding_result(target: Path) -> Dict[str, object]:
+    try:
+        status, _ = onboarding_readiness(target)
+    except VibeError:
+        return {"status": "invalid", "kind": "derived"}
+    kind = "persisted" if status in ONBOARDING_STATUSES else "derived"
+    return {"status": status, "kind": kind}
 
 
 def managed_source_files(root: Path) -> List[Path]:
@@ -361,6 +571,11 @@ def ensure_project_owned_files(
         atomic_copy(source / "templates/project/project-rules.md", rules)
         created.append(rules)
 
+    onboarding = target / ONBOARDING_PATH
+    if not onboarding.exists():
+        atomic_copy(source / "templates/project/onboarding.json", onboarding)
+        created.append(onboarding)
+
     replacements = {"LANGUAGE": language, "FRAMEWORK": framework}
     for filename in ("product.md", "architecture.md", "design-system.md"):
         destination = target / "docs/context" / filename
@@ -391,12 +606,14 @@ def write_manifest(
     version: str,
     managed_hashes: Dict[str, str],
     agents_block_hash: str,
+    provenance: Dict[str, object],
 ) -> None:
     manifest = {
         "schema_version": 1,
         "framework_version": version,
         "managed_files": dict(sorted(managed_hashes.items())),
         "agents_block_hash": agents_block_hash,
+        "source": provenance,
     }
     atomic_write_text(
         target / MANIFEST_PATH,
@@ -477,13 +694,23 @@ def version_integrity(
     return False, diagnostic
 
 
-def install(command: str, target: Path, name: Optional[str]) -> int:
+def install(
+    command: str,
+    target: Path,
+    name: Optional[str],
+    output_format: str,
+    source_type: str,
+    source_ref: Optional[str],
+    artifact_sha256: Optional[str],
+) -> int:
     source = source_root()
     version = framework_version(source)
+    provenance = validate_source_provenance(
+        source_type, source_ref, artifact_sha256, version
+    )
     target = target.resolve()
     if command == "adopt" and (not target.is_dir() or not any(target.iterdir())):
         raise VibeError("adopt requires a non-empty existing project; use init instead.")
-    target.mkdir(parents=True, exist_ok=True)
     if (target / MANIFEST_PATH).exists():
         raise VibeError("Vibe Kit is already installed; use upgrade instead.")
 
@@ -498,8 +725,10 @@ def install(command: str, target: Path, name: Optional[str]) -> int:
             if not existing.is_file() or sha256(existing) != sha256(incoming):
                 collisions.append(relative.as_posix())
     agents_path = target / "AGENTS.md"
+    current_agents = ""
     if agents_path.exists():
-        extract_agents_block(agents_path.read_text(encoding="utf-8"))
+        current_agents = agents_path.read_text(encoding="utf-8")
+        extract_agents_block(current_agents)
     if collisions:
         joined = "\n  - ".join(collisions)
         raise VibeError(
@@ -507,32 +736,59 @@ def install(command: str, target: Path, name: Optional[str]) -> int:
             f"  - {joined}\nMove or rename them, then retry."
         )
 
-    for incoming in files:
-        atomic_copy(incoming, target / incoming.relative_to(source))
-
     block = incoming_agents_block(source)
-    current_agents = agents_path.read_text(encoding="utf-8") if agents_path.exists() else ""
-    atomic_write_text(agents_path, merge_agents_text(current_agents, block))
-    lifecycle = "new" if command == "init" else "existing"
-    created = ensure_project_owned_files(source, target, lifecycle, name)
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        for incoming in files:
+            atomic_copy(incoming, target / incoming.relative_to(source))
 
-    managed_hashes = {
-        incoming.relative_to(source).as_posix(): sha256(target / incoming.relative_to(source))
-        for incoming in files
-    }
-    write_manifest(target, version, managed_hashes, sha256_text(block))
+        atomic_write_text(agents_path, merge_agents_text(current_agents, block))
+        lifecycle = "new" if command == "init" else "existing"
+        created = ensure_project_owned_files(source, target, lifecycle, name)
+
+        managed_hashes = {
+            incoming.relative_to(source).as_posix(): sha256(
+                target / incoming.relative_to(source)
+            )
+            for incoming in files
+        }
+        write_manifest(target, version, managed_hashes, sha256_text(block), provenance)
+    except (OSError, UnicodeError) as error:
+        raise mutation_filesystem_error(command, target, error) from error
+    if output_format == "json":
+        write_state = "project-files-written"
+        print_json(
+            result_envelope(
+                command,
+                "success",
+                operation=command,
+                target=str(target),
+                kit_version=version,
+                source=provenance,
+                write_state=write_state,
+                writes_performed=writes_performed(write_state),
+                managed_files_installed=len(managed_hashes),
+                project_owned_files_created=len(created),
+                onboarding=onboarding_result(target),
+                handoff={
+                    "required": True,
+                    "instruction": "Open a new Codex task in this project and state the development goal normally.",
+                },
+            )
+        )
+        return 0
     print(f"Vibe Kit {version} {command} complete: {target}")
     print(f"Managed files installed: {len(managed_hashes)}")
     print(f"Project-owned files created: {len(created)}")
     print("Start a new Codex task so AGENTS.md and repository skills are loaded.")
-    if command == "adopt":
-        print("Next: ask Codex to run $vibe-project-onboarding for this repository.")
+    print("In the new task, state the development goal normally; onboarding is automatic.")
     return 0
 
 
 PROJECT_OWNED_INSTALL_PATHS = (
     ".vibe/project.yaml",
     ".vibe/project-rules.md",
+    ONBOARDING_PATH.as_posix(),
     "docs/context/product.md",
     "docs/context/architecture.md",
     "docs/context/design-system.md",
@@ -677,8 +933,43 @@ def upgrade_plan(target: Path) -> Tuple[List[Dict[str, str]], str, str]:
     return entries, current_version, version
 
 
-def print_plan(operation: str, target: Path, entries: Sequence[Dict[str, str]], current: str, target_version: str) -> int:
+def print_plan(
+    operation: str,
+    target: Path,
+    entries: Sequence[Dict[str, str]],
+    current: str,
+    target_version: str,
+    output_format: str,
+    provenance: Dict[str, object],
+) -> int:
     conflicts = [entry for entry in entries if entry["action"] == "conflict"]
+    counts: Dict[str, int] = {}
+    for entry in entries:
+        counts[entry["action"]] = counts.get(entry["action"], 0) + 1
+    if output_format == "json":
+        print_json(
+            result_envelope(
+                "plan",
+                "blocked" if conflicts else "safe",
+                operation=operation,
+                target=str(target.resolve()),
+                current_version=current,
+                target_version=target_version,
+                source=provenance,
+                entries=list(entries),
+                counts=dict(sorted(counts.items())),
+                files_changed=False,
+                recovery=(
+                    {
+                        "action": "inspect-conflicts",
+                        "paths": [entry["path"] for entry in conflicts],
+                    }
+                    if conflicts
+                    else None
+                ),
+            )
+        )
+        return 2 if conflicts else 0
     print(f"Vibe Kit plan: {operation}")
     print(f"Target: {target.resolve()}")
     print(f"Current version: {current}")
@@ -687,21 +978,37 @@ def print_plan(operation: str, target: Path, entries: Sequence[Dict[str, str]], 
     for entry in entries:
         suffix = f" — {entry['note']}" if entry.get("note") else ""
         print(f"{entry['action'].upper():8} {entry['path']}{suffix}")
-    counts: Dict[str, int] = {}
-    for entry in entries:
-        counts[entry["action"]] = counts.get(entry["action"], 0) + 1
     summary = ", ".join(f"{key}={counts[key]}" for key in sorted(counts))
     print(f"Summary: {summary}")
     print("No files were changed.")
     return 2 if conflicts else 0
 
 
-def plan(operation: str, target: Path) -> int:
+def plan(
+    operation: str,
+    target: Path,
+    output_format: str,
+    source_type: str,
+    source_ref: Optional[str],
+    artifact_sha256: Optional[str],
+) -> int:
+    version = framework_version(source_root())
+    provenance = validate_source_provenance(
+        source_type, source_ref, artifact_sha256, version
+    )
     if operation in ("init", "adopt"):
         entries, current, target_version = install_plan(operation, target)
     else:
         entries, current, target_version = upgrade_plan(target)
-    return print_plan(operation, target, entries, current, target_version)
+    return print_plan(
+        operation,
+        target,
+        entries,
+        current,
+        target_version,
+        output_format,
+        provenance,
+    )
 
 
 def write_conflict_candidates(
@@ -718,11 +1025,20 @@ def write_conflict_candidates(
     return root
 
 
-def upgrade(target: Path) -> int:
+def upgrade(
+    target: Path,
+    output_format: str,
+    source_type: str,
+    source_ref: Optional[str],
+    artifact_sha256: Optional[str],
+) -> int:
     source = source_root()
     target = target.resolve()
-    manifest = load_manifest(target)
     version = framework_version(source)
+    provenance = validate_source_provenance(
+        source_type, source_ref, artifact_sha256, version
+    )
+    manifest = load_manifest(target)
     previous = {str(key): str(value) for key, value in manifest["managed_files"].items()}
     incoming_files = managed_source_files(source)
     incoming_by_relative = {
@@ -769,55 +1085,98 @@ def upgrade(target: Path) -> int:
         conflicts.append(("AGENTS.md", None))
 
     if conflicts:
-        root = write_conflict_candidates(source, target, conflicts)
+        try:
+            root = write_conflict_candidates(source, target, conflicts)
+        except (OSError, UnicodeError) as error:
+            raise mutation_filesystem_error("upgrade", target, error) from error
+        if output_format == "json":
+            write_state = "conflict-evidence-written"
+            print_json(
+                result_envelope(
+                    "upgrade",
+                    "blocked",
+                    target=str(target),
+                    kit_version=version,
+                    source=provenance,
+                    write_state=write_state,
+                    writes_performed=writes_performed(write_state),
+                    managed_files_changed=False,
+                    conflict_candidates=str(root),
+                    conflicts=[relative for relative, _ in conflicts],
+                    recovery={"action": "inspect-conflict-candidates"},
+                )
+            )
+            return 2
         print("Upgrade aborted; no managed framework files were changed.", file=sys.stderr)
         print(f"Incoming conflict candidates: {root}", file=sys.stderr)
         for relative, _ in conflicts:
             print(f"  - {relative}", file=sys.stderr)
         return 2
 
-    updated = 0
-    preserved_local = 0
-    new_hashes: Dict[str, str] = {}
-    for relative, incoming in incoming_by_relative.items():
-        destination = target / relative
-        incoming_hash = sha256(incoming)
-        recorded_hash = previous.get(relative)
-        current_hash = sha256(destination) if destination.is_file() else None
+    try:
+        updated = 0
+        preserved_local = 0
+        new_hashes: Dict[str, str] = {}
+        for relative, incoming in incoming_by_relative.items():
+            destination = target / relative
+            incoming_hash = sha256(incoming)
+            recorded_hash = previous.get(relative)
+            current_hash = sha256(destination) if destination.is_file() else None
+            if (
+                recorded_hash is not None
+                and current_hash is not None
+                and current_hash != recorded_hash
+                and incoming_hash == recorded_hash
+            ):
+                new_hashes[relative] = recorded_hash
+                preserved_local += 1
+                continue
+            if current_hash != incoming_hash:
+                atomic_copy(incoming, destination)
+                updated += 1
+            new_hashes[relative] = incoming_hash
+
+        stale = sorted(set(previous) - set(incoming_by_relative))
+        for relative in stale:
+            new_hashes[relative] = previous[relative]
+
+        current_agents_text = (
+            agents_path.read_text(encoding="utf-8") if agents_path.exists() else ""
+        )
         if (
-            recorded_hash is not None
-            and current_hash is not None
-            and current_hash != recorded_hash
-            and incoming_hash == recorded_hash
+            recorded_block_hash
+            and current_block_hash != recorded_block_hash
+            and incoming_block_hash == recorded_block_hash
         ):
-            new_hashes[relative] = recorded_hash
+            new_block_hash = recorded_block_hash
             preserved_local += 1
-            continue
-        if current_hash != incoming_hash:
-            atomic_copy(incoming, destination)
-            updated += 1
-        new_hashes[relative] = incoming_hash
+        else:
+            merged = merge_agents_text(current_agents_text, incoming_block)
+            if merged != current_agents_text:
+                atomic_write_text(agents_path, merged)
+                updated += 1
+            new_block_hash = incoming_block_hash
 
-    stale = sorted(set(previous) - set(incoming_by_relative))
-    for relative in stale:
-        new_hashes[relative] = previous[relative]
-
-    current_agents_text = agents_path.read_text(encoding="utf-8") if agents_path.exists() else ""
-    if (
-        recorded_block_hash
-        and current_block_hash != recorded_block_hash
-        and incoming_block_hash == recorded_block_hash
-    ):
-        new_block_hash = recorded_block_hash
-        preserved_local += 1
-    else:
-        merged = merge_agents_text(current_agents_text, incoming_block)
-        if merged != current_agents_text:
-            atomic_write_text(agents_path, merged)
-            updated += 1
-        new_block_hash = incoming_block_hash
-
-    write_manifest(target, version, new_hashes, new_block_hash)
+        write_manifest(target, version, new_hashes, new_block_hash, provenance)
+    except (OSError, UnicodeError) as error:
+        raise mutation_filesystem_error("upgrade", target, error) from error
+    if output_format == "json":
+        write_state = "project-files-written"
+        print_json(
+            result_envelope(
+                "upgrade",
+                "success",
+                target=str(target),
+                kit_version=version,
+                source=provenance,
+                write_state=write_state,
+                writes_performed=writes_performed(write_state),
+                managed_files_updated=updated,
+                locally_modified_entries_preserved=preserved_local,
+                stale_managed_paths_preserved=stale,
+            )
+        )
+        return 0
     print(f"Vibe Kit upgrade complete: {target}")
     print(f"Framework version: {version}")
     print(f"Managed files updated: {updated}")
@@ -861,10 +1220,12 @@ def validate_agent(path: Path) -> List[str]:
     return errors
 
 
-def doctor(target: Path) -> int:
+def doctor(target: Path, output_format: str) -> int:
     target = target.resolve()
     errors: List[str] = []
     warnings: List[str] = []
+    readiness = "review-required"
+    readiness_kind = "derived"
     manifest, manifest_version, manifest_display = read_manifest_for_doctor(target)
     versions_ok, version_result = version_integrity(
         target, manifest_version, manifest_display
@@ -910,13 +1271,44 @@ def doctor(target: Path) -> int:
         except VibeError as error:
             errors.append(str(error))
 
+    try:
+        readiness, readiness_warnings = onboarding_readiness(target)
+        readiness_kind = (
+            "persisted" if readiness in ONBOARDING_STATUSES else "derived"
+        )
+        warnings.extend(readiness_warnings)
+    except VibeError as error:
+        errors.append(str(error))
+        readiness = "invalid"
+        readiness_kind = "derived"
+
     for skill in (target / ".agents/skills").glob("vibe-*/SKILL.md"):
         errors.extend(validate_skill(skill))
     for agent in (target / ".codex/agents").glob("vibe-*.toml"):
         errors.extend(validate_agent(agent))
 
+    if output_format == "json":
+        status = "broken" if errors else ("warning" if warnings else "healthy")
+        print_json(
+            result_envelope(
+                "doctor",
+                status,
+                target=str(target),
+                kit_version=version_result if versions_ok else None,
+                version_integrity={
+                    "status": "ok" if versions_ok else "failed",
+                    "detail": version_result,
+                },
+                onboarding={"status": readiness, "kind": readiness_kind},
+                warnings=warnings,
+                errors=errors,
+                network_used=False,
+            )
+        )
+        return 1 if errors else 0
     if versions_ok:
         print(f"Version integrity: OK ({version_result})")
+    print(f"Onboarding readiness: {readiness}")
     for warning in warnings:
         print(f"WARN: {warning}")
     for error in errors:
@@ -1106,7 +1498,14 @@ def work_item(target: Path, slug_value: str, size: str, title: Optional[str]) ->
 
 def release_payload_files(root: Path, version: str) -> List[Path]:
     files = list(managed_source_files(root))
-    for relative in ("AGENTS.md", "README.md", "CHANGELOG.md", "LICENSE"):
+    for relative in (
+        "AGENTS.md",
+        "AGENT_INSTALL.md",
+        "agent-install.json",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE",
+    ):
         path = root / relative
         if path.is_file():
             files.append(path)
@@ -1256,12 +1655,12 @@ def package_release(output: Optional[Path], status: str) -> int:
         raise VibeError(f"release output is not empty: {destination}")
 
     source_metadata = release_source_metadata(root)
-    if status == "prerelease" and (
+    if status in ("prerelease", "stable") and (
         source_metadata.get("ref") is None
         or source_metadata.get("tree_state") != "clean"
     ):
         raise VibeError(
-            "prerelease packaging requires a clean committed Git source; commit the reviewed tree first"
+            f"{status} packaging requires a clean committed Git source; commit the reviewed tree first"
         )
     payload_entries: Dict[str, Tuple[bytes, int]] = {}
     for path in release_payload_files(root, version):
@@ -1323,6 +1722,7 @@ def package_release(output: Optional[Path], status: str) -> int:
         "manifest_schema": protocol.get("manifest_schema"),
         "core_protocol": protocol.get("core_protocol"),
         "feedback_protocol": protocol.get("feedback_protocol"),
+        "agent_install_protocol": protocol.get("agent_install_protocol"),
         "adapters": protocol.get("adapters"),
         "runtime": {
             "python": ">=3.9",
@@ -1430,7 +1830,63 @@ def read_normalized_archive(path: Path, expected_root: str) -> Tuple[Dict[str, b
     return entries, errors
 
 
-def validate_release(release_dir: Path) -> int:
+def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[str]:
+    errors: List[str] = []
+    cli = contract.get("cli")
+    if not isinstance(cli, dict):
+        return ["agent install contract CLI result contract is missing"]
+    if cli.get("result_schema_version") != AGENT_RESULT_SCHEMA:
+        errors.append("agent install contract result schema is unsupported")
+    expected_statuses = {
+        command: list(statuses)
+        for command, statuses in AGENT_COMMAND_STATUSES.items()
+    }
+    if cli.get("command_statuses") != expected_statuses:
+        errors.append("agent install contract command statuses are unsupported")
+    if cli.get("write_states") != list(WRITE_STATES):
+        errors.append("agent install contract write states are unsupported")
+    if cli.get("writes_performed_rule") != "false-only-for-none":
+        errors.append("agent install contract writes_performed rule is unsupported")
+
+    onboarding = contract.get("onboarding")
+    if not isinstance(onboarding, dict):
+        errors.append("agent install contract onboarding contract is missing")
+    else:
+        if onboarding.get("schema_version") != 1:
+            errors.append("agent install contract onboarding schema is unsupported")
+        if onboarding.get("persisted_statuses") != list(ONBOARDING_STATUSES):
+            errors.append(
+                "agent install contract persisted onboarding states are unsupported"
+            )
+        if onboarding.get("derived_statuses") != list(DERIVED_ONBOARDING_STATUSES):
+            errors.append(
+                "agent install contract derived onboarding states are unsupported"
+            )
+        if onboarding.get("complete_requirements") != {
+            "updated_at": "iso-8601",
+            "evidence": "non-empty-string-list",
+        }:
+            errors.append(
+                "agent install contract complete onboarding requirements are unsupported"
+            )
+        if onboarding.get("preserve_project_owned_state") is not True:
+            errors.append(
+                "agent install contract onboarding preservation rule is unsupported"
+            )
+
+    evolution = contract.get("evolution")
+    expected_evolution = {
+        "unknown_schema_or_protocol": "fail-closed",
+        "unknown_enum": "fail-closed",
+        "schema_1_optional_field_rule": "ignorable-without-changing-existing-meaning",
+        "breaking_change_rule": "bump-result-schema-and-or-agent-install-protocol",
+    }
+    if evolution != expected_evolution:
+        errors.append("agent install contract evolution rules are unsupported")
+    return errors
+
+
+def validate_release(release_dir: Path, output_format: str = "text") -> int:
     release_dir = release_dir.resolve()
     manifest_path = release_dir / "release-manifest.json"
     checksum_path = release_dir / "SHA256SUMS"
@@ -1452,15 +1908,15 @@ def validate_release(release_dir: Path) -> int:
     status = manifest.get("status")
     if status not in RELEASE_STATUSES:
         errors.append("release candidate status is missing or unsupported")
-    if status == "prerelease":
+    if status in ("prerelease", "stable"):
         source = manifest.get("source")
         if not isinstance(source, dict):
-            errors.append("prerelease source metadata must be an object")
+            errors.append(f"{status} source metadata must be an object")
         elif (
             not re.fullmatch(r"[0-9a-f]{40,64}", str(source.get("ref", "")))
             or source.get("tree_state") != "clean"
         ):
-            errors.append("prerelease requires a committed clean source ref")
+            errors.append(f"{status} requires a committed clean source ref")
     release_name = f"vibe-kit-{version}.zip"
     plugin_name = f"vibe-kit-plugin-{version}.zip"
 
@@ -1556,15 +2012,79 @@ def validate_release(release_dir: Path) -> int:
         "manifest_schema",
         "core_protocol",
         "feedback_protocol",
+        "agent_install_protocol",
         "adapters",
     ):
         if manifest.get(protocol_key) != release_protocol_value.get(protocol_key):
             errors.append(
                 f"release manifest {protocol_key} does not match payload protocol metadata"
             )
-    for required in ("bin/vibe", "AGENTS.md", "templates/project/project-rules.md"):
+    if release_protocol_value.get("agent_install_protocol") != AGENT_INSTALL_PROTOCOL:
+        errors.append("release Agent install protocol is unsupported")
+    for required in (
+        "bin/vibe",
+        "AGENTS.md",
+        "AGENT_INSTALL.md",
+        "agent-install.json",
+        "templates/project/project-rules.md",
+        "templates/project/onboarding.json",
+    ):
         if required not in release_entries:
             errors.append(f"release ZIP is missing required payload file: {required}")
+
+    install_guide = release_entries.get("AGENT_INSTALL.md")
+    if install_guide is not None:
+        try:
+            guide_text = install_guide.decode("utf-8")
+        except UnicodeDecodeError:
+            guide_text = ""
+        if not (
+            guide_text.startswith("# Agent installation contract")
+            and "agent-install.json" in guide_text
+            and "https://github.com/mintgao/vibe-kit" in guide_text
+        ):
+            errors.append("AGENT_INSTALL.md is malformed")
+
+    install_contract_bytes = release_entries.get("agent-install.json")
+    install_contract: Dict[str, object] = {}
+    if install_contract_bytes is not None:
+        try:
+            loaded_contract = json.loads(install_contract_bytes.decode("utf-8"))
+            if isinstance(loaded_contract, dict):
+                install_contract = loaded_contract
+            else:
+                errors.append("agent-install.json must be an object")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            errors.append("agent-install.json is malformed")
+    if install_contract:
+        if install_contract.get("schema_version") != 1:
+            errors.append("agent install contract schema is unsupported")
+        if install_contract.get("protocol_version") != AGENT_INSTALL_PROTOCOL or (
+            install_contract.get("protocol_version")
+            != release_protocol_value.get("agent_install_protocol")
+        ):
+            errors.append("agent install contract protocol does not match payload protocol")
+        if install_contract.get("kit_version") != version:
+            errors.append("agent install contract version does not match release")
+        canonical = install_contract.get("canonical_source")
+        if not isinstance(canonical, dict) or canonical.get("repository") != (
+            "https://github.com/mintgao/vibe-kit"
+        ):
+            errors.append("agent install contract canonical source is invalid")
+        adapter = install_contract.get("adapter")
+        codex = release_protocol_value.get("adapters", {}).get("codex", {}) if isinstance(
+            release_protocol_value.get("adapters"), dict
+        ) else {}
+        if not isinstance(adapter, dict) or (
+            adapter.get("name") != "codex"
+            or adapter.get("protocol") != codex.get("version")
+        ):
+            errors.append("agent install contract adapter does not match payload protocol")
+        channels = install_contract.get("release_channels")
+        allowed_statuses = channels.get("allowed_statuses") if isinstance(channels, dict) else None
+        if not isinstance(allowed_statuses, list) or status not in allowed_statuses:
+            errors.append("agent install contract release channel does not match release status")
+        errors.extend(validate_agent_install_contract_shape(install_contract))
 
     plugin_manifest_bytes = plugin_entries.get(".codex-plugin/plugin.json")
     plugin_manifest: Dict[str, object] = {}
@@ -1633,10 +2153,37 @@ def validate_release(release_dir: Path) -> int:
             errors.append(f"marketplace catalog is invalid: {error}")
 
     if errors:
+        if output_format == "json":
+            print_json(
+                result_envelope(
+                    "validate-release",
+                    "invalid",
+                    release_directory=str(release_dir),
+                    kit_version=version or None,
+                    errors=errors,
+                    network_used=False,
+                )
+            )
+            return 1
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
         print(f"Release validation failed with {len(errors)} error(s).", file=sys.stderr)
         return 1
+    if output_format == "json":
+        print_json(
+            result_envelope(
+                "validate-release",
+                "valid",
+                release_directory=str(release_dir),
+                kit_version=version,
+                payload_files=len(release_entries),
+                agent_install_protocol=release_protocol_value.get(
+                    "agent_install_protocol"
+                ),
+                network_used=False,
+            )
+        )
+        return 0
     print(f"Release validation passed: {release_dir}")
     print(f"Version: {version}")
     print(f"Payload files: {len(release_entries)}")
@@ -2687,6 +3234,29 @@ def add_feedback_signal_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_format_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json"),
+        default="text",
+        help="Render the default human-readable result or the versioned Agent JSON result.",
+    )
+
+
+def add_source_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--source-type",
+        default="local-payload",
+        help="Selected payload channel recorded in the installation manifest.",
+    )
+    parser.add_argument("--source-ref", help="Immutable selected tag, Release URL, or commit.")
+    parser.add_argument(
+        "--artifact-sha256",
+        help="SHA-256 verified by the invoking Agent for the selected transferred artifact.",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vibe", description="Install and operate the Vibe Kit development workflow."
@@ -2696,16 +3266,25 @@ def build_parser() -> argparse.ArgumentParser:
         child = subparsers.add_parser(command)
         child.add_argument("target", nargs="?", default=".")
         child.add_argument("--name", help="Project name written during first installation")
+        add_format_argument(child)
+        add_source_arguments(child)
 
-    for command in ("upgrade", "doctor"):
-        child = subparsers.add_parser(command)
-        child.add_argument("target", nargs="?", default=".")
+    upgrade_parser = subparsers.add_parser("upgrade")
+    upgrade_parser.add_argument("target", nargs="?", default=".")
+    add_format_argument(upgrade_parser)
+    add_source_arguments(upgrade_parser)
+
+    doctor_parser = subparsers.add_parser("doctor")
+    doctor_parser.add_argument("target", nargs="?", default=".")
+    add_format_argument(doctor_parser)
 
     plan_parser = subparsers.add_parser(
         "plan", description="Preview init, adopt, or upgrade without writing files."
     )
     plan_parser.add_argument("operation", choices=("init", "adopt", "upgrade"))
     plan_parser.add_argument("target", nargs="?", default=".")
+    add_format_argument(plan_parser)
+    add_source_arguments(plan_parser)
 
     package_parser = subparsers.add_parser(
         "package", description="Build a deterministic unpublished release candidate."
@@ -2724,6 +3303,7 @@ def build_parser() -> argparse.ArgumentParser:
         "validate-release", description="Verify a local Vibe Kit release candidate."
     )
     release_parser.add_argument("release_dir")
+    add_format_argument(release_parser)
 
     verify_parser = subparsers.add_parser("verify")
     verify_parser.add_argument("target", nargs="?", default=".")
@@ -2785,17 +3365,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command in ("init", "adopt"):
-            return install(args.command, Path(args.target), args.name)
+            return install(
+                args.command,
+                Path(args.target),
+                args.name,
+                args.output_format,
+                args.source_type,
+                args.source_ref,
+                args.artifact_sha256,
+            )
         if args.command == "upgrade":
-            return upgrade(Path(args.target))
+            return upgrade(
+                Path(args.target),
+                args.output_format,
+                args.source_type,
+                args.source_ref,
+                args.artifact_sha256,
+            )
         if args.command == "plan":
-            return plan(args.operation, Path(args.target))
+            return plan(
+                args.operation,
+                Path(args.target),
+                args.output_format,
+                args.source_type,
+                args.source_ref,
+                args.artifact_sha256,
+            )
         if args.command == "package":
             return package_release(args.output, args.status)
         if args.command == "validate-release":
-            return validate_release(Path(args.release_dir))
+            return validate_release(Path(args.release_dir), args.output_format)
         if args.command == "doctor":
-            return doctor(Path(args.target))
+            return doctor(Path(args.target), args.output_format)
         if args.command == "verify":
             return verify(Path(args.target), args.only)
         if args.command == "work-item":
@@ -2828,6 +3429,37 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if args.feedback_command == "dismiss":
                 return feedback_dismiss(target, args.report_id, args.reason)
     except VibeError as error:
+        if getattr(args, "output_format", "text") == "json":
+            write_state = error.write_state
+            print_json(
+                result_envelope(
+                    args.command,
+                    "error",
+                    operation=getattr(args, "operation", args.command),
+                    error={"code": error.code, "message": str(error)},
+                    write_state=write_state,
+                    writes_performed=writes_performed(write_state),
+                    recovery=error.recovery,
+                )
+            )
+            return 2
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    except (OSError, UnicodeError) as error:
+        if getattr(args, "output_format", "text") == "json":
+            write_state = "none"
+            print_json(
+                result_envelope(
+                    args.command,
+                    "error",
+                    operation=getattr(args, "operation", args.command),
+                    error={"code": "filesystem_error", "message": str(error)},
+                    write_state=write_state,
+                    writes_performed=writes_performed(write_state),
+                    recovery=None,
+                )
+            )
+            return 2
         print(f"error: {error}", file=sys.stderr)
         return 2
     parser.error("unknown command")

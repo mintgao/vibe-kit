@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "protocol_version": 1,
+  "kit_version": "0.5.0",
+  "adapter": {
+    "name": "codex",
+    "protocol": 3
+  },
+  "canonical_source": {
+    "repository": "https://github.com/mintgao/vibe-kit",
+    "bare_repository_policy": "latest-stable-only",
+    "no_stable_policy": "request-one-prerelease-decision",
+    "moving_ref_policy": "blocked"
+  },
+  "release_channels": {
+    "allowed_statuses": [
+      "release-candidate-unpublished",
+      "prerelease",
+      "stable"
+    ],
+    "exact_prerelease_link_is_explicit_selection": true
+  },
+  "source_types": [
+    "github-release",
+    "plugin-bundled",
+    "offline-bundle",
+    "local-payload"
+  ],
+  "lifecycle": {
+    "states": [
+      "source-resolution",
+      "target-resolution",
+      "plan",
+      "apply",
+      "doctor",
+      "handoff",
+      "onboarding",
+      "success",
+      "blocked"
+    ],
+    "new_project_operation": "init",
+    "existing_project_operation": "adopt",
+    "existing_installation_policy": "request-version-change-decision"
+  },
+  "cli": {
+    "result_schema_version": 1,
+    "format_argument": "--format json",
+    "command_statuses": {
+      "plan": [
+        "safe",
+        "blocked",
+        "error"
+      ],
+      "init": [
+        "success",
+        "error"
+      ],
+      "adopt": [
+        "success",
+        "error"
+      ],
+      "upgrade": [
+        "success",
+        "blocked",
+        "error"
+      ],
+      "doctor": [
+        "healthy",
+        "warning",
+        "broken",
+        "error"
+      ],
+      "validate-release": [
+        "valid",
+        "invalid",
+        "error"
+      ]
+    },
+    "write_states": [
+      "none",
+      "project-files-written",
+      "conflict-evidence-written",
+      "unknown-partial"
+    ],
+    "writes_performed_rule": "false-only-for-none",
+    "provenance_arguments": [
+      "--source-type",
+      "--source-ref",
+      "--artifact-sha256"
+    ]
+  },
+  "onboarding": {
+    "schema_version": 1,
+    "persisted_statuses": [
+      "pending",
+      "complete",
+      "refresh-needed"
+    ],
+    "derived_statuses": [
+      "review-required",
+      "invalid"
+    ],
+    "complete_requirements": {
+      "updated_at": "iso-8601",
+      "evidence": "non-empty-string-list"
+    },
+    "preserve_project_owned_state": true
+  },
+  "evolution": {
+    "unknown_schema_or_protocol": "fail-closed",
+    "unknown_enum": "fail-closed",
+    "schema_1_optional_field_rule": "ignorable-without-changing-existing-meaning",
+    "breaking_change_rule": "bump-result-schema-and-or-agent-install-protocol"
+  },
+  "trust": {
+    "canonical_repository_only_by_default": true,
+    "require_release_artifact_sha256": true,
+    "network_resolver_in_cli": false,
+    "follow_main": false
+  }
+}

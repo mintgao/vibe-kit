@@ -25,6 +25,7 @@ A change that affects a user flow, component contract, API behavior, or more tha
 - Create a work item.
 - Establish acceptance criteria before implementation.
 - Include UX analysis for user-facing behavior.
+- Scan for durable or high-risk technical-decision triggers before implementation.
 - Use independent QA verification after implementation.
 
 ### L — cross-cutting or high risk
@@ -32,9 +33,14 @@ A change that affects a user flow, component contract, API behavior, or more tha
 A change involving multiple subsystems, migrations, authentication, permissions, payments, sensitive data, irreversible state, or substantial ambiguity.
 
 - Create a work item and explicit plan.
-- Record important architectural decisions in `docs/decisions/`.
+- Record an explicit technical-decision readiness outcome before implementation.
+- Record new or changed durable architectural decisions in `docs/decisions/`.
 - Include rollback or recovery considerations.
 - Use independent specialist reviews and QA evidence.
+
+Apply the size-aware readiness rules in
+`.vibe/core/technical-decision-readiness.md`. A shaped requirement is not by
+itself implementation-ready.
 
 ## Lifecycle
 
@@ -42,18 +48,26 @@ Use the phases that apply; do not manufacture empty artifacts for inapplicable p
 
 1. **Shape** — goal, users, scope, non-goals, acceptance criteria, open decisions.
 2. **Design** — flow, states, accessibility, responsiveness, and visual constraints when user experience changes.
-3. **Plan** — affected areas, approach, risks, migrations, and verification strategy.
-4. **Implement** — minimal coherent change with appropriate tests and documentation.
-5. **Verify** — map acceptance criteria to observed evidence and record limitations.
-6. **Close** — summarize the result, update durable context only when the project truth changed, list follow-ups, and silently check whether evidence exposed a reusable Vibe Kit gap. Use `vibe-feedback-flow` only when its threshold is met; do not generate ceremonial feedback.
+3. **Technical decision readiness** — before the first code edit, scan size and risk, resolve or cite durable decisions, complete required review, and confirm the gate under `.vibe/core/technical-decision-readiness.md`.
+4. **Plan** — affected areas, accepted technical boundaries, risks, migrations, and verification strategy.
+5. **Implement** — minimal coherent change with appropriate tests and documentation; reopen readiness if a new durable/high-risk choice appears.
+6. **Verify** — map acceptance criteria and accepted technical boundaries to observed evidence and record limitations.
+7. **Close** — summarize the result, update durable context only when the project truth changed, list follow-ups, and silently check whether evidence exposed a reusable Vibe Kit gap. Use `vibe-feedback-flow` only when its threshold is met; do not generate ceremonial feedback.
 
 ## Role boundaries
 
-- **PM:** owns problem framing and acceptance criteria; does not prescribe implementation.
+- **PM:** owns what, why, users, scope, observable behavior, and acceptance; identifies but does not decide technical questions.
 - **UX:** owns user flow and interface behavior; does not silently expand product scope.
-- **RD:** owns technical decisions and implementation; does not self-certify product acceptance.
-- **QA:** owns independent verification; does not silently patch failures it is evaluating.
+- **Tech Lead:** owns durable architecture, alternatives, trade-offs, technical boundaries, migration, recovery, and compatibility; authors or independently reviews decision evidence without editing implementation code.
+- **Orchestrator:** owns trigger detection, role handoff, evidence checks, and readiness-gate confirmation; does not invent technical decisions or answer material product choices.
+- **RD:** owns local implementation planning and implementation inside accepted technical boundaries; does not waive readiness or self-certify product acceptance.
+- **QA:** owns independent verification of acceptance and the accepted decision boundary; does not replace the pre-implementation gate or silently patch failures it is evaluating.
 - **Investigator:** owns reproduction and root-cause evidence; separates observation from hypothesis and fix.
+
+The user decides a technical option only when it changes product scope,
+observable behavior, risk or cost commitments, irreversible state, or external
+compatibility. See `.vibe/core/technical-decision-readiness.md` for detailed
+authority, review, and fallback-host rules.
 
 ## Evidence contract
 

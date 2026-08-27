@@ -1,5 +1,9 @@
+import contextlib
 import json
 import hashlib
+import importlib.machinery
+import importlib.util
+import io
 import os
 from pathlib import Path
 import re
@@ -8,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 
@@ -43,6 +48,16 @@ def copy_source(destination: Path) -> Path:
         ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "manifest.json"),
     )
     return destination / "bin/vibe"
+
+
+def load_cli_module():
+    loader = importlib.machinery.SourceFileLoader("vibe_cli_test_module", str(CLI))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None:
+        raise RuntimeError("could not create a module spec for bin/vibe")
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
 
 
 def file_snapshot(root: Path) -> dict:
@@ -125,8 +140,14 @@ class VibeCliTests(unittest.TestCase):
             self.assertTrue((target / "AGENTS.md").is_file())
             self.assertTrue((target / ".agents/skills/vibe-feature-flow/SKILL.md").is_file())
             self.assertTrue((target / ".codex/agents/vibe-qa.toml").is_file())
+            self.assertTrue(
+                (target / ".vibe/core/technical-decision-readiness.md").is_file()
+            )
+            self.assertTrue((target / ".codex/agents/vibe-tech-lead.toml").is_file())
             self.assertIn('lifecycle: "new"', (target / ".vibe/project.yaml").read_text())
             self.assertIn('name: "Demo Project"', (target / ".vibe/project.yaml").read_text())
+            onboarding = json.loads((target / ".vibe/onboarding.json").read_text())
+            self.assertEqual(onboarding, {"schema_version": 1, "status": "pending"})
 
             doctor = run_cli(CLI, "doctor", str(target))
             self.assertEqual(doctor.returncode, 0, doctor.stderr)
@@ -145,7 +166,12 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(item.returncode, 0, item.stderr)
             folders = list((target / "docs/work-items").glob("*-settings-page"))
             self.assertEqual(len(folders), 1)
-            self.assertIn("AC-1", (folders[0] / "brief.md").read_text())
+            brief = (folders[0] / "brief.md").read_text()
+            self.assertIn("AC-1", brief)
+            self.assertIn("## Technical decision readiness", brief)
+            self.assertIn("- Outcome: `not-assessed`", brief)
+            self.assertIn("- Gate: `blocked`", brief)
+            self.assertIn("- Confirmed at: none", brief)
             self.assertTrue((folders[0] / "verification.md").is_file())
 
     def test_plan_is_read_only_for_init_adopt_upgrade_and_conflict(self) -> None:
@@ -196,6 +222,225 @@ class VibeCliTests(unittest.TestCase):
             self.assertIn("CONFLICT", conflict_plan.stdout)
             self.assertEqual(file_snapshot(upgrade_target), before_conflict_plan)
 
+    def test_agent_json_results_provenance_and_onboarding_readiness(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            target = base / "agent-project"
+            digest = "a" * 64
+            provenance = (
+                "--source-type",
+                "github-release",
+                "--source-ref",
+                f"v{KIT_VERSION}",
+                "--artifact-sha256",
+                digest,
+            )
+
+            planned = run_cli(
+                CLI, "plan", "init", str(target), "--format", "json", *provenance
+            )
+            self.assertEqual(planned.returncode, 0, planned.stderr)
+            plan_receipt = json.loads(planned.stdout)
+            self.assertEqual(plan_receipt["schema_version"], 1)
+            self.assertEqual(plan_receipt["status"], "safe")
+            self.assertFalse(plan_receipt["files_changed"])
+            self.assertEqual(plan_receipt["source"]["artifact_sha256"], digest)
+            self.assertFalse(target.exists())
+
+            installed = run_cli(
+                CLI, "init", str(target), "--format", "json", *provenance
+            )
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            install_receipt = json.loads(installed.stdout)
+            self.assertEqual(install_receipt["status"], "success")
+            self.assertEqual(install_receipt["write_state"], "project-files-written")
+            self.assertTrue(install_receipt["writes_performed"])
+            self.assertEqual(install_receipt["onboarding"]["status"], "pending")
+            self.assertEqual(install_receipt["onboarding"]["kind"], "persisted")
+            manifest = json.loads((target / ".vibe/manifest.json").read_text())
+            self.assertEqual(manifest["source"], install_receipt["source"])
+            self.assertEqual(manifest["source"]["ref"], f"v{KIT_VERSION}")
+
+            healthy = run_cli(
+                target / "bin/vibe", "doctor", str(target), "--format", "json"
+            )
+            self.assertEqual(healthy.returncode, 0, healthy.stderr)
+            healthy_result = json.loads(healthy.stdout)
+            self.assertEqual(healthy_result["status"], "healthy")
+            self.assertEqual(healthy_result["onboarding"]["status"], "pending")
+
+            quality = target / ".vibe/core/quality-gates.md"
+            quality.write_text(quality.read_text() + "\nLocal note.\n")
+            warning = run_cli(
+                target / "bin/vibe", "doctor", str(target), "--format", "json"
+            )
+            self.assertEqual(warning.returncode, 0, warning.stderr)
+            self.assertEqual(json.loads(warning.stdout)["status"], "warning")
+
+            (target / ".vibe/onboarding.json").write_text(
+                '{"schema_version": 1, "status": "refresh-needed"}\n'
+            )
+            refresh_needed = run_cli(
+                target / "bin/vibe", "doctor", str(target), "--format", "json"
+            )
+            self.assertEqual(refresh_needed.returncode, 0, refresh_needed.stderr)
+            self.assertEqual(
+                json.loads(refresh_needed.stdout)["onboarding"]["status"],
+                "refresh-needed",
+            )
+
+            (target / ".vibe/onboarding.json").write_text("not-json\n")
+            broken = run_cli(
+                target / "bin/vibe", "doctor", str(target), "--format", "json"
+            )
+            self.assertEqual(broken.returncode, 1, broken.stderr)
+            broken_result = json.loads(broken.stdout)
+            self.assertEqual(broken_result["status"], "broken")
+            self.assertEqual(broken_result["onboarding"]["status"], "invalid")
+
+            incomplete_complete_states = (
+                {"schema_version": 1, "status": "complete"},
+                {
+                    "schema_version": 1,
+                    "status": "complete",
+                    "updated_at": "not-a-date",
+                    "evidence": ["docs/context/product.md"],
+                },
+                {
+                    "schema_version": 1,
+                    "status": "complete",
+                    "updated_at": "2026-08-27T15:24:03Z",
+                    "evidence": [""],
+                },
+            )
+            for incomplete in incomplete_complete_states:
+                with self.subTest(incomplete_complete=incomplete):
+                    (target / ".vibe/onboarding.json").write_text(
+                        json.dumps(incomplete) + "\n"
+                    )
+                    incomplete_result = run_cli(
+                        target / "bin/vibe", "doctor", str(target), "--format", "json"
+                    )
+                    self.assertEqual(incomplete_result.returncode, 1)
+                    incomplete_receipt = json.loads(incomplete_result.stdout)
+                    self.assertEqual(incomplete_receipt["status"], "broken")
+                    self.assertEqual(
+                        incomplete_receipt["onboarding"]["status"], "invalid"
+                    )
+
+            invalid_target = base / "invalid-source-project"
+            rejected = run_cli(
+                CLI,
+                "init",
+                str(invalid_target),
+                "--format",
+                "json",
+                "--source-type",
+                "github-release",
+                "--source-ref",
+                f"v{KIT_VERSION}",
+                "--artifact-sha256",
+                "bad-digest",
+            )
+            self.assertEqual(rejected.returncode, 2)
+            rejected_result = json.loads(rejected.stdout)
+            self.assertEqual(rejected_result["status"], "error")
+            self.assertEqual(
+                rejected_result["error"]["code"], "invalid_artifact_sha256"
+            )
+            self.assertEqual(rejected_result["write_state"], "none")
+            self.assertFalse(rejected_result["writes_performed"])
+            self.assertFalse(invalid_target.exists())
+
+            adopt_target = base / "existing"
+            adopt_target.mkdir()
+            (adopt_target / "business.txt").write_text("keep\n")
+            adopted = run_cli(
+                CLI, "adopt", str(adopt_target), "--format", "json"
+            )
+            self.assertEqual(adopted.returncode, 0, adopted.stderr)
+            self.assertEqual(json.loads(adopted.stdout)["status"], "success")
+            self.assertEqual(
+                json.loads((adopt_target / ".vibe/manifest.json").read_text())["source"]["type"],
+                "local-payload",
+            )
+
+            collision = base / "collision"
+            conflict = collision / ".codex/agents/vibe-pm.toml"
+            conflict.parent.mkdir(parents=True)
+            conflict.write_text("custom = true\n")
+            blocked = run_cli(
+                CLI, "plan", "adopt", str(collision), "--format", "json"
+            )
+            self.assertEqual(blocked.returncode, 2)
+            blocked_result = json.loads(blocked.stdout)
+            self.assertEqual(blocked_result["status"], "blocked")
+            self.assertIn(".codex/agents/vibe-pm.toml", blocked_result["recovery"]["paths"])
+
+    def test_adopt_receipt_reports_preserved_complete_onboarding(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "existing"
+            target.mkdir()
+            (target / "business.txt").write_text("keep\n")
+            onboarding = {
+                "schema_version": 1,
+                "status": "complete",
+                "updated_at": "2026-08-27T15:24:03Z",
+                "evidence": [
+                    ".vibe/project.yaml",
+                    "docs/context/product.md",
+                ],
+            }
+            original = json.dumps(onboarding, indent=2).encode() + b"\n"
+            (target / ".vibe").mkdir()
+            (target / ".vibe/onboarding.json").write_bytes(original)
+
+            adopted = run_cli(CLI, "adopt", str(target), "--format", "json")
+
+            self.assertEqual(adopted.returncode, 0, adopted.stderr)
+            receipt = json.loads(adopted.stdout)
+            self.assertEqual(receipt["onboarding"], {"kind": "persisted", "status": "complete"})
+            self.assertEqual((target / ".vibe/onboarding.json").read_bytes(), original)
+            doctor = run_cli(
+                target / "bin/vibe", "doctor", str(target), "--format", "json"
+            )
+            self.assertEqual(doctor.returncode, 0, doctor.stderr)
+            self.assertEqual(
+                json.loads(doctor.stdout)["onboarding"],
+                {"kind": "persisted", "status": "complete"},
+            )
+
+    def test_structured_mutation_failure_reports_unknown_partial(self) -> None:
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "partial-project"
+            original_atomic_copy = module.atomic_copy
+            calls = 0
+
+            def fail_after_first_copy(source: Path, destination: Path) -> None:
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise PermissionError("simulated post-mutation denial")
+                original_atomic_copy(source, destination)
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with mock.patch.object(
+                module, "atomic_copy", side_effect=fail_after_first_copy
+            ), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                result = module.main(["init", str(target), "--format", "json"])
+
+            self.assertEqual(result, 2)
+            self.assertEqual(stderr.getvalue(), "")
+            receipt = json.loads(stdout.getvalue())
+            self.assertEqual(receipt["status"], "error")
+            self.assertEqual(receipt["error"]["code"], "filesystem_error")
+            self.assertEqual(receipt["write_state"], "unknown-partial")
+            self.assertTrue(receipt["writes_performed"])
+            self.assertEqual(receipt["recovery"]["action"], "inspect-before-retry")
+            self.assertTrue(target.exists())
+
     def test_release_package_is_reproducible_installable_and_tamper_evident(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
@@ -214,16 +459,34 @@ class VibeCliTests(unittest.TestCase):
             validated = run_cli(CLI, "validate-release", str(first))
             self.assertEqual(validated.returncode, 0, validated.stderr)
             self.assertIn("Network: not used", validated.stdout)
+            validated_json = run_cli(
+                CLI, "validate-release", str(first), "--format", "json"
+            )
+            self.assertEqual(validated_json.returncode, 0, validated_json.stderr)
+            validation_receipt = json.loads(validated_json.stdout)
+            self.assertEqual(validation_receipt["status"], "valid")
+            self.assertEqual(validation_receipt["agent_install_protocol"], 1)
             release_metadata = json.loads((first / "release-manifest.json").read_text())
-            self.assertEqual(release_metadata["core_protocol"], 2)
+            self.assertEqual(release_metadata["core_protocol"], 3)
             self.assertEqual(release_metadata["feedback_protocol"], 2)
-            self.assertEqual(release_metadata["adapters"]["codex"]["version"], 2)
+            self.assertEqual(release_metadata["agent_install_protocol"], 1)
+            self.assertEqual(release_metadata["adapters"]["codex"]["version"], 3)
 
             release_unpack = base / "release-unpacked"
             with zipfile.ZipFile(first / KIT_ARCHIVE) as archive:
                 archive.extractall(release_unpack)
             release_root = release_unpack / KIT_ROOT
             self.assertIn("MIT License", (release_root / "LICENSE").read_text())
+            self.assertTrue((release_root / "AGENT_INSTALL.md").is_file())
+            self.assertTrue(
+                (release_root / ".vibe/core/technical-decision-readiness.md").is_file()
+            )
+            self.assertTrue(
+                (release_root / ".codex/agents/vibe-tech-lead.toml").is_file()
+            )
+            install_contract = json.loads((release_root / "agent-install.json").read_text())
+            self.assertEqual(install_contract["protocol_version"], 1)
+            self.assertEqual(install_contract["kit_version"], KIT_VERSION)
             feedback_config = json.loads(
                 (release_root / ".vibe/core/feedback.json").read_text()
             )
@@ -234,6 +497,15 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(installed.returncode, 0, installed.stderr)
             doctor = run_cli(new_target / "bin/vibe", "doctor", str(new_target))
             self.assertEqual(doctor.returncode, 0, doctor.stderr)
+            release_manifest = json.loads((new_target / ".vibe/manifest.json").read_text())
+            self.assertIn(
+                ".vibe/core/technical-decision-readiness.md",
+                release_manifest["managed_files"],
+            )
+            self.assertIn(
+                ".codex/agents/vibe-tech-lead.toml",
+                release_manifest["managed_files"],
+            )
 
             existing_target = base / "existing-from-release"
             existing_target.mkdir()
@@ -251,6 +523,18 @@ class VibeCliTests(unittest.TestCase):
             with zipfile.ZipFile(first / PLUGIN_ARCHIVE) as archive:
                 archive.extractall(plugin_unpack)
             wrapper = plugin_unpack / "vibe-kit/skills/vibe-bootstrap/scripts/vibe_from_plugin.py"
+            self.assertEqual(
+                (plugin_unpack / "vibe-kit/payload/AGENT_INSTALL.md").read_bytes(),
+                (release_root / "AGENT_INSTALL.md").read_bytes(),
+            )
+            self.assertEqual(
+                (plugin_unpack / "vibe-kit/payload/agent-install.json").read_bytes(),
+                (release_root / "agent-install.json").read_bytes(),
+            )
+            self.assertEqual(
+                (first / "marketplace/plugins/vibe-kit/payload/AGENT_INSTALL.md").read_bytes(),
+                (release_root / "AGENT_INSTALL.md").read_bytes(),
+            )
             plugin_target = base / "new-from-plugin"
             plugin_plan = run_cli(wrapper, "plan", "init", str(plugin_target))
             self.assertEqual(plugin_plan.returncode, 0, plugin_plan.stderr)
@@ -258,7 +542,6 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(plugin_install.returncode, 0, plugin_install.stderr)
             plugin_doctor = run_cli(plugin_target / "bin/vibe", "doctor", str(plugin_target))
             self.assertEqual(plugin_doctor.returncode, 0, plugin_doctor.stderr)
-            release_manifest = json.loads((new_target / ".vibe/manifest.json").read_text())
             plugin_manifest = json.loads((plugin_target / ".vibe/manifest.json").read_text())
             self.assertEqual(release_manifest["managed_files"], plugin_manifest["managed_files"])
 
@@ -273,6 +556,12 @@ class VibeCliTests(unittest.TestCase):
             upgraded_doctor = run_cli(old_target / "bin/vibe", "doctor", str(old_target))
             self.assertEqual(upgraded_doctor.returncode, 0, upgraded_doctor.stderr)
             self.assertIn(KIT_VERSION, upgraded_doctor.stdout)
+            self.assertTrue(
+                (old_target / ".vibe/core/technical-decision-readiness.md").is_file()
+            )
+            self.assertTrue(
+                (old_target / ".codex/agents/vibe-tech-lead.toml").is_file()
+            )
 
             old_conflict_payload = base / "vibe-kit-0.2-conflict-fixture"
             shutil.copytree(release_root, old_conflict_payload)
@@ -307,6 +596,13 @@ class VibeCliTests(unittest.TestCase):
             rejected = run_cli(CLI, "validate-release", str(tampered))
             self.assertEqual(rejected.returncode, 1)
             self.assertIn("checksum mismatch", rejected.stderr)
+            rejected_json = run_cli(
+                CLI, "validate-release", str(tampered), "--format", "json"
+            )
+            self.assertEqual(rejected_json.returncode, 1, rejected_json.stderr)
+            rejected_receipt = json.loads(rejected_json.stdout)
+            self.assertEqual(rejected_receipt["status"], "invalid")
+            self.assertTrue(rejected_receipt["errors"])
 
     def test_release_validation_rejects_unsafe_archives_and_plugin_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -345,6 +641,70 @@ class VibeCliTests(unittest.TestCase):
             drift_result = run_cli(CLI, "validate-release", str(drifted))
             self.assertEqual(drift_result.returncode, 1)
             self.assertIn("Plugin name/version does not match release", drift_result.stderr)
+
+            unknown_state_contract = json.loads(
+                (ROOT / "agent-install.json").read_text()
+            )
+            unknown_state_contract["cli"]["command_statuses"]["init"].append(
+                "unknown-success"
+            )
+            contract_cases = {
+                "missing": (
+                    None,
+                    "release ZIP is missing required payload file: agent-install.json",
+                ),
+                "malformed": (b"{not-json\n", "agent-install.json is malformed"),
+                "version-drift": (
+                    json.dumps(
+                        {
+                            **json.loads((ROOT / "agent-install.json").read_text()),
+                            "kit_version": "9.9.9",
+                        }
+                    ).encode(),
+                    "agent install contract version does not match release",
+                ),
+                "channel-drift": (
+                    json.dumps(
+                        {
+                            **json.loads((ROOT / "agent-install.json").read_text()),
+                            "release_channels": {"allowed_statuses": []},
+                        }
+                    ).encode(),
+                    "agent install contract release channel does not match release status",
+                ),
+                "unknown-command-state": (
+                    json.dumps(unknown_state_contract).encode(),
+                    "agent install contract command statuses are unsupported",
+                ),
+            }
+            contract_entry = f"{KIT_ROOT}/agent-install.json"
+            for name, (replacement, expected_error) in contract_cases.items():
+                with self.subTest(contract=name):
+                    changed = base / f"contract-{name}"
+                    shutil.copytree(source_release, changed)
+                    changed_zip = changed / KIT_ARCHIVE
+                    with zipfile.ZipFile(changed_zip, "r") as archive:
+                        entries = [
+                            (info.filename, archive.read(info))
+                            for info in archive.infolist()
+                            if not info.is_dir()
+                        ]
+                    with zipfile.ZipFile(
+                        changed_zip, "w", compression=zipfile.ZIP_DEFLATED
+                    ) as archive:
+                        for entry_name, content in entries:
+                            if entry_name == contract_entry:
+                                if replacement is not None:
+                                    archive.writestr(entry_name, replacement)
+                                continue
+                            archive.writestr(entry_name, content)
+                    refresh_release_checksums(changed, KIT_ARCHIVE)
+                    contract_result = run_cli(
+                        CLI, "validate-release", str(changed), "--format", "json"
+                    )
+                    self.assertEqual(contract_result.returncode, 1)
+                    contract_receipt = json.loads(contract_result.stdout)
+                    self.assertIn(expected_error, contract_receipt["errors"])
 
     def test_prerelease_package_requires_clean_commit_and_records_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -412,7 +772,22 @@ class VibeCliTests(unittest.TestCase):
             validated = run_cli(cli, "validate-release", str(bundled_release))
             self.assertEqual(validated.returncode, 0, validated.stderr)
 
-            manifest["status"] = "stable"
+            stable_output = base / "stable"
+            stable = run_cli(
+                cli,
+                "package",
+                "--status",
+                "stable",
+                "--output",
+                str(stable_output),
+            )
+            self.assertEqual(stable.returncode, 0, stable.stderr)
+            self.assertEqual(
+                json.loads((stable_output / "release-manifest.json").read_text())["status"],
+                "stable",
+            )
+
+            manifest["status"] = "published"
             (output / "release-manifest.json").write_text(
                 json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
             )
@@ -446,6 +821,7 @@ class VibeCliTests(unittest.TestCase):
             project_owned = {
                 ".vibe/project.yaml": b"schema_version: 7\r\ncustom: keep-me\r\n",
                 ".vibe/project-rules.md": b"# Existing rules\n\n- Never replace this.\n",
+                ".vibe/onboarding.json": b'{"schema_version":1,"status":"complete","custom":"keep"}\r\n',
                 "docs/context/product.md": b"# Existing product truth\n",
                 "docs/context/architecture.md": b"# Existing architecture truth\n",
                 "docs/context/design-system.md": b"# Existing design truth\n",
@@ -521,6 +897,12 @@ class VibeCliTests(unittest.TestCase):
             (target / ".vibe/project-rules.md").write_text(custom_rules)
             custom_product = "# My product context\n\nKeep this truth.\n"
             (target / "docs/context/product.md").write_text(custom_product)
+            custom_onboarding = (
+                b'{"schema_version":1,"status":"complete",'
+                b'"updated_at":"2026-08-27",'
+                b'"evidence":["docs/context/product.md"],"owner":"project"}\n'
+            )
+            (target / ".vibe/onboarding.json").write_bytes(custom_onboarding)
             target_agents = target / "AGENTS.md"
             target_agents.write_text(target_agents.read_text() + "\n# Local agent rule\n")
 
@@ -533,11 +915,17 @@ class VibeCliTests(unittest.TestCase):
                     "Do not claim completion without relevant verification evidence. Upgraded rule.",
                 )
             )
-            upgraded = run_cli(cli_two, "upgrade", str(target))
+            upgraded = run_cli(cli_two, "upgrade", str(target), "--format", "json")
             self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
+            upgraded_receipt = json.loads(upgraded.stdout)
+            self.assertEqual(upgraded_receipt["status"], "success")
+            self.assertEqual(upgraded_receipt["write_state"], "project-files-written")
+            self.assertTrue(upgraded_receipt["writes_performed"])
+            self.assertEqual(upgraded_receipt["source"]["type"], "local-payload")
             self.assertIn("Upgrade marker.", (target / ".vibe/core/quality-gates.md").read_text())
             self.assertEqual((target / ".vibe/project-rules.md").read_text(), custom_rules)
             self.assertEqual((target / "docs/context/product.md").read_text(), custom_product)
+            self.assertEqual((target / ".vibe/onboarding.json").read_bytes(), custom_onboarding)
             self.assertEqual((target / ".vibe/version").read_text(), "0.2.0\n")
             self.assertEqual(
                 json.loads((target / ".vibe/manifest.json").read_text())["framework_version"],

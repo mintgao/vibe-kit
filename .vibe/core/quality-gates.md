@@ -8,6 +8,7 @@ Apply gates in proportion to the work size and risk.
 - The smallest relevant automated or manual check is run.
 - Existing unrelated behavior is not intentionally changed.
 - Failures and skipped checks are reported plainly.
+- Before the first code edit, apply `.vibe/core/technical-decision-readiness.md`; do not treat product-shaped as implementation-ready when that contract applies.
 
 ## Additional for M work
 
@@ -15,13 +16,15 @@ Apply gates in proportion to the work size and risk.
 - User-visible states are covered when relevant: loading, empty, success, error, disabled, and permission states.
 - Relevant lint, type, test, and build commands from `.vibe/project.yaml` are run when available.
 - QA maps each acceptance criterion to evidence.
+- The M work item records its technical-decision trigger scan; triggered M work is blocked until required decision and review evidence is approved.
 
 ## Additional for L work
 
 - Risks, migration, compatibility, and rollback are explicit.
 - New or changed security and privacy boundaries are reviewed.
 - Critical paths have regression coverage or a documented reason why they do not.
-- A decision record exists for durable architectural choices.
+- An explicit readiness outcome, required technical review, and gate confirmation exist before implementation.
+- A decision record is Accepted before implementation for new or changed durable architectural choices; citing an applicable Accepted decision or a reviewed no-new-decision rationale is allowed.
 
 ## Vibe Kit feedback gate
 

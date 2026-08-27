@@ -10,6 +10,9 @@ Each generated folder contains a brief and verification record. Add design or im
 
 ## Active and recent
 
+- [Publish Vibe Kit v0.5.0 GitHub prerelease](20260827-v0-5-publication/brief.md)
+- [Agent-first Vibe Kit adoption](20260827-agent-first-adoption/brief.md)
+- [Architecture decision readiness gate](20260827-architecture-decision-readiness-gate/brief.md)
 - [Publish Vibe Kit v0.4.0 GitHub prerelease](20260827-v0-4-publication/brief.md)
 - [Proactive Vibe Kit feedback loop](20260827-proactive-feedback-loop/brief.md)
 - [Publish Vibe Kit v0.3.0 GitHub prerelease](20260827-github-publication/brief.md)

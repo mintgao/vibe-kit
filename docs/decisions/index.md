@@ -8,3 +8,5 @@ Record durable architectural choices here when the tradeoff matters beyond one w
 - [0004: Build deterministic local release candidates before channel publication](0004-reproducible-release-contract.md)
 - [0005: Keep the first Codex Plugin bootstrap-only](0005-bootstrap-plugin-capabilities.md)
 - [0006: Make feedback proactively ask without silent submission](0006-make-feedback-proactively-ask.md)
+- [0007: Make Agent behavior the primary adoption interface](0007-agent-first-adoption-contract.md)
+- [0008: Gate implementation on technical decision readiness](0008-technical-decision-readiness-gate.md)
