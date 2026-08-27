@@ -2,7 +2,7 @@
 
 - ID: `20260827-v0-5-publication`
 - Size: `L`
-- Status: implementation
+- Status: complete
 - Created: 2026-08-27
 
 ## Technical decision readiness
@@ -42,15 +42,15 @@ Publish the integrated Agent-first adoption and Technical Decision Readiness Gat
 
 ## Acceptance criteria
 
-- [ ] AC-1: source, protocol, Plugin, changelog, release notes, and durable context identify `0.5.0` consistently and describe both completed capabilities without claiming the separate atomic-upgrade work.
-- [ ] AC-2: independent QA passes the configured suite, `verify`, bytecode compilation, diff validation, unpublished packaging, release validation, and isolated GitHub/Plugin install paths; skipped host/platform checks are explicit.
-- [ ] AC-3: controlled self-upgrade updates only Vibe Kit installation state after a safe JSON plan, then source-checkout doctor reports healthy with valid onboarding readiness.
-- [ ] AC-4: a clean committed tree produces a reproducible `prerelease` distribution bound to the release commit with kit 0.5.0, core/Codex protocol 3, Agent-install protocol 1, feedback protocol 2, and byte-identical Agent contracts across channels.
-- [ ] AC-5: annotated tag `v0.5.0` resolves to the accepted release commit and remote `main` contains that commit.
-- [ ] AC-6: GitHub Release `v0.5.0` is public, non-draft, marked Pre-release, and exposes exactly the five intended assets.
-- [ ] AC-7: remote asset sizes and SHA-256 digests match the local publication files and uploaded state is confirmed by read-back.
-- [ ] AC-8: a fresh isolated download passes outer and nested checksums, `validate-release`, read-only plan, installation/adoption, installed doctor, Plugin smoke, and Agent-contract identity checks.
-- [ ] AC-9: publication evidence records exact refs, URL, digests, checks, limitations, skipped gates, and a non-destructive recovery/rollback boundary.
+- [x] AC-1: source, protocol, Plugin, changelog, release notes, and durable context identify `0.5.0` consistently and describe both completed capabilities without claiming the separate atomic-upgrade work.
+- [x] AC-2: independent QA passes the configured suite, `verify`, bytecode compilation, diff validation, unpublished packaging, release validation, and isolated GitHub/Plugin install paths; skipped host/platform checks are explicit.
+- [x] AC-3: controlled self-upgrade updates only Vibe Kit installation state after a safe JSON plan, then source-checkout doctor reports healthy with valid onboarding readiness.
+- [x] AC-4: a clean committed tree produces a reproducible `prerelease` distribution bound to the release commit with kit 0.5.0, core/Codex protocol 3, Agent-install protocol 1, feedback protocol 2, and byte-identical Agent contracts across channels.
+- [x] AC-5: annotated tag `v0.5.0` resolves to the accepted release commit and remote `main` contains that commit.
+- [x] AC-6: GitHub Release `v0.5.0` is public, non-draft, marked Pre-release, and exposes exactly the five intended assets.
+- [x] AC-7: remote asset sizes and SHA-256 digests match the local publication files and uploaded state is confirmed by read-back.
+- [x] AC-8: a fresh isolated download passes outer and nested checksums, `validate-release`, read-only plan, installation/adoption, installed doctor, Plugin smoke, and Agent-contract identity checks.
+- [x] AC-9: publication evidence records exact refs, URL, digests, checks, limitations, skipped gates, and a non-destructive recovery/rollback boundary.
 
 ## Design and technical notes
 
