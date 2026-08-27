@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — 2026-08-27
+
+- Made `feedback.mode: ask` an observable, proactive Close behavior while keeping every GitHub write bound to adjacent approval of one exact payload.
+- Added mode-aware `feedback close`, read-only `feedback mode`, sanitized `feedback revise`, attention state schema 2, material-resurface prompting and legacy-backlog suppression.
+- Added semantic security-sensitive public-submission blocking and removed raw remote stderr from persisted feedback failure state.
+- Bumped the core, feedback and Codex adapter protocols to version 2; refreshed repository and Plugin distribution metadata.
+- Added mode, migration, prompt suppression, hash invalidation, privacy and remote-boundary regression coverage.
+
 ## 0.3.0 — 2026-08-27
 
 - Added local-first, privacy-gated Vibe Kit feedback with stable deduplication, exact payload review hashes, dismissal/resurfacing, and optional consent-bound GitHub submission.

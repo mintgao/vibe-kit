@@ -16,15 +16,15 @@ Provide a reusable, lightweight development operating system for personal vibe-c
 - Read-only `plan init|adopt|upgrade` before project writes.
 - Hash-checked `upgrade` with conflict candidates and no partial managed-file update when a conflict is found.
 - `doctor` with three-source installed/manifest/core version integrity, configurable `verify`, and work-item generation commands.
-- Local-first `vibe-feedback-flow` plus `feedback draft/list/review/check/submit/dismiss` for evidence-backed framework improvement. Drafting and review are offline; GitHub submission is per-payload consent-bound and deduplicated.
+- Mode-aware `vibe-feedback-flow` plus `feedback mode/close/draft/list/review/revise/check/submit/dismiss` for evidence-backed framework improvement. `ask` proactively presents new/material candidates once, while every GitHub submission to `mintgao/vibe-kit` remains exact-payload consent-bound and deduplicated.
 - Deterministic local release/Plugin packaging, SHA-256 manifest validation, expanded marketplace output, and artifact-based offline install checks.
 - Shallow stack and command detection for common Node.js, Python, Rust, Go, and Swift projects.
 
 ## Non-goals and boundaries
 
-- This version publishes a GitHub Pre-release but does not fetch or apply updates over the network.
-- It does not collect telemetry or submit feedback automatically. No central feedback repository is configured in the source distribution yet.
-- The accepted distribution direction uses channel-neutral releases, repository-pinned installations, a bootstrap-only Codex Plugin, and generated thin adapters. v0.3 begins implementing release-ready local artifacts; public channel publication remains a separate authorized action.
+- v0.4.0 is the latest GitHub Pre-release, not a stable release. It does not fetch or apply updates over the network.
+- It does not collect telemetry or silently submit feedback. The central feedback repository is configured, but every outbound payload still requires adjacent, unambiguous approval bound to its report, repository and current hash.
+- The accepted distribution uses channel-neutral releases, repository-pinned installations, a bootstrap-only Codex Plugin, generated thin adapters, and a validated GitHub Release bundle.
 - It does not replace framework-specific project generators.
 - It does not infer deep product or architecture truth during CLI installation; the onboarding workflow performs evidence-based enrichment afterward.
 

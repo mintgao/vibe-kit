@@ -13,6 +13,11 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "bin/vibe"
+KIT_VERSION = (ROOT / ".vibe/core/version").read_text().strip()
+KIT_ROOT = f"vibe-kit-{KIT_VERSION}"
+KIT_ARCHIVE = f"{KIT_ROOT}.zip"
+PLUGIN_ARCHIVE = f"vibe-kit-plugin-{KIT_VERSION}.zip"
+DISTRIBUTION_ARCHIVE = f"vibe-kit-distribution-{KIT_VERSION}.zip"
 
 
 def run_cli(
@@ -70,11 +75,13 @@ def refresh_release_checksums(release_dir: Path, artifact_relative: str) -> None
 
 
 class VibeCliTests(unittest.TestCase):
-    def feedback_draft(self, cli: Path, target: Path, *extra: str) -> subprocess.CompletedProcess:
+    def feedback_signal(
+        self, cli: Path, target: Path, command: str, *extra: str
+    ) -> subprocess.CompletedProcess:
         return run_cli(
             cli,
             "feedback",
-            "draft",
+            command,
             "--target",
             str(target),
             "--kind",
@@ -103,6 +110,12 @@ class VibeCliTests(unittest.TestCase):
             "work-item-close",
             *extra,
         )
+
+    def feedback_draft(self, cli: Path, target: Path, *extra: str) -> subprocess.CompletedProcess:
+        return self.feedback_signal(cli, target, "draft", *extra)
+
+    def feedback_close(self, cli: Path, target: Path, *extra: str) -> subprocess.CompletedProcess:
+        return self.feedback_signal(cli, target, "close", *extra)
 
     def test_init_doctor_and_work_item(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -169,7 +182,7 @@ class VibeCliTests(unittest.TestCase):
             upgrade_plan = run_cli(new_cli, "plan", "upgrade", str(upgrade_target))
             self.assertEqual(upgrade_plan.returncode, 0, upgrade_plan.stderr)
             self.assertIn("Current version: 0.2.0", upgrade_plan.stdout)
-            self.assertIn("Target version: 0.3.0", upgrade_plan.stdout)
+            self.assertIn(f"Target version: {KIT_VERSION}", upgrade_plan.stdout)
             self.assertEqual(file_snapshot(upgrade_target), before_upgrade_plan)
 
             target_quality = upgrade_target / ".vibe/core/quality-gates.md"
@@ -193,11 +206,7 @@ class VibeCliTests(unittest.TestCase):
             built_second = run_cli(CLI, "package", "--output", str(second))
             self.assertEqual(built_second.returncode, 0, built_second.stderr)
 
-            for filename in (
-                "vibe-kit-0.3.0.zip",
-                "vibe-kit-plugin-0.3.0.zip",
-                "vibe-kit-distribution-0.3.0.zip",
-            ):
+            for filename in (KIT_ARCHIVE, PLUGIN_ARCHIVE, DISTRIBUTION_ARCHIVE):
                 self.assertEqual(
                     hashlib.sha256((first / filename).read_bytes()).hexdigest(),
                     hashlib.sha256((second / filename).read_bytes()).hexdigest(),
@@ -205,11 +214,15 @@ class VibeCliTests(unittest.TestCase):
             validated = run_cli(CLI, "validate-release", str(first))
             self.assertEqual(validated.returncode, 0, validated.stderr)
             self.assertIn("Network: not used", validated.stdout)
+            release_metadata = json.loads((first / "release-manifest.json").read_text())
+            self.assertEqual(release_metadata["core_protocol"], 2)
+            self.assertEqual(release_metadata["feedback_protocol"], 2)
+            self.assertEqual(release_metadata["adapters"]["codex"]["version"], 2)
 
             release_unpack = base / "release-unpacked"
-            with zipfile.ZipFile(first / "vibe-kit-0.3.0.zip") as archive:
+            with zipfile.ZipFile(first / KIT_ARCHIVE) as archive:
                 archive.extractall(release_unpack)
-            release_root = release_unpack / "vibe-kit-0.3.0"
+            release_root = release_unpack / KIT_ROOT
             self.assertIn("MIT License", (release_root / "LICENSE").read_text())
             feedback_config = json.loads(
                 (release_root / ".vibe/core/feedback.json").read_text()
@@ -235,7 +248,7 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(existing_file.read_text(), "preserve me\n")
 
             plugin_unpack = base / "plugin-unpacked"
-            with zipfile.ZipFile(first / "vibe-kit-plugin-0.3.0.zip") as archive:
+            with zipfile.ZipFile(first / PLUGIN_ARCHIVE) as archive:
                 archive.extractall(plugin_unpack)
             wrapper = plugin_unpack / "vibe-kit/skills/vibe-bootstrap/scripts/vibe_from_plugin.py"
             plugin_target = base / "new-from-plugin"
@@ -259,7 +272,7 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(upgrade.returncode, 0, upgrade.stderr)
             upgraded_doctor = run_cli(old_target / "bin/vibe", "doctor", str(old_target))
             self.assertEqual(upgraded_doctor.returncode, 0, upgraded_doctor.stderr)
-            self.assertIn("0.3.0", upgraded_doctor.stdout)
+            self.assertIn(KIT_VERSION, upgraded_doctor.stdout)
 
             old_conflict_payload = base / "vibe-kit-0.2-conflict-fixture"
             shutil.copytree(release_root, old_conflict_payload)
@@ -288,7 +301,7 @@ class VibeCliTests(unittest.TestCase):
 
             tampered = base / "tampered-release"
             shutil.copytree(first, tampered)
-            archive_path = tampered / "vibe-kit-0.3.0.zip"
+            archive_path = tampered / KIT_ARCHIVE
             content = archive_path.read_bytes()
             archive_path.write_bytes(content[:-1] + bytes([content[-1] ^ 0x01]))
             rejected = run_cli(CLI, "validate-release", str(tampered))
@@ -304,21 +317,21 @@ class VibeCliTests(unittest.TestCase):
 
             unsafe = base / "unsafe-release"
             shutil.copytree(source_release, unsafe)
-            release_zip = unsafe / "vibe-kit-0.3.0.zip"
+            release_zip = unsafe / KIT_ARCHIVE
             with zipfile.ZipFile(release_zip, "r") as archive:
                 original = [(info.filename, archive.read(info)) for info in archive.infolist()]
             with zipfile.ZipFile(release_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
                 for name, content in original:
                     archive.writestr(name, content)
-                archive.writestr("vibe-kit-0.3.0/../escape.txt", "unsafe")
-            refresh_release_checksums(unsafe, "vibe-kit-0.3.0.zip")
+                archive.writestr(f"{KIT_ROOT}/../escape.txt", "unsafe")
+            refresh_release_checksums(unsafe, KIT_ARCHIVE)
             unsafe_result = run_cli(CLI, "validate-release", str(unsafe))
             self.assertEqual(unsafe_result.returncode, 1)
             self.assertIn("unsafe archive path", unsafe_result.stderr)
 
             drifted = base / "drifted-release"
             shutil.copytree(source_release, drifted)
-            plugin_zip = drifted / "vibe-kit-plugin-0.3.0.zip"
+            plugin_zip = drifted / PLUGIN_ARCHIVE
             with zipfile.ZipFile(plugin_zip, "r") as archive:
                 plugin_files = [(info.filename, archive.read(info)) for info in archive.infolist()]
             with zipfile.ZipFile(plugin_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -328,7 +341,7 @@ class VibeCliTests(unittest.TestCase):
                         plugin["version"] = "9.9.9"
                         content = json.dumps(plugin).encode("utf-8")
                     archive.writestr(name, content)
-            refresh_release_checksums(drifted, "vibe-kit-plugin-0.3.0.zip")
+            refresh_release_checksums(drifted, PLUGIN_ARCHIVE)
             drift_result = run_cli(CLI, "validate-release", str(drifted))
             self.assertEqual(drift_result.returncode, 1)
             self.assertIn("Plugin name/version does not match release", drift_result.stderr)
@@ -393,9 +406,9 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(manifest["source"]["tree_state"], "clean")
 
             bundle_unpack = base / "bundle-unpacked"
-            with zipfile.ZipFile(output / "vibe-kit-distribution-0.3.0.zip") as archive:
+            with zipfile.ZipFile(output / DISTRIBUTION_ARCHIVE) as archive:
                 archive.extractall(bundle_unpack)
-            bundled_release = bundle_unpack / "vibe-kit-0.3.0"
+            bundled_release = bundle_unpack / KIT_ROOT
             validated = run_cli(cli, "validate-release", str(bundled_release))
             self.assertEqual(validated.returncode, 0, validated.stderr)
 
@@ -698,6 +711,263 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(state["status"], "review-ready")
             self.assertEqual(state["occurrence_count"], 4)
 
+    def test_feedback_mode_defaults_preserves_choices_and_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "mode-project"
+            installed = run_cli(CLI, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            project = target / ".vibe/project.yaml"
+            original = project.read_text()
+
+            default = run_cli(target / "bin/vibe", "feedback", "mode", "--target", str(target))
+            self.assertEqual(default.returncode, 0, default.stderr)
+            self.assertIn("Feedback mode: ask", default.stdout)
+            self.assertIn("Source: project", default.stdout)
+
+            missing_text = re.sub(r"\nfeedback:\n  mode: .*\n?", "\n", original)
+            project.write_text(missing_text)
+            missing = run_cli(target / "bin/vibe", "feedback", "mode", "--target", str(target))
+            self.assertEqual(missing.returncode, 0, missing.stderr)
+            self.assertIn("Feedback mode: ask", missing.stdout)
+            self.assertIn("Source: default-missing", missing.stdout)
+
+            for choice in ("local", "off"):
+                project.write_text(original.replace('mode: "ask"', f'mode: "{choice}"'))
+                selected = run_cli(
+                    target / "bin/vibe", "feedback", "mode", "--target", str(target)
+                )
+                self.assertEqual(selected.returncode, 0, selected.stderr)
+                self.assertIn(f"Feedback mode: {choice}", selected.stdout)
+
+            project.write_text(original.replace('mode: "ask"', 'mode: "local"'))
+            incoming_source = Path(temporary) / "incoming-source"
+            incoming_cli = copy_source(incoming_source)
+            (incoming_source / ".vibe/core/version").write_text("0.4.1\n")
+            upgraded = run_cli(incoming_cli, "upgrade", str(target))
+            self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
+            self.assertIn('mode: "local"', project.read_text())
+            preserved = run_cli(
+                target / "bin/vibe", "feedback", "mode", "--target", str(target)
+            )
+            self.assertIn("Feedback mode: local", preserved.stdout)
+
+            invalid_variants = (
+                original.replace('mode: "ask"', 'mode: "auto"'),
+                original + 'feedback:\n  mode: "ask"\n',
+                original.replace('  mode: "ask"', '\tmode: "ask"'),
+            )
+            for invalid in invalid_variants:
+                with self.subTest(invalid=invalid[-32:]):
+                    project.write_text(invalid)
+                    mode = run_cli(
+                        target / "bin/vibe", "feedback", "mode", "--target", str(target)
+                    )
+                    self.assertEqual(mode.returncode, 2)
+                    doctor = run_cli(target / "bin/vibe", "doctor", str(target))
+                    self.assertEqual(doctor.returncode, 1)
+
+    def test_feedback_close_is_mode_aware_and_prompts_only_on_material_change(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+
+            off_target = base / "off-project"
+            self.assertEqual(run_cli(CLI, "init", str(off_target)).returncode, 0)
+            off_config = off_target / ".vibe/project.yaml"
+            off_config.write_text(off_config.read_text().replace('mode: "ask"', 'mode: "off"'))
+            off = self.feedback_close(off_target / "bin/vibe", off_target)
+            self.assertEqual(off.returncode, 0, off.stderr)
+            self.assertEqual(off.stdout, "")
+            self.assertFalse((off_target / ".vibe/local/feedback").exists())
+
+            local_target = base / "local-project"
+            self.assertEqual(run_cli(CLI, "init", str(local_target)).returncode, 0)
+            local_config = local_target / ".vibe/project.yaml"
+            local_config.write_text(
+                local_config.read_text().replace('mode: "ask"', 'mode: "local"')
+            )
+            local = self.feedback_close(local_target / "bin/vibe", local_target)
+            self.assertEqual(local.returncode, 0, local.stderr)
+            self.assertIn("Feedback saved locally", local.stdout)
+            self.assertNotIn("exact GitHub Issue payload", local.stdout)
+            local_state = json.loads(
+                next((local_target / ".vibe/local/feedback").glob("fb-*/state.json")).read_text()
+            )
+            self.assertEqual(local_state["attention"]["status"], "handled-local")
+            local_repeated = self.feedback_close(local_target / "bin/vibe", local_target)
+            self.assertEqual(local_repeated.returncode, 0, local_repeated.stderr)
+            self.assertEqual(local_repeated.stdout, "")
+
+            ask_target = base / "ask-project"
+            self.assertEqual(run_cli(CLI, "init", str(ask_target)).returncode, 0)
+            first = self.feedback_close(ask_target / "bin/vibe", ask_target)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertIn("Vibe Kit feedback READY — local only", first.stdout)
+            self.assertIn("--- exact GitHub Issue payload ---", first.stdout)
+            self.assertIn("回复“提交”即可", first.stdout)
+            state_path = next(
+                (ask_target / ".vibe/local/feedback").glob("fb-*/state.json")
+            )
+            state = json.loads(state_path.read_text())
+            self.assertEqual(state["state_schema_version"], 2)
+            self.assertEqual(state["attention"]["status"], "presented")
+            self.assertIsNotNone(state["attention"]["last_presented"]["review_hash"])
+
+            repeated = self.feedback_close(ask_target / "bin/vibe", ask_target)
+            self.assertEqual(repeated.returncode, 0, repeated.stderr)
+            self.assertEqual(repeated.stdout, "")
+
+            changed = self.feedback_close(
+                ask_target / "bin/vibe", ask_target, "--evidence", "A second project showed the same gap"
+            )
+            self.assertEqual(changed.returncode, 0, changed.stderr)
+            self.assertIn("Vibe Kit feedback READY", changed.stdout)
+            self.assertIn("Dedupe: MATERIAL RESURFACE", changed.stdout)
+            changed_state = json.loads(state_path.read_text())
+            self.assertEqual(changed_state["attention"]["revision"], 2)
+
+            unchanged_again = self.feedback_close(
+                ask_target / "bin/vibe", ask_target, "--evidence", "A second project showed the same gap"
+            )
+            self.assertEqual(unchanged_again.returncode, 0, unchanged_again.stderr)
+            self.assertEqual(unchanged_again.stdout, "")
+
+            legacy = json.loads(state_path.read_text())
+            legacy.pop("state_schema_version")
+            legacy.pop("attention")
+            state_path.write_text(json.dumps(legacy))
+            legacy_close = self.feedback_close(
+                ask_target / "bin/vibe", ask_target, "--evidence", "A second project showed the same gap"
+            )
+            self.assertEqual(legacy_close.returncode, 0, legacy_close.stderr)
+            self.assertEqual(legacy_close.stdout, "")
+            legacy_material = self.feedback_close(
+                ask_target / "bin/vibe", ask_target, "--severity", "high"
+            )
+            self.assertEqual(legacy_material.returncode, 0, legacy_material.stderr)
+            self.assertIn("Vibe Kit feedback READY", legacy_material.stdout)
+
+    def test_feedback_revise_invalidates_approval_and_security_blocks_public_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            target = base / "revise-project"
+            self.assertEqual(run_cli(CLI, "init", str(target)).returncode, 0)
+            first = self.feedback_close(target / "bin/vibe", target)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            report_dir = next((target / ".vibe/local/feedback").glob("fb-*"))
+            report_id = report_dir.name
+            old_hash = re.search(r"Review hash: (sha256:[a-f0-9]{64})", first.stdout)
+            self.assertIsNotNone(old_hash)
+
+            revised = run_cli(
+                target / "bin/vibe",
+                "feedback",
+                "revise",
+                report_id,
+                "--target",
+                str(target),
+                "--input",
+                "-",
+                input_text=json.dumps(
+                    {"proposal": "Add a recovery action and a concise diagnostic example"}
+                ),
+            )
+            self.assertEqual(revised.returncode, 0, revised.stderr)
+            new_hash = re.search(r"Review hash: (sha256:[a-f0-9]{64})", revised.stdout)
+            self.assertIsNotNone(new_hash)
+            self.assertNotEqual(old_hash.group(1), new_hash.group(1))
+            self.assertIn("Dedupe: REVISED LOCAL CANDIDATE", revised.stdout)
+
+            marker = base / "gh-called"
+            fake_bin = base / "fake-bin"
+            fake_bin.mkdir()
+            fake_gh = fake_bin / "gh"
+            fake_gh.write_text(
+                "#!/bin/sh\n"
+                f"touch {marker}\n"
+                "exit 0\n"
+            )
+            fake_gh.chmod(0o755)
+            env = {"PATH": str(fake_bin) + os.pathsep + os.environ.get("PATH", "")}
+            stale = run_cli(
+                target / "bin/vibe",
+                "feedback",
+                "submit",
+                report_id,
+                "--target",
+                str(target),
+                "--confirm",
+                old_hash.group(1),
+                env=env,
+            )
+            self.assertEqual(stale.returncode, 2)
+            self.assertFalse(marker.exists())
+
+            privacy_upgrade = self.feedback_close(
+                target / "bin/vibe",
+                target,
+                "--evidence",
+                "Later evidence shows the report requires a private disclosure path",
+                "--security-sensitive",
+            )
+            self.assertEqual(privacy_upgrade.returncode, 0, privacy_upgrade.stderr)
+            self.assertIn("PUBLIC SUBMISSION BLOCKED", privacy_upgrade.stdout)
+            self.assertNotIn("--- exact GitHub Issue payload ---", privacy_upgrade.stdout)
+            self.assertNotRegex(privacy_upgrade.stdout, r"Review hash: sha256:")
+            upgraded_report = json.loads((report_dir / "report.json").read_text())
+            self.assertEqual(
+                upgraded_report["privacy"]["public_submission"], "blocked"
+            )
+            blocked_old_approval = run_cli(
+                target / "bin/vibe",
+                "feedback",
+                "submit",
+                report_id,
+                "--target",
+                str(target),
+                "--confirm",
+                new_hash.group(1),
+                env=env,
+            )
+            self.assertEqual(blocked_old_approval.returncode, 2)
+            self.assertFalse(marker.exists())
+
+            sensitive_target = base / "sensitive-project"
+            self.assertEqual(run_cli(CLI, "init", str(sensitive_target)).returncode, 0)
+            sensitive = self.feedback_close(
+                sensitive_target / "bin/vibe", sensitive_target, "--security-sensitive"
+            )
+            self.assertEqual(sensitive.returncode, 0, sensitive.stderr)
+            self.assertIn("PUBLIC SUBMISSION BLOCKED", sensitive.stdout)
+            self.assertNotIn("--- exact GitHub Issue payload ---", sensitive.stdout)
+            self.assertNotRegex(sensitive.stdout, r"Review hash: sha256:")
+            sensitive_id = next(
+                (sensitive_target / ".vibe/local/feedback").glob("fb-*")
+            ).name
+            blocked_check = run_cli(
+                sensitive_target / "bin/vibe",
+                "feedback",
+                "check",
+                sensitive_id,
+                "--target",
+                str(sensitive_target),
+                env=env,
+            )
+            self.assertEqual(blocked_check.returncode, 2)
+            self.assertFalse(marker.exists())
+            blocked_submit = run_cli(
+                sensitive_target / "bin/vibe",
+                "feedback",
+                "submit",
+                sensitive_id,
+                "--target",
+                str(sensitive_target),
+                "--confirm",
+                "sha256:" + "0" * 64,
+                env=env,
+            )
+            self.assertEqual(blocked_submit.returncode, 2)
+            self.assertFalse(marker.exists())
+
     def test_feedback_redacts_identifiers_and_blocks_secrets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "private-project"
@@ -919,6 +1189,139 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(stale.returncode, 2)
             self.assertIn("missing or stale", stale.stderr)
             self.assertEqual((base / "gh-count").read_text(), "1")
+
+    def test_feedback_remote_failure_does_not_persist_or_echo_raw_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            target = base / "failure-project"
+            installed = run_cli(CLI, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            drafted = self.feedback_draft(target / "bin/vibe", target)
+            self.assertEqual(drafted.returncode, 0, drafted.stderr)
+            report_dir = next((target / ".vibe/local/feedback").glob("fb-*"))
+            review = run_cli(
+                target / "bin/vibe",
+                "feedback",
+                "review",
+                report_dir.name,
+                "--target",
+                str(target),
+            )
+            review_hash = re.search(
+                r"Review hash: (sha256:[a-f0-9]{64})", review.stdout
+            )
+            self.assertIsNotNone(review_hash)
+
+            fake_bin = base / "fake-bin"
+            fake_bin.mkdir()
+            fake_gh = fake_bin / "gh"
+            fake_gh.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$1 $2\" = \"auth status\" ]; then exit 0; fi\n"
+                "echo 'opaque-remote-secret-marker' >&2\n"
+                "exit 9\n"
+            )
+            fake_gh.chmod(0o755)
+            env = {"PATH": str(fake_bin) + os.pathsep + os.environ.get("PATH", "")}
+            failed = run_cli(
+                target / "bin/vibe",
+                "feedback",
+                "submit",
+                report_dir.name,
+                "--target",
+                str(target),
+                "--confirm",
+                review_hash.group(1),
+                env=env,
+            )
+            self.assertEqual(failed.returncode, 1)
+            combined = failed.stdout + failed.stderr + (report_dir / "state.json").read_text()
+            self.assertNotIn("opaque-remote-secret-marker", combined)
+            state = json.loads((report_dir / "state.json").read_text())
+            self.assertEqual(state["submission"]["category"], "remote-duplicate-check")
+
+    def test_feedback_uncertain_create_requires_explicit_remote_recheck(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            target = base / "uncertain-project"
+            self.assertEqual(run_cli(CLI, "init", str(target)).returncode, 0)
+            self.assertEqual(self.feedback_draft(target / "bin/vibe", target).returncode, 0)
+            report_dir = next((target / ".vibe/local/feedback").glob("fb-*"))
+            review = run_cli(
+                target / "bin/vibe",
+                "feedback",
+                "review",
+                report_dir.name,
+                "--target",
+                str(target),
+            )
+            review_hash = re.search(
+                r"Review hash: (sha256:[a-f0-9]{64})", review.stdout
+            )
+            self.assertIsNotNone(review_hash)
+
+            fake_bin = base / "fake-bin"
+            fake_bin.mkdir()
+            fake_gh = fake_bin / "gh"
+            fake_gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, pathlib, sys\n"
+                "args = sys.argv[1:]\n"
+                "count = pathlib.Path(os.environ['FAKE_GH_COUNT'])\n"
+                "if args[:2] == ['auth', 'status']:\n"
+                "    raise SystemExit(0)\n"
+                "if args[:2] == ['issue', 'list']:\n"
+                "    print(json.dumps([]))\n"
+                "    raise SystemExit(0)\n"
+                "if args[:2] == ['issue', 'create']:\n"
+                "    current = int(count.read_text()) if count.exists() else 0\n"
+                "    count.write_text(str(current + 1))\n"
+                "    print('opaque-create-secret-marker', file=sys.stderr)\n"
+                "    raise SystemExit(9)\n"
+                "raise SystemExit(8)\n"
+            )
+            fake_gh.chmod(0o755)
+            count_path = base / "create-count"
+            env = {
+                "PATH": str(fake_bin) + os.pathsep + os.environ.get("PATH", ""),
+                "FAKE_GH_COUNT": str(count_path),
+            }
+            submit_args = (
+                "feedback",
+                "submit",
+                report_dir.name,
+                "--target",
+                str(target),
+                "--confirm",
+                review_hash.group(1),
+            )
+            uncertain = run_cli(target / "bin/vibe", *submit_args, env=env)
+            self.assertEqual(uncertain.returncode, 1)
+            self.assertEqual(count_path.read_text(), "1")
+            state_path = report_dir / "state.json"
+            combined = uncertain.stdout + uncertain.stderr + state_path.read_text()
+            self.assertNotIn("opaque-create-secret-marker", combined)
+            self.assertEqual(json.loads(state_path.read_text())["status"], "submission-unknown")
+
+            blind_retry = run_cli(target / "bin/vibe", *submit_args, env=env)
+            self.assertEqual(blind_retry.returncode, 2)
+            self.assertIn("run feedback check", blind_retry.stderr)
+            self.assertEqual(count_path.read_text(), "1")
+
+            checked = run_cli(
+                target / "bin/vibe",
+                "feedback",
+                "check",
+                report_dir.name,
+                "--target",
+                str(target),
+                env=env,
+            )
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertEqual(json.loads(state_path.read_text())["status"], "review-ready")
+            checked_retry = run_cli(target / "bin/vibe", *submit_args, env=env)
+            self.assertEqual(checked_retry.returncode, 1)
+            self.assertEqual(count_path.read_text(), "2")
 
 
 if __name__ == "__main__":

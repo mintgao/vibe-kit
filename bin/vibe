@@ -27,7 +27,9 @@ INSTALLED_VERSION_PATH = Path(".vibe/version")
 VERIFY_ORDER = ("lint", "typecheck", "test", "build")
 FEEDBACK_ROOT = Path(".vibe/local/feedback")
 FEEDBACK_CONFIG_PATH = Path(".vibe/core/feedback.json")
-FEEDBACK_SCHEMA_VERSION = 1
+FEEDBACK_SCHEMA_VERSION = 2
+FEEDBACK_STATE_SCHEMA_VERSION = 2
+FEEDBACK_MODES = ("ask", "local", "off")
 RELEASE_MANIFEST_SCHEMA = 1
 RELEASE_STATUSES = ("release-candidate-unpublished", "prerelease")
 RELEASE_ARCHIVE_MAX_FILES = 5000
@@ -901,6 +903,13 @@ def doctor(target: Path) -> int:
         if not (target / required).is_file():
             errors.append(f"missing required file: {required}")
 
+    project_config = target / ".vibe/project.yaml"
+    if project_config.is_file():
+        try:
+            parse_feedback_mode(project_config)
+        except VibeError as error:
+            errors.append(str(error))
+
     for skill in (target / ".agents/skills").glob("vibe-*/SKILL.md"):
         errors.extend(validate_skill(skill))
     for agent in (target / ".codex/agents").glob("vibe-*.toml"):
@@ -917,6 +926,92 @@ def doctor(target: Path) -> int:
     print(
         f"Vibe Kit doctor passed with {len(warnings)} warning(s): {target}"
     )
+    return 0
+
+
+def parse_feedback_mode_value(raw: str, path: Path) -> str:
+    value = raw.strip()
+    if value.startswith('"'):
+        match = re.fullmatch(r'("(?:[^"\\]|\\.)*")\s*(?:#.*)?', value)
+        if not match:
+            raise VibeError(f"invalid feedback.mode value in {path}")
+        try:
+            parsed = json.loads(match.group(1))
+        except json.JSONDecodeError as error:
+            raise VibeError(f"invalid feedback.mode value in {path}") from error
+    elif value.startswith("'"):
+        match = re.fullmatch(r"'([^']*)'\s*(?:#.*)?", value)
+        if not match:
+            raise VibeError(f"invalid feedback.mode value in {path}")
+        parsed = match.group(1)
+    else:
+        match = re.fullmatch(r"([A-Za-z0-9_-]+)\s*(?:#.*)?", value)
+        if not match:
+            raise VibeError(f"invalid feedback.mode value in {path}")
+        parsed = match.group(1)
+    if parsed not in FEEDBACK_MODES:
+        raise VibeError(
+            f"feedback.mode must be one of {', '.join(FEEDBACK_MODES)} in {path}; "
+            "fix the project-owned configuration before proactive feedback runs"
+        )
+    return str(parsed)
+
+
+def parse_feedback_mode(path: Path) -> Tuple[str, str]:
+    if not path.is_file():
+        return "ask", "default-missing"
+    section_count = 0
+    mode_count = 0
+    mode: Optional[str] = None
+    in_feedback = False
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), 1
+    ):
+        if re.match(r"^feedback\s*:", raw_line):
+            if not re.fullmatch(r"feedback:\s*(?:#.*)?", raw_line):
+                raise VibeError(
+                    f"feedback section must be a block mapping in {path}:{line_number}"
+                )
+            section_count += 1
+            if section_count > 1:
+                raise VibeError(f"duplicate feedback section in {path}:{line_number}")
+            in_feedback = True
+            continue
+        if not in_feedback:
+            continue
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            continue
+        if raw_line[0] not in (" ", "\t"):
+            in_feedback = False
+            continue
+        if "\t" in raw_line:
+            raise VibeError(
+                f"tabs are not allowed in the feedback section of {path}:{line_number}"
+            )
+        if re.match(r"^\s+mode\s*:", raw_line):
+            match = re.match(r"^  mode:\s*(.*)$", raw_line)
+            if not match:
+                raise VibeError(
+                    f"feedback.mode must use two-space indentation in {path}:{line_number}"
+                )
+            mode_count += 1
+            if mode_count > 1:
+                raise VibeError(f"duplicate feedback.mode in {path}:{line_number}")
+            mode = parse_feedback_mode_value(match.group(1), path)
+    if mode is None:
+        return "ask", "default-missing"
+    return mode, "project"
+
+
+def feedback_mode(target: Path) -> Tuple[str, str]:
+    return parse_feedback_mode(target.resolve() / ".vibe/project.yaml")
+
+
+def feedback_mode_command(target: Path) -> int:
+    mode, source = feedback_mode(target)
+    print(f"Feedback mode: {mode}")
+    print(f"Source: {source}")
+    print("Network: not used")
     return 0
 
 
@@ -1227,6 +1322,7 @@ def package_release(output: Optional[Path], status: str) -> int:
         "kit_version": version,
         "manifest_schema": protocol.get("manifest_schema"),
         "core_protocol": protocol.get("core_protocol"),
+        "feedback_protocol": protocol.get("feedback_protocol"),
         "adapters": protocol.get("adapters"),
         "runtime": {
             "python": ">=3.9",
@@ -1443,6 +1539,29 @@ def validate_release(release_dir: Path) -> int:
     core_version = release_entries.get(".vibe/core/version", b"").decode("utf-8", errors="replace").strip()
     if core_version != version:
         errors.append("release ZIP core version does not match kit_version")
+    protocol_bytes = release_entries.get(".vibe/core/protocol.json")
+    release_protocol_value: Dict[str, object] = {}
+    if protocol_bytes is None:
+        errors.append("release ZIP is missing protocol metadata")
+    else:
+        try:
+            loaded_protocol = json.loads(protocol_bytes.decode("utf-8"))
+            if isinstance(loaded_protocol, dict):
+                release_protocol_value = loaded_protocol
+            else:
+                errors.append("release protocol metadata must be an object")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            errors.append("release protocol metadata is invalid")
+    for protocol_key in (
+        "manifest_schema",
+        "core_protocol",
+        "feedback_protocol",
+        "adapters",
+    ):
+        if manifest.get(protocol_key) != release_protocol_value.get(protocol_key):
+            errors.append(
+                f"release manifest {protocol_key} does not match payload protocol metadata"
+            )
     for required in ("bin/vibe", "AGENTS.md", "templates/project/project-rules.md"):
         if required not in release_entries:
             errors.append(f"release ZIP is missing required payload file: {required}")
@@ -1688,6 +1807,7 @@ def feedback_preview(report: Dict[str, object], state: Dict[str, object]) -> str
             f"- Platform family: `{environment['platform_family']}`",
             "## Privacy\n\n"
             f"- Status: `{privacy['status']}`\n"
+            f"- Public submission: `{privacy.get('public_submission', 'allowed')}`\n"
             "- Raw code, logs, prompts, conversations and environment values are not included.",
             f"<!-- vibe-kit-feedback:fingerprint={dedup['fingerprint']} -->",
         )
@@ -1724,7 +1844,25 @@ def feedback_input(args: argparse.Namespace) -> Dict[str, object]:
         "severity": args.severity,
         "confidence": args.confidence,
         "trigger": args.trigger,
+        "security_sensitive": bool(getattr(args, "security_sensitive", False)),
     }
+
+
+def feedback_revision_input(args: argparse.Namespace) -> Dict[str, object]:
+    if not args.input:
+        raise VibeError("feedback revise requires --input with a JSON object")
+    try:
+        raw = (
+            sys.stdin.read()
+            if args.input == "-"
+            else Path(args.input).read_text(encoding="utf-8")
+        )
+        value = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as error:
+        raise VibeError(f"cannot read feedback revision input: {error}") from error
+    if not isinstance(value, dict):
+        raise VibeError("feedback revision input must be a JSON object")
+    return value
 
 
 def feedback_build_report(target: Path, raw: Dict[str, object]) -> Dict[str, object]:
@@ -1741,6 +1879,9 @@ def feedback_build_report(target: Path, raw: Dict[str, object]) -> Dict[str, obj
         raise VibeError(
             f"feedback confidence must be one of: {', '.join(FEEDBACK_CONFIDENCE)}"
         )
+    security_sensitive = raw.get("security_sensitive", False)
+    if not isinstance(security_sensitive, bool):
+        raise VibeError("feedback field 'security_sensitive' must be a boolean")
 
     redactions: List[str] = []
     signal: Dict[str, object] = {
@@ -1795,6 +1936,8 @@ def feedback_build_report(target: Path, raw: Dict[str, object]) -> Dict[str, obj
             "policy": "strict",
             "raw_evidence_persisted": False,
             "status": "redacted" if counts else "clean",
+            "public_submission": "blocked" if security_sensitive else "allowed",
+            "block_reason": "security-sensitive" if security_sensitive else None,
             "redactions": [
                 {"class": key, "count": counts[key]} for key in sorted(counts)
             ],
@@ -1823,10 +1966,59 @@ def load_feedback_record(
         raise VibeError(f"cannot read feedback report {report_id}: {error}") from error
     if not isinstance(report, dict) or not isinstance(state, dict):
         raise VibeError(f"invalid feedback report: {report_id}")
+    state = normalize_feedback_state(state)
     return report, state, report_path.parent
 
 
-def feedback_draft(target: Path, raw: Dict[str, object]) -> int:
+def feedback_attention(
+    status: str, reason: str, revision: int = 1
+) -> Dict[str, object]:
+    return {
+        "revision": revision,
+        "status": status,
+        "reason": reason,
+        "last_presented": None,
+    }
+
+
+def normalize_feedback_state(state: Dict[str, object]) -> Dict[str, object]:
+    if state.get("state_schema_version") != FEEDBACK_STATE_SCHEMA_VERSION:
+        state["state_schema_version"] = FEEDBACK_STATE_SCHEMA_VERSION
+        state["attention"] = feedback_attention("legacy", "legacy")
+        return state
+    attention = state.get("attention")
+    if not isinstance(attention, dict):
+        state["attention"] = feedback_attention("legacy", "legacy")
+        return state
+    revision = attention.get("revision", 1)
+    if not isinstance(revision, int) or revision < 1:
+        revision = 1
+    status = str(attention.get("status", "legacy"))
+    if status not in ("pending", "presented", "handled-local", "manual", "legacy"):
+        status = "legacy"
+    reason = str(attention.get("reason", "legacy"))
+    if reason not in ("created", "material-resurface", "revised", "legacy", "manual"):
+        reason = "legacy"
+    last_presented = attention.get("last_presented")
+    if last_presented is not None and not isinstance(last_presented, dict):
+        last_presented = None
+    state["attention"] = {
+        "revision": revision,
+        "status": status,
+        "reason": reason,
+        "last_presented": last_presented,
+    }
+    return state
+
+
+def feedback_public_submission_allowed(report: Dict[str, object]) -> bool:
+    privacy = report.get("privacy", {})
+    return isinstance(privacy, dict) and privacy.get("public_submission", "allowed") == "allowed"
+
+
+def feedback_upsert(
+    target: Path, raw: Dict[str, object], attention_status: str
+) -> Tuple[Dict[str, object], Dict[str, object], Path, str]:
     target = target.resolve()
     report = feedback_build_report(target, raw)
     root = feedback_state_root(target, create=True)
@@ -1839,9 +2031,15 @@ def feedback_draft(target: Path, raw: Dict[str, object]) -> int:
             state = json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        if existing.get("dedup", {}).get("fingerprint") != fingerprint:
+        if not isinstance(existing, dict) or not isinstance(state, dict):
             continue
-        existing_signal = existing["signal"]
+        existing_dedup = existing.get("dedup")
+        existing_signal = existing.get("signal")
+        if not isinstance(existing_dedup, dict) or not isinstance(existing_signal, dict):
+            continue
+        if existing_dedup.get("fingerprint") != fingerprint:
+            continue
+        state = normalize_feedback_state(state)
         incoming_signal = report["signal"]
         new_evidence = [
             item
@@ -1851,6 +2049,26 @@ def feedback_draft(target: Path, raw: Dict[str, object]) -> int:
         severity_increased = SEVERITY_RANK[str(incoming_signal["severity"])] > SEVERITY_RANK[
             str(existing_signal["severity"])
         ]
+        existing_privacy = existing.get("privacy")
+        incoming_privacy = report.get("privacy")
+        privacy_upgraded = False
+        if isinstance(existing_privacy, dict) and isinstance(incoming_privacy, dict):
+            if (
+                incoming_privacy.get("public_submission") == "blocked"
+                and existing_privacy.get("public_submission", "allowed") != "blocked"
+            ):
+                existing_privacy["public_submission"] = "blocked"
+                existing_privacy["block_reason"] = incoming_privacy.get(
+                    "block_reason", "security-sensitive"
+                )
+                privacy_upgraded = True
+            if (
+                incoming_privacy.get("status") == "redacted"
+                and existing_privacy.get("status") == "clean"
+            ):
+                existing_privacy["status"] = "redacted"
+                existing_privacy["redactions"] = incoming_privacy.get("redactions", [])
+                privacy_upgraded = True
         state["occurrence_count"] = int(state.get("occurrence_count", 1)) + 1
         state["last_seen"] = now
         if new_evidence:
@@ -1859,44 +2077,71 @@ def feedback_draft(target: Path, raw: Dict[str, object]) -> int:
             )[:5]
         if severity_increased:
             existing_signal["severity"] = incoming_signal["severity"]
-        if state.get("status") == "dismissed" and not (new_evidence or severity_increased):
+        material = bool(new_evidence or severity_increased or privacy_upgraded)
+        if state.get("status") == "dismissed" and not material:
             atomic_write_json(state_path, state)
-            print(f"Feedback suppressed by prior dismissal: {candidate.parent.name}")
-            print("Network: not used")
-            return 0
-        if state.get("status") == "dismissed":
+            return existing, state, candidate.parent, "suppressed"
+        if state.get("status") == "submitted":
+            existing_dedup["local"] = "duplicate"
+            atomic_write_json(candidate, existing)
+            atomic_write_json(state_path, state)
+            atomic_write_text(candidate.parent / "preview.md", feedback_preview(existing, state))
+            return existing, state, candidate.parent, "submitted"
+        if material:
             state["status"] = "review-ready"
             state["dismiss_reason"] = None
-            print(f"Feedback resurfaced with material change: {candidate.parent.name}")
-        else:
-            print(f"Feedback reused existing candidate: {candidate.parent.name}")
-        existing["dedup"]["local"] = "duplicate"
+            prior_attention = state.get("attention", {})
+            revision = int(prior_attention.get("revision", 1)) + 1
+            state["attention"] = feedback_attention(
+                attention_status, "material-resurface", revision
+            )
+            state["remote"] = {"status": "not_checked", "matching_issue": None}
+            state["submission"] = None
+        existing_dedup["local"] = "duplicate"
         atomic_write_json(candidate, existing)
         atomic_write_json(state_path, state)
         atomic_write_text(candidate.parent / "preview.md", feedback_preview(existing, state))
-        print(f"Occurrences: {state['occurrence_count']}")
-        print("Network: not used")
-        return 0
+        return existing, state, candidate.parent, "resurfaced" if material else "reused"
 
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dt%H%M%Sz")
     report_id = f"fb-{stamp}-{fingerprint.split(':', 1)[1][:8]}"
     report["report_id"] = report_id
     state = {
+        "state_schema_version": FEEDBACK_STATE_SCHEMA_VERSION,
         "status": "review-ready",
         "occurrence_count": 1,
         "last_seen": now,
         "dismiss_reason": None,
         "remote": {"status": "not_checked", "matching_issue": None},
         "submission": None,
+        "attention": feedback_attention(attention_status, "created"),
     }
     report_path, preview_path, state_path = feedback_record_paths(target, report_id)
     report_path.parent.mkdir(parents=True)
     atomic_write_json(report_path, report)
     atomic_write_json(state_path, state)
     atomic_write_text(preview_path, feedback_preview(report, state))
-    print(f"Feedback draft ready: {report_id}")
-    print(f"Preview: {preview_path}")
-    print(f"Privacy: {report['privacy']['status']}")
+    return report, state, report_path.parent, "created"
+
+
+def feedback_draft(target: Path, raw: Dict[str, object]) -> int:
+    report, state, root, outcome = feedback_upsert(target, raw, "manual")
+    report_id = str(report["report_id"])
+    if outcome == "created":
+        print(f"Feedback draft ready: {report_id}")
+        print(f"Preview: {root / 'preview.md'}")
+        print(f"Privacy: {report['privacy']['status']}")
+    elif outcome == "suppressed":
+        print(f"Feedback suppressed by prior dismissal: {report_id}")
+    elif outcome == "resurfaced":
+        print(f"Feedback resurfaced with material change: {report_id}")
+        print(f"Occurrences: {state['occurrence_count']}")
+    elif outcome == "submitted":
+        print(f"Feedback already submitted; occurrence recorded: {report_id}")
+        print(f"Occurrences: {state['occurrence_count']}")
+    else:
+        print(f"Feedback reused existing candidate: {report_id}")
+        print(f"Occurrences: {state['occurrence_count']}")
     print("Network: not used")
     return 0
 
@@ -1936,6 +2181,10 @@ def feedback_repository(target: Path, explicit: Optional[str]) -> str:
 def feedback_payload(
     target: Path, report: Dict[str, object], state: Dict[str, object], repository: str
 ) -> Tuple[str, str, List[str], str]:
+    if not feedback_public_submission_allowed(report):
+        raise VibeError(
+            "public submission is blocked for this security-sensitive feedback; revise it for a public channel or keep it local"
+        )
     title = f"[Vibe Kit feedback] {report['signal']['title']}"
     body = feedback_preview(report, state)
     labels = [str(item) for item in feedback_config(target).get("labels", [])]
@@ -1971,11 +2220,49 @@ def feedback_list(target: Path) -> int:
     return 0
 
 
-def feedback_review(target: Path, report_id: str, explicit_repo: Optional[str]) -> int:
+def feedback_dedupe_label(state: Dict[str, object]) -> str:
+    attention = state.get("attention", {})
+    reason = attention.get("reason") if isinstance(attention, dict) else None
+    if reason == "material-resurface":
+        return "MATERIAL RESURFACE"
+    if reason == "revised":
+        return "REVISED LOCAL CANDIDATE"
+    if state.get("occurrence_count", 1) != 1:
+        return "EXISTING LOCAL CANDIDATE"
+    return "UNIQUE LOCAL CANDIDATE"
+
+
+def feedback_mark_presented(
+    root: Path,
+    state: Dict[str, object],
+    repository: Optional[str],
+    review_hash: Optional[str],
+) -> None:
+    attention = state.get("attention", {})
+    if not isinstance(attention, dict):
+        attention = feedback_attention("legacy", "legacy")
+    attention["status"] = "presented"
+    attention["last_presented"] = {
+        "repository": repository,
+        "review_hash": review_hash,
+        "presented_at": utc_now(),
+        "revision": attention.get("revision", 1),
+    }
+    state["attention"] = attention
+    atomic_write_json(root / "state.json", state)
+
+
+def feedback_render_review(
+    target: Path,
+    report_id: str,
+    explicit_repo: Optional[str],
+    proactive: bool,
+) -> int:
     target = target.resolve()
-    report, state, _ = load_feedback_record(target, report_id)
+    report, state, root = load_feedback_record(target, report_id)
     repository = explicit_repo or str(feedback_config(target).get("github_repository", ""))
-    if repository:
+    public_allowed = feedback_public_submission_allowed(report)
+    if repository and public_allowed:
         repository = feedback_repository(target, repository)
         title, body, labels, review_hash = feedback_payload(
             target, report, state, repository
@@ -1984,23 +2271,170 @@ def feedback_review(target: Path, report_id: str, explicit_repo: Optional[str]) 
         title = f"[Vibe Kit feedback] {report['signal']['title']}"
         body = feedback_preview(report, state)
         labels = []
-        review_hash = "<unavailable: configure --repo owner/repository>"
+        review_hash = None
+    feedback_mark_presented(root, state, repository or None, review_hash)
+    if proactive:
+        print("Vibe Kit feedback READY — local only")
+        print()
+        print("发现 1 个可复用的 Vibe Kit 改进点。")
+    print(f"Report: {report_id}")
     print(f"Target: {repository or '<not configured>'}")
-    print(f"Privacy: {report['privacy']['status']}")
+    privacy_status = str(report["privacy"]["status"]).upper()
+    if not public_allowed:
+        privacy_status += " / PUBLIC SUBMISSION BLOCKED"
+    print(f"Privacy: {privacy_status}")
+    print(f"Dedupe: {feedback_dedupe_label(state)}")
+    print("Remote access: NOT USED")
     print(f"Labels: {', '.join(labels) if labels else '<none>'}")
-    print(f"Review hash: {review_hash}")
-    print("--- exact GitHub payload ---")
-    print(f"Title: {title}\n")
-    print(body, end="")
-    print("--- end payload ---")
-    if repository:
-        print(
-            f"To submit after approving this exact payload:\n"
-            f"  ./bin/vibe feedback submit {report_id} --repo {repository} --confirm {review_hash}"
-        )
+    if public_allowed and repository:
+        print(f"Review hash: {review_hash}")
+        print("--- exact GitHub Issue payload ---")
+        print(f"Title: {title}\n")
+        print(body, end="")
+        print("--- end payload ---")
+        if proactive:
+            print("建议提交这条反馈。回复“提交”即可。")
+            print("也可以回复“稍后”“修改”或“忽略”。")
+        else:
+            print(
+                f"To submit after approving this exact payload:\n"
+                f"  ./bin/vibe feedback submit {report_id} --repo {repository} --confirm {review_hash}"
+            )
+    elif not public_allowed:
+        print("Review hash: <unavailable: public submission blocked>")
+        print("Public payload: BLOCKED")
+        print("The sanitized candidate remains local; revise it before any public submission.")
     else:
-        print("No network was used. Configure a repository to obtain a submit hash.")
+        print("Review hash: <unavailable: configure --repo owner/repository>")
+        print("Public payload: NOT PREPARED")
+        print("The sanitized candidate remains local; configure a repository before review.")
+        print("No network was used.")
+    print("Network: not used")
     return 0
+
+
+def feedback_review(target: Path, report_id: str, explicit_repo: Optional[str]) -> int:
+    return feedback_render_review(target, report_id, explicit_repo, proactive=False)
+
+
+def feedback_close(target: Path, raw: Dict[str, object]) -> int:
+    target = target.resolve()
+    mode, _ = feedback_mode(target)
+    if mode == "off":
+        return 0
+    desired_attention = "pending" if mode == "ask" else "handled-local"
+    report, state, root, outcome = feedback_upsert(target, raw, desired_attention)
+    report_id = str(report["report_id"])
+    if mode == "local":
+        if outcome not in ("suppressed", "submitted") and state.get("status") == "review-ready":
+            attention = state.get("attention", {})
+            if isinstance(attention, dict) and attention.get("status") != "legacy":
+                attention["status"] = "handled-local"
+                state["attention"] = attention
+                atomic_write_json(root / "state.json", state)
+        if outcome in ("created", "resurfaced"):
+            print(f"Feedback saved locally: {report_id}")
+            print("Network: not used")
+        return 0
+    attention = state.get("attention", {})
+    if (
+        outcome not in ("suppressed", "submitted")
+        and isinstance(attention, dict)
+        and attention.get("status") == "pending"
+    ):
+        return feedback_render_review(target, report_id, None, proactive=True)
+    return 0
+
+
+def feedback_revision_raw(report: Dict[str, object]) -> Dict[str, object]:
+    signal = report.get("signal", {})
+    environment = report.get("environment", {})
+    privacy = report.get("privacy", {})
+    if not isinstance(signal, dict) or not isinstance(environment, dict):
+        raise VibeError("feedback report is malformed and cannot be revised")
+    raw = dict(signal)
+    raw.update(
+        {
+            "workflow": environment.get("workflow", "unspecified"),
+            "agent_role": environment.get("agent_role", "unspecified"),
+            "security_sensitive": isinstance(privacy, dict)
+            and privacy.get("public_submission") == "blocked",
+        }
+    )
+    return raw
+
+
+def feedback_revise(
+    target: Path,
+    report_id: str,
+    explicit_repo: Optional[str],
+    changes: Dict[str, object],
+) -> int:
+    target = target.resolve()
+    report, state, root = load_feedback_record(target, report_id)
+    if state.get("status") in ("dismissed", "submitted"):
+        raise VibeError(f"{state.get('status')} feedback cannot be revised")
+    allowed = {
+        "kind",
+        "component",
+        "title",
+        "summary",
+        "expected",
+        "observed",
+        "impact",
+        "hypothesis",
+        "proposal",
+        "reproduction",
+        "evidence",
+        "workflow",
+        "agent_role",
+        "severity",
+        "confidence",
+        "trigger",
+        "security_sensitive",
+    }
+    unknown = sorted(set(changes) - allowed)
+    if unknown:
+        raise VibeError(f"feedback revision contains unsupported fields: {', '.join(unknown)}")
+    raw = feedback_revision_raw(report)
+    raw.update(changes)
+    revised = feedback_build_report(target, raw)
+    old_privacy = report.get("privacy", {})
+    new_privacy = revised.get("privacy", {})
+    if (
+        isinstance(old_privacy, dict)
+        and isinstance(new_privacy, dict)
+        and old_privacy.get("status") == "redacted"
+        and new_privacy.get("status") == "clean"
+    ):
+        new_privacy["status"] = "redacted"
+        new_privacy["redactions"] = old_privacy.get("redactions", [])
+    revised["report_id"] = report_id
+    revised["created_at"] = report.get("created_at", revised["created_at"])
+    fingerprint = revised.get("dedup", {}).get("fingerprint")
+    feedback_root = feedback_state_root(target)
+    for candidate in sorted(feedback_root.glob("fb-*/report.json")):
+        if candidate.parent == root:
+            continue
+        try:
+            other = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if other.get("dedup", {}).get("fingerprint") == fingerprint:
+            raise VibeError(
+                f"feedback revision collides with existing candidate {candidate.parent.name}; review that candidate instead"
+            )
+    prior_attention = state.get("attention", {})
+    revision = int(prior_attention.get("revision", 1)) + 1 if isinstance(prior_attention, dict) else 2
+    state["status"] = "review-ready"
+    state["last_seen"] = utc_now()
+    state["remote"] = {"status": "not_checked", "matching_issue": None}
+    state["submission"] = None
+    state["attention"] = feedback_attention("pending", "revised", revision)
+    atomic_write_json(root / "report.json", revised)
+    atomic_write_json(root / "state.json", state)
+    atomic_write_text(root / "preview.md", feedback_preview(revised, state))
+    return feedback_render_review(target, report_id, explicit_repo, proactive=True)
 
 
 def feedback_gh(target: Path) -> Tuple[str, str]:
@@ -2049,11 +2483,13 @@ def feedback_remote_duplicate(
         check=False,
     )
     if result.returncode != 0:
-        raise RemoteFeedbackError(result.stderr.strip() or "GitHub duplicate check failed")
+        raise RemoteFeedbackError(
+            "GitHub duplicate check failed; verify connectivity, authentication and repository access"
+        )
     try:
         issues = json.loads(result.stdout or "[]")
     except json.JSONDecodeError as error:
-        raise RemoteFeedbackError(f"GitHub duplicate response was invalid: {error}") from error
+        raise RemoteFeedbackError("GitHub duplicate response was invalid") from error
     if not isinstance(issues, list):
         raise RemoteFeedbackError("GitHub duplicate response was not a list")
     return issues[0] if issues else None
@@ -2062,6 +2498,10 @@ def feedback_remote_duplicate(
 def feedback_check(target: Path, report_id: str, explicit_repo: Optional[str]) -> int:
     target = target.resolve()
     report, state, root = load_feedback_record(target, report_id)
+    if not feedback_public_submission_allowed(report):
+        raise VibeError(
+            "remote duplicate checking is blocked for security-sensitive feedback"
+        )
     repository = feedback_repository(target, explicit_repo)
     try:
         duplicate = feedback_remote_duplicate(target, report, repository)
@@ -2073,6 +2513,19 @@ def feedback_check(target: Path, report_id: str, explicit_repo: Optional[str]) -
         "status": "duplicate" if duplicate else "unique",
         "matching_issue": duplicate,
     }
+    if duplicate and state.get("status") == "submission-unknown":
+        state["status"] = "submitted"
+        state["submission"] = {
+            "result": "existing",
+            "repository": repository,
+            "url": duplicate.get("url"),
+        }
+    elif not duplicate and state.get("status") == "submission-unknown":
+        state["status"] = "review-ready"
+        state["submission"] = {
+            "result": "checked-unique-after-unknown",
+            "repository": repository,
+        }
     atomic_write_json(root / "state.json", state)
     if duplicate:
         print(f"Feedback already covered by {duplicate.get('url', '<unknown URL>')}")
@@ -2092,6 +2545,14 @@ def feedback_submit(
     report, state, root = load_feedback_record(target, report_id)
     if state.get("status") == "dismissed":
         raise VibeError("dismissed feedback cannot be submitted; create or resurface evidence first")
+    if state.get("status") == "submission-unknown":
+        raise VibeError(
+            "feedback submission outcome is uncertain; run feedback check before any retry"
+        )
+    if not feedback_public_submission_allowed(report):
+        raise VibeError(
+            "public submission is blocked for this security-sensitive feedback; no network was used"
+        )
     repository = feedback_repository(target, explicit_repo)
     title, body, labels, review_hash = feedback_payload(target, report, state, repository)
     if not confirm or confirm != review_hash:
@@ -2110,7 +2571,10 @@ def feedback_submit(
         duplicate = feedback_remote_duplicate(target, report, repository)
     except RemoteFeedbackError as error:
         state["status"] = "submit-failed"
-        state["submission"] = {"result": "duplicate-check-failed", "message": str(error)}
+        state["submission"] = {
+            "result": "duplicate-check-failed",
+            "category": "remote-duplicate-check",
+        }
         atomic_write_json(root / "state.json", state)
         print(f"ERROR: Could not verify remote duplicates: {error}", file=sys.stderr)
         print("No issue was created; retry with the same reviewed hash.", file=sys.stderr)
@@ -2153,7 +2617,7 @@ def feedback_submit(
         state["submission"] = {
             "result": "unknown",
             "repository": repository,
-            "message": result.stderr.strip(),
+            "category": "remote-create",
         }
         atomic_write_json(root / "state.json", state)
         print("ERROR: GitHub issue creation failed or its result is uncertain.", file=sys.stderr)
@@ -2185,10 +2649,42 @@ def feedback_dismiss(target: Path, report_id: str, reason: str) -> int:
     clean_reason, _ = feedback_redact_text(reason, target, "dismiss reason")
     state["status"] = "dismissed"
     state["dismiss_reason"] = clean_reason
+    attention = state.get("attention")
+    if isinstance(attention, dict):
+        attention["status"] = "handled-local"
+        state["attention"] = attention
     atomic_write_json(root / "state.json", state)
     print(f"Feedback dismissed: {report_id}")
     print("The same low-severity fingerprint will stay suppressed until material evidence changes.")
     return 0
+
+
+def add_feedback_signal_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--target", default=".")
+    parser.add_argument(
+        "--input", help="JSON input path, or - for stdin; overrides individual fields"
+    )
+    parser.add_argument("--kind", choices=FEEDBACK_KINDS, default="workflow-gap")
+    parser.add_argument("--component", default="other")
+    parser.add_argument("--title")
+    parser.add_argument("--summary")
+    parser.add_argument("--expected")
+    parser.add_argument("--observed")
+    parser.add_argument("--impact")
+    parser.add_argument("--hypothesis")
+    parser.add_argument("--proposal")
+    parser.add_argument("--reproduction", action="append", default=[])
+    parser.add_argument("--evidence", action="append", default=[])
+    parser.add_argument("--workflow", default="unspecified")
+    parser.add_argument("--agent-role", default="unspecified")
+    parser.add_argument("--severity", choices=FEEDBACK_SEVERITIES, default="medium")
+    parser.add_argument("--confidence", choices=FEEDBACK_CONFIDENCE, default="medium")
+    parser.add_argument("--trigger", default="explicit-user-request")
+    parser.add_argument(
+        "--security-sensitive",
+        action="store_true",
+        help="Keep this feedback local and block public submission.",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2252,26 +2748,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="feedback_command", required=True
     )
     draft_parser = feedback_subparsers.add_parser("draft")
-    draft_parser.add_argument("--target", default=".")
-    draft_parser.add_argument(
-        "--input", help="JSON input path, or - for stdin; overrides individual fields"
-    )
-    draft_parser.add_argument("--kind", choices=FEEDBACK_KINDS, default="workflow-gap")
-    draft_parser.add_argument("--component", default="other")
-    draft_parser.add_argument("--title")
-    draft_parser.add_argument("--summary")
-    draft_parser.add_argument("--expected")
-    draft_parser.add_argument("--observed")
-    draft_parser.add_argument("--impact")
-    draft_parser.add_argument("--hypothesis")
-    draft_parser.add_argument("--proposal")
-    draft_parser.add_argument("--reproduction", action="append", default=[])
-    draft_parser.add_argument("--evidence", action="append", default=[])
-    draft_parser.add_argument("--workflow", default="unspecified")
-    draft_parser.add_argument("--agent-role", default="unspecified")
-    draft_parser.add_argument("--severity", choices=FEEDBACK_SEVERITIES, default="medium")
-    draft_parser.add_argument("--confidence", choices=FEEDBACK_CONFIDENCE, default="medium")
-    draft_parser.add_argument("--trigger", default="explicit-user-request")
+    add_feedback_signal_arguments(draft_parser)
+    close_parser = feedback_subparsers.add_parser("close")
+    add_feedback_signal_arguments(close_parser)
+    mode_parser = feedback_subparsers.add_parser("mode")
+    mode_parser.add_argument("--target", default=".")
 
     list_parser = feedback_subparsers.add_parser("list")
     list_parser.add_argument("--target", default=".")
@@ -2280,6 +2761,13 @@ def build_parser() -> argparse.ArgumentParser:
         child.add_argument("report_id")
         child.add_argument("--target", default=".")
         child.add_argument("--repo")
+    revise_parser = feedback_subparsers.add_parser("revise")
+    revise_parser.add_argument("report_id")
+    revise_parser.add_argument("--target", default=".")
+    revise_parser.add_argument("--repo")
+    revise_parser.add_argument(
+        "--input", required=True, help="Partial JSON revision path, or - for stdin"
+    )
     submit_parser = feedback_subparsers.add_parser("submit")
     submit_parser.add_argument("report_id")
     submit_parser.add_argument("--target", default=".")
@@ -2316,12 +2804,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             target = Path(args.target)
             if args.feedback_command == "draft":
                 return feedback_draft(target, feedback_input(args))
+            if args.feedback_command == "close":
+                return feedback_close(target, feedback_input(args))
+            if args.feedback_command == "mode":
+                return feedback_mode_command(target)
             if args.feedback_command == "list":
                 return feedback_list(target)
             if args.feedback_command == "review":
                 return feedback_review(target, args.report_id, args.repo)
             if args.feedback_command == "check":
                 return feedback_check(target, args.report_id, args.repo)
+            if args.feedback_command == "revise":
+                return feedback_revise(
+                    target,
+                    args.report_id,
+                    args.repo,
+                    feedback_revision_input(args),
+                )
             if args.feedback_command == "submit":
                 return feedback_submit(
                     target, args.report_id, args.repo, args.confirm

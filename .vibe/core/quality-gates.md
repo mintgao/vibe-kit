@@ -25,8 +25,9 @@ Apply gates in proportion to the work size and risk.
 
 ## Vibe Kit feedback gate
 
-- At M/L Close, classify observed workflow friction as business-specific, environmental, or a reusable Vibe Kit gap.
+- At M/L Close, resolve `feedback.mode` before classifying observed workflow friction; `off` stops, while `ask` and `local` continue.
 - Create local feedback only for evidence-backed framework gaps; an empty retrospective produces no artifact or notification.
-- Feedback remains local and non-blocking unless the user approves the exact outbound payload for an external destination.
+- Use the mode-aware `feedback close` contract so new/material candidates prompt once in `ask`, remain local without a question in `local`, and unchanged/legacy candidates do not create noise.
+- Feedback remains local and non-blocking unless the user gives adjacent, unambiguous approval for the exact report, destination and review hash.
 
 Use `./bin/vibe verify` to run the configured project checks. The command complements task-specific validation; it does not replace it.

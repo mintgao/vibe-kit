@@ -19,7 +19,7 @@ This repository uses Vibe Kit. Before substantive work:
 
 ## Continuous improvement
 
-At Close for M/L work, silently check whether the task exposed a reproducible gap in Vibe Kit itself. Create a local sanitized feedback candidate only when evidence crosses the threshold in `vibe-feedback-flow`; otherwise stay quiet. Feedback must not block the primary task, perform network access automatically, or be submitted without the user's approval of the exact outbound payload.
+At Close for M/L work, resolve the project-owned feedback mode through `vibe-feedback-flow`. In `ask` or `local`, silently check whether the task exposed a reproducible Vibe Kit gap; in `off`, skip classification. No qualifying signal stays silent. A new or materially changed candidate follows the mode-aware local Close flow only after the primary result and verification are complete. `ask` presents one exact, local-only decision block; `local` stores without asking; no mode authorizes network access. Submit only after the user's adjacent, unambiguous approval of the exact outbound payload.
 
 Classify work as S, M, or L using `.vibe/core/operating-model.md`. Keep S work lightweight. For M/L work, use the relevant `vibe_pm`, `vibe_ux`, `vibe_rd`, `vibe_qa`, or `vibe_investigator` custom agents when their independent judgment materially improves the result. Prefer parallel agents for read-heavy analysis; keep one active writer for application code and shared artifacts.
 

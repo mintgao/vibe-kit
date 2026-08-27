@@ -59,4 +59,4 @@
 - Qualifying signal: publishing required manual coordination across clean-source preflight, remote refs, release assets, digest read-back, canonical re-download, validation and install smoke testing.
 - Local candidate: `fb-20260827t074230z-685dcc37`, title `Add a first-class GitHub prerelease publication workflow`, medium severity, high confidence, privacy clean.
 - Review target: `mintgao/vibe-kit`; exact-payload review hash `sha256:af324f7012290ca65f298a23c81623c63cea2deee50a8cadb1d2ba98807af424`.
-- Status: `review-ready`. No Issue was created because Vibe Kit requires explicit approval for this exact report ID, repository and review hash.
+- Status: `submitted`. After the exact payload was displayed, the user explicitly approved this report/repository/hash and it was created as `https://github.com/mintgao/vibe-kit/issues/1`.

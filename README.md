@@ -2,7 +2,7 @@
 
 Vibe Kit 是一套可以随项目版本化的 Codex 研发工作流脚手架。它把长期开发约定、PM/UX/RD/QA/Investigator 角色、需求与排查流程、项目上下文和质量检查放进同一个仓库。
 
-当前版本：`0.3.0`。它以 [GitHub Pre-release](https://github.com/mintgao/vibe-kit/releases/tag/v0.3.0) 分发；尚未提升为 stable，也未发布到 Codex Plugin Directory、npm、PyPI 或 Homebrew。
+当前版本：`0.4.0`。它以 [GitHub Pre-release](https://github.com/mintgao/vibe-kit/releases/tag/v0.4.0) 分发；尚未提升为 stable，也未发布到 Codex Plugin Directory、npm、PyPI 或 Homebrew。
 
 ## 它安装什么
 
@@ -69,18 +69,26 @@ npx create-next-app@latest /path/to/my-app
 
 ## 持续改进 Vibe Kit
 
-M/L 工作结束或 Vibe CLI/流程本身暴露出高置信、可复现的系统性缺口时，Agent 会使用 `vibe-feedback-flow` 做一次轻量判断。没有有效信号时保持安静；有信号时只生成本地去敏候选，不影响主任务结果，也不会自动联网。
+M/L 工作结束或 Vibe CLI/流程本身暴露出高置信、可复现的系统性缺口时，Agent 会使用 `vibe-feedback-flow` 做一次轻量判断。没有有效信号时保持安静；有信号时按项目的 `feedback.mode` 收口，并且始终先完成主任务。
+
+- `ask`（新项目和缺失配置的默认值）：新建或有实质变化的候选会主动展示一次完整 Issue payload，用户回复“提交这条反馈”即可授权当次 payload。
+- `local`：生成本地候选，不询问提交。
+- `off`：关闭主动判断和生成；手工反馈命令仍可使用。
+
+任何模式都不会静默联网或自动提交。普通“好”“确认”“继续”、无响应、历史授权、已配置仓库或 `gh` 登录都不构成本条 Issue 的授权。
 
 ```bash
+./bin/vibe feedback mode
 ./bin/vibe feedback list
 ./bin/vibe feedback review <report-id>
+./bin/vibe feedback revise <report-id> --input revision.json
 ./bin/vibe feedback submit <report-id> --confirm <review-hash>
 ./bin/vibe feedback dismiss <report-id> --reason "not actionable"
 ```
 
-候选存放在 `.vibe/local/feedback/`，目录自带忽略规则，默认不进入 Git。提交前 `review` 会展示目标仓库和实际发送的完整 title/body，并为它计算 review hash；repo、正文、标题或 labels 改变后旧 hash 立即失效。`submit` 在创建 Issue 前再次按 fingerprint 查重。
+候选存放在 `.vibe/local/feedback/`，目录自带忽略规则，默认不进入 Git。Agent 的主动入口是 `feedback close`；它会根据 mode、fingerprint 和 attention revision 决定是否展示，unchanged duplicate、dismissed candidate 和升级前的 legacy backlog 都不会重复打扰。`review`/`revise` 支持手工恢复。repo、正文、标题或 labels 改变后旧 hash 立即失效；`submit` 在创建 Issue 前再次按 fingerprint 查重。
 
-Vibe Kit 不采集遥测，不保存原始代码、日志、Prompt、对话或环境变量，也不会自动创建 GitHub Issue。普通 public feedback 检出明显 secret 或安全内容时会被阻止。发行版默认把审核通过的反馈提交到 `mintgao/vibe-kit`；你仍需先完成 `gh` 登录，并对每一条 payload 执行 `review` 后携带当次 hash 明确确认 `submit`。如需提交到自己的 fork 或内部仓库，可在 `review` 和 `submit` 时用 `--repo owner/repository` 覆盖默认值。
+Vibe Kit 不采集遥测，不保存原始代码、日志、Prompt、对话或环境变量。检出明显 secret 会在落盘前阻止；标记为 security-sensitive 的候选可以本地保留，但不会生成公开 review hash，也不能执行远端 check/submit。发行版默认把审核通过的普通反馈提交到 `mintgao/vibe-kit`；每一条仍需绑定当次 report、repo 和 hash 的明确授权。如需提交到自己的 fork 或内部仓库，可在 `review`、`revise` 和 `submit` 时用 `--repo owner/repository` 覆盖默认值。
 
 ## 升级
 
@@ -91,7 +99,7 @@ Vibe Kit 不采集遥测，不保存原始代码、日志、Prompt、对话或�
 /path/to/newer-vibe-kit/bin/vibe upgrade /path/to/my-app
 ```
 
-不要用业务项目中旧的 `./bin/vibe upgrade` 期待它自动联网获取新版；v0.3 不包含网络更新器。
+不要用业务项目中旧的 `./bin/vibe upgrade` 期待它自动联网获取新版；Vibe Kit 不包含网络更新器。
 
 升级只管理：
 
@@ -124,7 +132,7 @@ Vibe Kit 采用“渠道获取、项目固定”：离线包/GitHub Release 是�
 
 ```bash
 ./bin/vibe package
-./bin/vibe validate-release dist/vibe-kit-0.3.0
+./bin/vibe validate-release dist/vibe-kit-0.4.0
 ```
 
 维护者从 clean commit 构建 GitHub Pre-release 时使用：
@@ -136,23 +144,23 @@ Vibe Kit 采用“渠道获取、项目固定”：离线包/GitHub Release 是�
 默认生成：
 
 ```text
-dist/vibe-kit-0.3.0/
-  vibe-kit-0.3.0.zip             完整离线安装 payload
-  vibe-kit-plugin-0.3.0.zip      bootstrap-only Codex Plugin + 同版本 payload
-  vibe-kit-distribution-0.3.0.zip GitHub/跨主机完整传输包
+dist/vibe-kit-0.4.0/
+  vibe-kit-0.4.0.zip             完整离线安装 payload
+  vibe-kit-plugin-0.4.0.zip      bootstrap-only Codex Plugin + 同版本 payload
+  vibe-kit-distribution-0.4.0.zip GitHub/跨主机完整传输包
   release-manifest.json          版本、协议、支持矩阵、来源与逐文件摘要
   SHA256SUMS                     传输完整性校验
   marketplace/                   可加入 Codex 的本地 marketplace
 ```
 
-从 GitHub 下载 `vibe-kit-distribution-0.3.0.zip` 后，先解压完整目录，再用已有可信 Vibe Kit checkout/Plugin 的 CLI 校验，然后解压安装 payload：
+从 GitHub 下载 `vibe-kit-distribution-0.4.0.zip` 后，先解压完整目录，再用已有可信 Vibe Kit checkout/Plugin 的 CLI 校验，然后解压安装 payload：
 
 ```bash
-unzip vibe-kit-distribution-0.3.0.zip
-/path/to/trusted-vibe-kit/bin/vibe validate-release vibe-kit-0.3.0
-unzip vibe-kit-0.3.0/vibe-kit-0.3.0.zip -d /path/to/vibe-kit-payload
-python3 /path/to/vibe-kit-payload/vibe-kit-0.3.0/bin/vibe plan adopt /path/to/existing-app
-python3 /path/to/vibe-kit-payload/vibe-kit-0.3.0/bin/vibe adopt /path/to/existing-app
+unzip vibe-kit-distribution-0.4.0.zip
+/path/to/trusted-vibe-kit/bin/vibe validate-release vibe-kit-0.4.0
+unzip vibe-kit-0.4.0/vibe-kit-0.4.0.zip -d /path/to/vibe-kit-payload
+python3 /path/to/vibe-kit-payload/vibe-kit-0.4.0/bin/vibe plan adopt /path/to/existing-app
+python3 /path/to/vibe-kit-payload/vibe-kit-0.4.0/bin/vibe adopt /path/to/existing-app
 ```
 
 新项目把 `adopt` 换成 `init`。Plugin 的本地灰度入口为：
@@ -164,7 +172,7 @@ codex plugin add vibe-kit@personal
 
 安装或升级项目后都运行项目内 `./bin/vibe doctor`，并开启新的 Codex 任务。Plugin 被卸载或换主机不会影响已经提交到项目仓库的 Vibe Kit。
 
-0.3.0 manifest 状态是 `prerelease`，绑定发布 commit 且要求 clean tree。完整发布说明见 [0.3.0 prerelease](docs/releases/0.3.0.md)、[distribution design](docs/work-items/20260827-distribution-architecture/design.md)、[ADR 0004](docs/decisions/0004-reproducible-release-contract.md) 与 [ADR 0005](docs/decisions/0005-bootstrap-plugin-capabilities.md)。
+0.4.0 manifest 状态是 `prerelease`，绑定发布 commit 且要求 clean tree。完整说明见 [0.4.0 prerelease](docs/releases/0.4.0.md)、[distribution design](docs/work-items/20260827-distribution-architecture/design.md)、[ADR 0004](docs/decisions/0004-reproducible-release-contract.md) 与 [ADR 0006](docs/decisions/0006-make-feedback-proactively-ask.md)。
 
 ## 当前限制
 
