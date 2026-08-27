@@ -2,7 +2,7 @@
 
 - ID: `20260827-v0-4-publication`
 - Size: `L`
-- Status: in-progress
+- Status: complete
 - Created: 2026-08-27
 
 ## Goal
@@ -24,14 +24,14 @@ Publish the completed proactive-feedback capability as a verifiable GitHub Pre-r
 
 ## Acceptance criteria
 
-- [ ] AC-1: release-facing documentation consistently identifies 0.4.0 as the current GitHub Pre-release and does not claim stable or Plugin Directory publication.
-- [ ] AC-2: all configured tests, Python 3.9 compatibility, `doctor`, bytecode compilation and official Skill/Plugin validators pass on the release source.
-- [ ] AC-3: a clean committed tree produces a `prerelease` manifest bound to the release commit, with core 2, feedback 2 and Codex adapter 2.
-- [ ] AC-4: annotated tag `v0.4.0` and remote `main` resolve to the accepted release commit.
-- [ ] AC-5: GitHub Release `v0.4.0` is public, non-draft, marked Pre-release and exposes the release ZIP, Plugin ZIP, distribution ZIP, manifest and checksums.
-- [ ] AC-6: remotely reported asset sizes and digests match local publication artifacts.
-- [ ] AC-7: a fresh isolated download passes outer checksum parity, nested checksums, `validate-release`, read-only install planning, installation and installed `doctor`.
-- [ ] AC-8: publication evidence records exact refs, URLs, digests, limitations, skipped checks and recovery/rollback boundaries.
+- [x] AC-1: release-facing documentation consistently identifies 0.4.0 as the current GitHub Pre-release and does not claim stable or Plugin Directory publication.
+- [x] AC-2: all configured tests, Python 3.9 compatibility, `doctor`, bytecode compilation and official Skill/Plugin validators pass on the release source.
+- [x] AC-3: a clean committed tree produces a `prerelease` manifest bound to the release commit, with core 2, feedback 2 and Codex adapter 2.
+- [x] AC-4: annotated tag `v0.4.0` resolves to the accepted release commit; remote `main` contains that commit and may advance only with the publication-evidence commit.
+- [x] AC-5: GitHub Release `v0.4.0` is public, non-draft, marked Pre-release and exposes the release ZIP, Plugin ZIP, distribution ZIP, manifest and checksums.
+- [x] AC-6: remotely reported asset sizes and digests match local publication artifacts.
+- [x] AC-7: a fresh isolated download passes outer checksum parity, nested checksums, `validate-release`, read-only install planning, installation and installed `doctor`.
+- [x] AC-8: publication evidence records exact refs, URLs, digests, limitations, skipped checks and recovery/rollback boundaries.
 
 ## Design and technical notes
 
