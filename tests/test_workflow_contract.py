@@ -153,8 +153,20 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_distribution_docs_disclose_static_behavior_limit(self) -> None:
         readme = (ROOT / "README.md").read_text()
-        self.assertIn("文档字符串测试不能替代这类行为证据", readme)
-        self.assertIn("当前不会解析 work-item 状态或机械阻止文件写入", readme)
+        chinese_readme = (ROOT / "README.zh-CN.md").read_text()
+        self.assertIn(
+            "Documentation string tests cannot replace this kind of behavioral evidence",
+            readme,
+        )
+        self.assertIn(
+            "does not currently parse work-item readiness or mechanically prevent file writes",
+            readme,
+        )
+        self.assertIn("文档字符串测试不能替代这类行为证据", chinese_readme)
+        self.assertIn(
+            "当前不会解析 work-item 状态或机械阻止文件写入",
+            chinese_readme,
+        )
 
 
 if __name__ == "__main__":
