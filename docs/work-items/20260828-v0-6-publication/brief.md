@@ -2,7 +2,7 @@
 
 - ID: `20260828-v0-6-publication`
 - Size: `L`
-- Status: release-readiness
+- Status: complete
 - Created: 2026-08-28
 
 ## Technical decision readiness
@@ -43,16 +43,16 @@ Publish the independently accepted Vibe Kit 0.6.0 upgrade/takeover candidate as 
 
 ## Acceptance criteria
 
-- [ ] AC-1: release-facing source, protocol, Plugin, changelog, release note, context, and docs identify 0.6.0 consistently without claiming stable status, automatic takeover, atomic upgrade, or unverified hosts/platforms.
-- [ ] AC-2: independent QA passes the focused predecessor suite, full configured suite, default `verify`, doctor, diff/JSON/bytecode checks, and negative migration/trust/race/symlink cases on the exact candidate.
-- [ ] AC-3: the official v0.5.0 and real-current-project upgrade acceptances remain reproducible and preserve all project-owned bytes; manual-new-task continuation remains the only positive live host claim.
-- [ ] AC-4: an actual Python 3.9 runtime passes compilation, the full suite, default verification, doctor, package, and release validation on the candidate. Linux is either executed or disclosed as an unverified Pre-release limitation rather than a product failure.
-- [ ] AC-5: a clean committed release source excludes `docs/work-items/20260827-permission-safe-atomic-upgrade/**` and its pending work-item index entry while leaving that unrelated development-checkout work untouched, then produces two byte-identical `prerelease` builds with validated direct, Plugin, distribution, manifest, and checksum outputs bound to the release commit.
-- [ ] AC-6: annotated tag `v0.6.0` resolves to the accepted release commit and remote `main` contains that commit.
-- [ ] AC-7: GitHub Release `v0.6.0` is public, non-draft, marked Pre-release, and exposes exactly `vibe-kit-0.6.0.zip`, `vibe-kit-plugin-0.6.0.zip`, `vibe-kit-distribution-0.6.0.zip`, `release-manifest.json`, and `SHA256SUMS`.
-- [ ] AC-8: remote asset state, size, and SHA-256 match the local publication files after read-back.
-- [ ] AC-9: fresh isolated public downloads pass outer and nested checksums and `validate-release`; the intact official v0.5.0 source checkout passes read-only plan, apply, target doctor, and project-byte preservation while its four known old project-test incompatibilities remain truthfully reported; the real-current-project fixture passes target default verification; fresh init/doctor, Plugin install smoke, and cross-channel identity checks pass.
-- [ ] AC-10: durable evidence records exact refs, URL, digests, checks, platform/host limitations, skipped gates, and the inspect-before-retry/non-destructive recovery boundary.
+- [x] AC-1: release-facing source, protocol, Plugin, changelog, release note, context, and docs identify 0.6.0 consistently without claiming stable status, automatic takeover, atomic upgrade, or unverified hosts/platforms.
+- [x] AC-2: independent QA passes the focused predecessor suite, full configured suite, default `verify`, doctor, diff/JSON/bytecode checks, and negative migration/trust/race/symlink cases on the exact candidate.
+- [x] AC-3: the official v0.5.0 and real-current-project upgrade acceptances remain reproducible and preserve all project-owned bytes; manual-new-task continuation remains the only positive live host claim.
+- [x] AC-4: an actual Python 3.9 runtime passes compilation, the full suite, default verification, doctor, package, and release validation on the candidate. Linux is either executed or disclosed as an unverified Pre-release limitation rather than a product failure.
+- [x] AC-5: a clean committed release source excludes `docs/work-items/20260827-permission-safe-atomic-upgrade/**` and its pending work-item index entry while leaving that unrelated development-checkout work untouched, then produces two byte-identical `prerelease` builds with validated direct, Plugin, distribution, manifest, and checksum outputs bound to the release commit.
+- [x] AC-6: annotated tag `v0.6.0` resolves to the accepted release commit and remote `main` contains that commit.
+- [x] AC-7: GitHub Release `v0.6.0` is public, non-draft, marked Pre-release, and exposes exactly `vibe-kit-0.6.0.zip`, `vibe-kit-plugin-0.6.0.zip`, `vibe-kit-distribution-0.6.0.zip`, `release-manifest.json`, and `SHA256SUMS`.
+- [x] AC-8: remote asset state, size, and SHA-256 match the local publication files after read-back.
+- [x] AC-9: fresh isolated public downloads pass outer and nested checksums and `validate-release`; the intact official v0.5.0 source checkout passes read-only plan, apply, target doctor, and project-byte preservation while its four known old project-test incompatibilities remain truthfully reported; the real-current-project fixture passes target default verification; fresh init/doctor, Plugin install smoke, and cross-channel identity checks pass.
+- [x] AC-10: durable evidence records exact refs, URL, digests, checks, platform/host limitations, skipped gates, and the inspect-before-retry/non-destructive recovery boundary.
 
 ## Design and technical notes
 
