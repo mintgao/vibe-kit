@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from unittest import mock
@@ -50,6 +51,19 @@ def copy_source(destination: Path) -> Path:
     return destination / "bin/vibe"
 
 
+def official_v050_source_fixture(destination: Path) -> Path:
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", "v0.5.0"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout
+    destination.mkdir(parents=True)
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+        bundle.extractall(destination)
+    return destination
+
+
 def load_cli_module():
     loader = importlib.machinery.SourceFileLoader("vibe_cli_test_module", str(CLI))
     spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -66,6 +80,47 @@ def file_snapshot(root: Path) -> dict:
         for path in root.rglob("*")
         if path.is_file()
     }
+
+
+def independent_activation_digest(root: Path) -> str:
+    contract = json.loads((root / "agent-install.json").read_text())
+    protocol = json.loads((root / ".vibe/core/protocol.json").read_text())
+    hashes = {}
+    for relative in contract["activation"]["activation_paths"]:
+        if relative == "AGENTS.md#managed-block":
+            text = (root / "AGENTS.md").read_text()
+            start = text.index("<!-- vibe-kit:managed:start -->")
+            end = text.index("<!-- vibe-kit:managed:end -->", start) + len(
+                "<!-- vibe-kit:managed:end -->"
+            )
+            content = text[start:end].encode()
+        elif relative == "agent-install.json":
+            normalized = json.loads((root / relative).read_text())
+            normalized["activation"]["activation_set_sha256"] = "0" * 64
+            content = json.dumps(
+                normalized,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        else:
+            content = (root / relative).read_bytes()
+        hashes[relative] = hashlib.sha256(content).hexdigest()
+    fingerprint = {
+        "kit_version": contract["kit_version"],
+        "core_protocol": protocol["core_protocol"],
+        "agent_install_schema": contract["schema_version"],
+        "agent_install_protocol": contract["protocol_version"],
+        "adapter_name": contract["adapter"]["name"],
+        "adapter_protocol": contract["adapter"]["protocol"],
+    }
+    canonical = json.dumps(
+        {"fingerprint": fingerprint, "path_hashes": dict(sorted(hashes.items()))},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def refresh_release_checksums(release_dir: Path, artifact_relative: str) -> None:
@@ -257,6 +312,17 @@ class VibeCliTests(unittest.TestCase):
             self.assertTrue(install_receipt["writes_performed"])
             self.assertEqual(install_receipt["onboarding"]["status"], "pending")
             self.assertEqual(install_receipt["onboarding"]["kind"], "persisted")
+            self.assertRegex(
+                install_receipt["source"]["payload_tree_sha256"], r"^[0-9a-f]{64}$"
+            )
+            self.assertEqual(install_receipt["activation"]["state"], "not-proven")
+            self.assertFalse(
+                install_receipt["activation"]["same_task_reload_claimed"]
+            )
+            self.assertFalse(
+                install_receipt["activation"]["automatic_successor_handoff_claimed"]
+            )
+            self.assertNotIn("ready", install_receipt)
             manifest = json.loads((target / ".vibe/manifest.json").read_text())
             self.assertEqual(manifest["source"], install_receipt["source"])
             self.assertEqual(manifest["source"]["ref"], f"v{KIT_VERSION}")
@@ -377,6 +443,416 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(blocked_result["status"], "blocked")
             self.assertIn(".codex/agents/vibe-pm.toml", blocked_result["recovery"]["paths"])
 
+    def test_upgrade_installs_pre_protocol_takeover_contracts_and_preflights_collisions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            old_source = base / "old-source"
+            old_cli = copy_source(old_source)
+            (old_source / ".vibe/core/version").write_text("0.5.0\n")
+            target = base / "old-project"
+            installed = run_cli(old_cli, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+
+            manifest_path = target / ".vibe/manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            for relative in ("AGENT_INSTALL.md", "agent-install.json"):
+                (target / relative).unlink()
+                manifest["managed_files"].pop(relative, None)
+                manifest["activation"]["path_hashes"].pop(relative, None)
+                manifest["activation"]["paths"].remove(relative)
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+            before = file_snapshot(target)
+            plan = run_cli(CLI, "plan", "upgrade", str(target), "--format", "json")
+            self.assertEqual(plan.returncode, 0, plan.stderr)
+            self.assertEqual(file_snapshot(target), before)
+            entries = {item["path"]: item["action"] for item in json.loads(plan.stdout)["entries"]}
+            self.assertEqual(entries["AGENT_INSTALL.md"], "create")
+            self.assertEqual(entries["agent-install.json"], "create")
+
+            upgraded = run_cli(CLI, "upgrade", str(target), "--format", "json")
+            self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
+            upgraded_manifest = json.loads(manifest_path.read_text())
+            for relative in ("AGENT_INSTALL.md", "agent-install.json"):
+                self.assertTrue((target / relative).is_file())
+                self.assertIn(relative, upgraded_manifest["managed_files"])
+                self.assertIn(relative, upgraded_manifest["activation"]["paths"])
+            doctor = run_cli(target / "bin/vibe", "doctor", str(target), "--format", "json")
+            self.assertEqual(doctor.returncode, 0, doctor.stdout)
+
+            collision = base / "collision"
+            collision.mkdir()
+            (collision / "agent-install.json").write_text('{"project": "owned"}\n')
+            collision_plan = run_cli(
+                CLI, "plan", "adopt", str(collision), "--format", "json"
+            )
+            self.assertEqual(collision_plan.returncode, 2)
+            self.assertIn(
+                "agent-install.json",
+                json.loads(collision_plan.stdout)["recovery"]["paths"],
+            )
+
+    def test_official_v050_complete_contract_set_migrates_and_is_adopted(self) -> None:
+        expected_paths = ["AGENT_INSTALL.md", "agent-install.json"]
+        with tempfile.TemporaryDirectory() as temporary:
+            project = official_v050_source_fixture(Path(temporary) / "project")
+            (project / "business-untracked.txt").write_text("preserve me\n")
+            before = file_snapshot(project)
+            preserved_before = {
+                relative: content
+                for relative, content in before.items()
+                if relative == "business-untracked.txt"
+                or relative.startswith("docs/")
+                or relative
+                in {
+                    ".vibe/project.yaml",
+                    ".vibe/project-rules.md",
+                    ".vibe/onboarding.json",
+                }
+            }
+
+            planned = run_cli(
+                CLI,
+                "plan",
+                "upgrade",
+                str(project),
+                "--format",
+                "json",
+                "--source-type",
+                "local-payload",
+                "--source-ref",
+                "0.6.0",
+            )
+            self.assertEqual(planned.returncode, 0, planned.stderr)
+            self.assertEqual(file_snapshot(project), before)
+            plan_receipt = json.loads(planned.stdout)
+            self.assertEqual(plan_receipt["schema_version"], 1)
+            self.assertEqual(plan_receipt["status"], "safe")
+            migration_entries = {
+                item["path"]: item
+                for item in plan_receipt["entries"]
+                if item["path"] in expected_paths
+            }
+            self.assertEqual(set(migration_entries), set(expected_paths))
+            for relative in expected_paths:
+                self.assertEqual(migration_entries[relative]["action"], "update")
+                self.assertEqual(
+                    migration_entries[relative]["note"],
+                    "authenticated predecessor migration "
+                    "v0.5.0-unmanaged-agent-contracts-v1; complete set",
+                )
+            migration = plan_receipt["compatibility_migrations"]
+            self.assertEqual(len(migration), 1)
+            self.assertEqual(migration[0]["phase"], "planned")
+            self.assertEqual(migration[0]["paths"], expected_paths)
+            self.assertEqual(
+                migration[0]["registry_sha256"],
+                "6cbee96e5da8b4d4b5c87403e710aac0740041027a00466f288a670834d1967d",
+            )
+
+            upgraded = run_cli(
+                CLI,
+                "upgrade",
+                str(project),
+                "--format",
+                "json",
+                "--source-type",
+                "local-payload",
+                "--source-ref",
+                "0.6.0",
+            )
+            self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
+            receipt = json.loads(upgraded.stdout)
+            self.assertEqual(receipt["schema_version"], 1)
+            self.assertEqual(receipt["status"], "success")
+            self.assertEqual(receipt["write_state"], "project-files-written")
+            self.assertEqual(receipt["compatibility_migrations"][0]["phase"], "applied")
+            self.assertEqual(receipt["activation"]["state"], "not-proven")
+            self.assertTrue(receipt["activation"]["manual_new_task_supported"])
+            self.assertFalse(receipt["activation"]["same_task_reload_claimed"])
+            self.assertFalse(
+                receipt["activation"]["automatic_successor_handoff_claimed"]
+            )
+
+            after = file_snapshot(project)
+            preserved_after = {
+                relative: content
+                for relative, content in after.items()
+                if relative in preserved_before
+            }
+            self.assertEqual(preserved_after, preserved_before)
+            manifest = json.loads((project / ".vibe/manifest.json").read_text())
+            contract = json.loads((ROOT / "agent-install.json").read_text())
+            for relative in expected_paths:
+                self.assertEqual(
+                    manifest["managed_files"][relative],
+                    hashlib.sha256((ROOT / relative).read_bytes()).hexdigest(),
+                )
+                self.assertIn(relative, manifest["activation"]["paths"])
+            self.assertEqual(
+                manifest["activation"]["activation_set_sha256"],
+                contract["activation"]["activation_set_sha256"],
+            )
+            self.assertNotIn("compatibility_migrations", manifest)
+            doctor = run_cli(
+                project / "bin/vibe", "doctor", str(project), "--format", "json"
+            )
+            self.assertEqual(doctor.returncode, 0, doctor.stdout)
+            self.assertEqual(json.loads(doctor.stdout)["status"], "healthy")
+
+    def test_predecessor_source_is_excluded_and_target_channels_have_parity(self) -> None:
+        source_values = (
+            "absent",
+            None,
+            ["arbitrary", {"nested": True}],
+            {"type": "github-release", "ref": "official-looking", "extra": 7},
+        )
+        channel_arguments = (
+            ("local-payload", ("--source-ref", "0.6.0")),
+            (
+                "github-release",
+                ("--source-ref", "v0.6.0", "--artifact-sha256", "a" * 64),
+            ),
+            (
+                "offline-bundle",
+                ("--source-ref", "v0.6.0", "--artifact-sha256", "b" * 64),
+            ),
+            ("plugin-bundled", ("--source-ref", "v0.6.0")),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            for index, source_value in enumerate(source_values):
+                with self.subTest(source=source_value):
+                    project = official_v050_source_fixture(base / f"source-{index}")
+                    manifest_path = project / ".vibe/manifest.json"
+                    manifest = json.loads(manifest_path.read_text())
+                    if source_value == "absent":
+                        manifest.pop("source", None)
+                    else:
+                        manifest["source"] = source_value
+                    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+                    decisions = []
+                    for source_type, extra in channel_arguments:
+                        result = run_cli(
+                            CLI,
+                            "plan",
+                            "upgrade",
+                            str(project),
+                            "--format",
+                            "json",
+                            "--source-type",
+                            source_type,
+                            *extra,
+                        )
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        receipt = json.loads(result.stdout)
+                        decisions.append(
+                            (
+                                receipt["status"],
+                                [
+                                    (item["path"], item["action"])
+                                    for item in receipt["entries"]
+                                    if item["path"]
+                                    in {"AGENT_INSTALL.md", "agent-install.json"}
+                                ],
+                                receipt["compatibility_migrations"],
+                            )
+                        )
+                    self.assertTrue(all(value == decisions[0] for value in decisions))
+            for index, (source_type, extra) in enumerate(channel_arguments):
+                with self.subTest(apply_channel=source_type):
+                    project = official_v050_source_fixture(base / f"apply-{index}")
+                    result = run_cli(
+                        CLI,
+                        "upgrade",
+                        str(project),
+                        "--format",
+                        "json",
+                        "--source-type",
+                        source_type,
+                        *extra,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    receipt = json.loads(result.stdout)
+                    self.assertEqual(receipt["status"], "success")
+                    self.assertEqual(
+                        receipt["compatibility_migrations"][0]["phase"], "applied"
+                    )
+
+    def test_predecessor_contract_set_and_installation_fail_closed(self) -> None:
+        migration_paths = {"AGENT_INSTALL.md", "agent-install.json"}
+
+        def assert_paired_conflict(project: Path) -> None:
+            before = file_snapshot(project)
+            result = run_cli(
+                CLI, "plan", "upgrade", str(project), "--format", "json"
+            )
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(file_snapshot(project), before)
+            receipt = json.loads(result.stdout)
+            entries = {
+                item["path"]: item["action"] for item in receipt.get("entries", [])
+            }
+            self.assertTrue(migration_paths <= set(entries), receipt)
+            self.assertEqual(
+                {entries[path] for path in migration_paths}, {"conflict"}, receipt
+            )
+            self.assertTrue(
+                migration_paths <= set(receipt["recovery"]["paths"]), receipt
+            )
+
+        mutations = {
+            "missing-guide": lambda root: (root / "AGENT_INSTALL.md").unlink(),
+            "modified-guide": lambda root: (root / "AGENT_INSTALL.md").write_text(
+                "modified\n"
+            ),
+            "directory-guide": lambda root: (
+                (root / "AGENT_INSTALL.md").unlink(),
+                (root / "AGENT_INSTALL.md").mkdir(),
+            ),
+            "symlink-guide": lambda root: (
+                (root / "AGENT_INSTALL.md").unlink(),
+                (root / "AGENT_INSTALL.md").symlink_to("agent-install.json"),
+            ),
+            "broken-guide": lambda root: (
+                (root / "AGENT_INSTALL.md").unlink(),
+                (root / "AGENT_INSTALL.md").symlink_to("missing-guide"),
+            ),
+            "missing-agent-json": lambda root: (root / "agent-install.json").unlink(),
+            "modified-agent-json": lambda root: (root / "agent-install.json").write_text(
+                "{}\n"
+            ),
+            "directory-agent-json": lambda root: (
+                (root / "agent-install.json").unlink(),
+                (root / "agent-install.json").mkdir(),
+            ),
+            "symlink-agent-json": lambda root: (
+                (root / "agent-install.json").unlink(),
+                (root / "agent-install.json").symlink_to("AGENT_INSTALL.md"),
+            ),
+            "broken-agent-json": lambda root: (
+                (root / "agent-install.json").unlink(),
+                (root / "agent-install.json").symlink_to("missing-agent-json"),
+            ),
+            "mixed-target-agent-json": lambda root: (root / "agent-install.json").write_bytes(
+                (ROOT / "agent-install.json").read_bytes()
+            ),
+            "wrong-version": lambda root: (root / ".vibe/version").write_text("0.4.0\n"),
+            "managed-file-modified": lambda root: (
+                root / ".vibe/core/quality-gates.md"
+            ).write_text("modified\n"),
+            "agents-missing": lambda root: (root / "AGENTS.md").unlink(),
+            "agents-modified": lambda root: (root / "AGENTS.md").write_text(
+                (root / "AGENTS.md").read_text().replace(
+                    "<!-- vibe-kit:managed:start -->",
+                    "<!-- vibe-kit:managed:start -->\nChanged managed bytes.",
+                    1,
+                )
+            ),
+            "agents-directory": lambda root: (
+                (root / "AGENTS.md").unlink(),
+                (root / "AGENTS.md").mkdir(),
+            ),
+            "agents-symlink": lambda root: (
+                (root / "AGENTS.md").rename(root / "AGENTS.real.md"),
+                (root / "AGENTS.md").symlink_to("AGENTS.real.md"),
+            ),
+            "agents-broken-symlink": lambda root: (
+                (root / "AGENTS.md").unlink(),
+                (root / "AGENTS.md").symlink_to("missing-agents"),
+            ),
+            "malformed-manifest": lambda root: (
+                root / ".vibe/manifest.json"
+            ).write_text("{not-json\n"),
+            "duplicate-key-manifest": lambda root: (
+                root / ".vibe/manifest.json"
+            ).write_text(
+                (root / ".vibe/manifest.json")
+                .read_text()
+                .replace("{", '{"schema_version": 1,', 1)
+            ),
+            "altered-install-identity": lambda root: self._set_manifest_field(
+                root, "agents_block_hash", "0" * 64
+            ),
+            "official-looking-source-wrong-version": lambda root: (
+                (root / ".vibe/version").write_text("0.4.0\n"),
+                self._set_manifest_field(
+                    root,
+                    "source",
+                    {"type": "github-release", "ref": "v0.5.0"},
+                ),
+            ),
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            for name, mutate in mutations.items():
+                with self.subTest(mutation=name):
+                    project = official_v050_source_fixture(base / name)
+                    mutate(project)
+                    assert_paired_conflict(project)
+
+    def test_predecessor_intermediate_symlinks_and_apply_races_fail_closed(self) -> None:
+        migration_paths = {"AGENT_INSTALL.md", "agent-install.json"}
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            for relative in (".vibe", ".vibe/core", ".agents", ".agents/skills", ".codex"):
+                with self.subTest(intermediate=relative):
+                    project = official_v050_source_fixture(
+                        base / ("link-" + relative.replace("/", "-").lstrip("."))
+                    )
+                    original = project / relative
+                    moved = original.with_name(original.name + "-real")
+                    original.rename(moved)
+                    original.symlink_to(moved.name, target_is_directory=True)
+                    result = run_cli(
+                        CLI, "plan", "upgrade", str(project), "--format", "json"
+                    )
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    receipt = json.loads(result.stdout)
+                    self.assertTrue(
+                        migration_paths <= set(receipt["recovery"]["paths"]), receipt
+                    )
+
+            module = load_cli_module()
+            pre_race = official_v050_source_fixture(base / "pre-race")
+            stdout = io.StringIO()
+            with mock.patch.object(
+                module,
+                "predecessor_migration_decision",
+                side_effect=("eligible", "conflict"),
+            ), contextlib.redirect_stdout(stdout):
+                code = module.upgrade(
+                    pre_race, "json", "local-payload", "0.6.0", None
+                )
+            self.assertEqual(code, 2)
+            pre_receipt = json.loads(stdout.getvalue())
+            self.assertEqual(pre_receipt["write_state"], "conflict-evidence-written")
+            self.assertNotIn("compatibility_migrations", pre_receipt)
+            self.assertTrue(migration_paths <= set(pre_receipt["conflicts"]))
+
+            post_race = official_v050_source_fixture(base / "post-race")
+            original_atomic_copy = module.atomic_copy
+
+            def mutate_second_member(source: Path, destination: Path) -> None:
+                original_atomic_copy(source, destination)
+                if destination.name == "AGENT_INSTALL.md":
+                    (post_race / "agent-install.json").write_text("race\n")
+
+            stdout = io.StringIO()
+            with mock.patch.object(
+                module, "atomic_copy", side_effect=mutate_second_member
+            ), contextlib.redirect_stdout(stdout):
+                code = module.upgrade(
+                    post_race, "json", "local-payload", "0.6.0", None
+                )
+            self.assertEqual(code, 2)
+            post_receipt = json.loads(stdout.getvalue())
+            self.assertEqual(post_receipt["write_state"], "unknown-partial")
+            self.assertEqual(
+                post_receipt["compatibility_migrations"][0]["phase"],
+                "unknown-partial",
+            )
+
     def test_adopt_receipt_reports_preserved_complete_onboarding(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "existing"
@@ -465,12 +941,29 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(validated_json.returncode, 0, validated_json.stderr)
             validation_receipt = json.loads(validated_json.stdout)
             self.assertEqual(validation_receipt["status"], "valid")
-            self.assertEqual(validation_receipt["agent_install_protocol"], 1)
+            self.assertEqual(validation_receipt["agent_install_protocol"], 2)
             release_metadata = json.loads((first / "release-manifest.json").read_text())
-            self.assertEqual(release_metadata["core_protocol"], 3)
+            self.assertEqual(release_metadata["core_protocol"], 4)
             self.assertEqual(release_metadata["feedback_protocol"], 2)
-            self.assertEqual(release_metadata["agent_install_protocol"], 1)
-            self.assertEqual(release_metadata["adapters"]["codex"]["version"], 3)
+            self.assertEqual(release_metadata["agent_install_schema"], 2)
+            self.assertEqual(release_metadata["agent_install_protocol"], 2)
+            self.assertEqual(release_metadata["takeover_schema"], 1)
+            self.assertEqual(release_metadata["maintenance_bridge_schema"], 1)
+            self.assertEqual(
+                release_metadata["predecessor_migrations"],
+                json.loads((ROOT / ".vibe/core/protocol.json").read_text())[
+                    "predecessor_migrations"
+                ],
+            )
+            self.assertEqual(
+                release_metadata["takeover_contract_registry_sha256"],
+                json.loads((ROOT / ".vibe/core/protocol.json").read_text())[
+                    "takeover_contract_registry_sha256"
+                ],
+            )
+            self.assertRegex(release_metadata["payload_tree_sha256"], r"^[0-9a-f]{64}$")
+            self.assertRegex(release_metadata["activation_set_sha256"], r"^[0-9a-f]{64}$")
+            self.assertEqual(release_metadata["adapters"]["codex"]["version"], 4)
 
             release_unpack = base / "release-unpacked"
             with zipfile.ZipFile(first / KIT_ARCHIVE) as archive:
@@ -485,8 +978,25 @@ class VibeCliTests(unittest.TestCase):
                 (release_root / ".codex/agents/vibe-tech-lead.toml").is_file()
             )
             install_contract = json.loads((release_root / "agent-install.json").read_text())
-            self.assertEqual(install_contract["protocol_version"], 1)
+            self.assertEqual(install_contract["schema_version"], 2)
+            self.assertEqual(install_contract["protocol_version"], 2)
             self.assertEqual(install_contract["kit_version"], KIT_VERSION)
+            self.assertEqual(
+                install_contract["activation"]["current_repository_capability"],
+                "manual-fallback-only",
+            )
+            self.assertEqual(
+                install_contract["activation"]["activation_set_sha256"],
+                release_metadata["activation_set_sha256"],
+            )
+            self.assertEqual(
+                independent_activation_digest(release_root),
+                release_metadata["activation_set_sha256"],
+            )
+            self.assertEqual(
+                install_contract["takeover"]["contract_registry_sha256"],
+                release_metadata["takeover_contract_registry_sha256"],
+            )
             feedback_config = json.loads(
                 (release_root / ".vibe/core/feedback.json").read_text()
             )
@@ -506,6 +1016,8 @@ class VibeCliTests(unittest.TestCase):
                 ".codex/agents/vibe-tech-lead.toml",
                 release_manifest["managed_files"],
             )
+            self.assertIn("AGENT_INSTALL.md", release_manifest["managed_files"])
+            self.assertIn("agent-install.json", release_manifest["managed_files"])
 
             existing_target = base / "existing-from-release"
             existing_target.mkdir()
@@ -544,6 +1056,13 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(plugin_doctor.returncode, 0, plugin_doctor.stderr)
             plugin_manifest = json.loads((plugin_target / ".vibe/manifest.json").read_text())
             self.assertEqual(release_manifest["managed_files"], plugin_manifest["managed_files"])
+
+            (plugin_unpack / "vibe-kit/payload/README.md").write_text("tampered\n")
+            rejected_plugin = run_cli(
+                wrapper, "plan", "init", str(base / "tampered-plugin-target")
+            )
+            self.assertEqual(rejected_plugin.returncode, 2)
+            self.assertIn("payload identity does not match", rejected_plugin.stderr)
 
             old_payload = base / "vibe-kit-0.2-fixture"
             shutil.copytree(release_root, old_payload)
@@ -642,11 +1161,80 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(drift_result.returncode, 1)
             self.assertIn("Plugin name/version does not match release", drift_result.stderr)
 
+            identity_drifted = base / "identity-drifted-release"
+            shutil.copytree(source_release, identity_drifted)
+            identity_plugin_zip = identity_drifted / PLUGIN_ARCHIVE
+            with zipfile.ZipFile(identity_plugin_zip, "r") as archive:
+                identity_files = [
+                    (info.filename, archive.read(info))
+                    for info in archive.infolist()
+                ]
+            with zipfile.ZipFile(
+                identity_plugin_zip, "w", compression=zipfile.ZIP_DEFLATED
+            ) as archive:
+                for name, content in identity_files:
+                    if name == "vibe-kit/.codex-plugin/plugin.json":
+                        plugin = json.loads(content.decode("utf-8"))
+                        plugin["payload_tree_sha256"] = "0" * 64
+                        content = json.dumps(plugin).encode("utf-8")
+                    archive.writestr(name, content)
+            refresh_release_checksums(identity_drifted, PLUGIN_ARCHIVE)
+            identity_result = run_cli(
+                CLI, "validate-release", str(identity_drifted)
+            )
+            self.assertEqual(identity_result.returncode, 1)
+            self.assertIn(
+                "Plugin payload-tree identity does not match release payload",
+                identity_result.stderr,
+            )
+
             unknown_state_contract = json.loads(
                 (ROOT / "agent-install.json").read_text()
             )
             unknown_state_contract["cli"]["command_statuses"]["init"].append(
                 "unknown-success"
+            )
+            unknown_takeover_contract = json.loads(
+                (ROOT / "agent-install.json").read_text()
+            )
+            unknown_takeover_contract["takeover"]["reason_codes"].append(
+                "unknown-reason"
+            )
+            broken_bridge_contract = json.loads(
+                (ROOT / "agent-install.json").read_text()
+            )
+            broken_bridge_contract["maintenance_bridge"][
+                "maximum_installed_kit_version_exclusive"
+            ] = "9.0.0"
+            diagnostic_drift_contract = json.loads(
+                (ROOT / "agent-install.json").read_text()
+            )
+            diagnostic_drift_contract["cli"]["doctor"]["warning_registry"][
+                "managed-file-hash-mismatch"
+            ] = "non-blocking"
+            verify_drift_contract = json.loads(
+                (ROOT / "agent-install.json").read_text()
+            )
+            verify_drift_contract["cli"]["verify"]["skipped_reasons"].append(
+                "unknown-skip"
+            )
+            activation_drift_contract = json.loads(
+                (ROOT / "agent-install.json").read_text()
+            )
+            activation_drift_contract["activation"]["activation_set_sha256"] = (
+                "0" * 64
+            )
+            registry_drift_contract = json.loads(
+                (ROOT / "agent-install.json").read_text()
+            )
+            registry_drift_contract["takeover"]["contract_registry"][
+                "ready_invariants"
+            ].remove("overall-ready-iff-ready-stage-satisfied")
+            duplicate_key_contract = (
+                (ROOT / "agent-install.json")
+                .read_text()
+                .replace("{", '{"schema_version": 2,', 1)
+                .encode()
             )
             contract_cases = {
                 "missing": (
@@ -654,6 +1242,10 @@ class VibeCliTests(unittest.TestCase):
                     "release ZIP is missing required payload file: agent-install.json",
                 ),
                 "malformed": (b"{not-json\n", "agent-install.json is malformed"),
+                "duplicate-key": (
+                    duplicate_key_contract,
+                    "agent-install.json is malformed",
+                ),
                 "version-drift": (
                     json.dumps(
                         {
@@ -675,6 +1267,30 @@ class VibeCliTests(unittest.TestCase):
                 "unknown-command-state": (
                     json.dumps(unknown_state_contract).encode(),
                     "agent install contract command statuses are unsupported",
+                ),
+                "unknown-takeover-reason": (
+                    json.dumps(unknown_takeover_contract).encode(),
+                    "agent install takeover enum is unsupported: reason_codes",
+                ),
+                "maintenance-bridge-drift": (
+                    json.dumps(broken_bridge_contract).encode(),
+                    "agent install maintenance bridge is unsupported",
+                ),
+                "diagnostic-effect-drift": (
+                    json.dumps(diagnostic_drift_contract).encode(),
+                    "agent install doctor diagnostic contract is unsupported",
+                ),
+                "verify-reason-drift": (
+                    json.dumps(verify_drift_contract).encode(),
+                    "agent install verify contract is unsupported",
+                ),
+                "activation-identity-drift": (
+                    json.dumps(activation_drift_contract).encode(),
+                    "agent install activation-set identity does not match payload",
+                ),
+                "takeover-registry-drift": (
+                    json.dumps(registry_drift_contract).encode(),
+                    "agent install takeover contract registry is unsupported",
                 ),
             }
             contract_entry = f"{KIT_ROOT}/agent-install.json"
@@ -705,6 +1321,105 @@ class VibeCliTests(unittest.TestCase):
                     self.assertEqual(contract_result.returncode, 1)
                     contract_receipt = json.loads(contract_result.stdout)
                     self.assertIn(expected_error, contract_receipt["errors"])
+
+    def test_predecessor_migration_mirrors_fail_closed_across_plan_and_release(self) -> None:
+        mirror = {
+            "schema_version": 1,
+            "registry_sha256": "6cbee96e5da8b4d4b5c87403e710aac0740041027a00466f288a670834d1967d",
+            "authority": "target-cli-compiled",
+            "modes": ["replace-and-adopt-complete-set"],
+        }
+        invalid_values = {
+            "missing": "missing",
+            "null": None,
+            "wrong-type": [],
+            "extra-field": {**mirror, "extra": True},
+            "wrong-digest": {**mirror, "registry_sha256": "0" * 64},
+            "uppercase-digest": {
+                **mirror,
+                "registry_sha256": mirror["registry_sha256"].upper(),
+            },
+            "wrong-authority": {**mirror, "authority": "installed-contract"},
+            "wrong-mode": {**mirror, "modes": ["adopt-one-file"]},
+            "boolean-schema": {**mirror, "schema_version": True},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            predecessor = official_v050_source_fixture(base / "predecessor")
+            predecessor_before = file_snapshot(predecessor)
+            for name, invalid in invalid_values.items():
+                with self.subTest(target_agent_mirror=name):
+                    source = base / f"source-{name}"
+                    cli = copy_source(source)
+                    contract_path = source / "agent-install.json"
+                    contract = json.loads(contract_path.read_text())
+                    if invalid == "missing":
+                        contract["maintenance_bridge"].pop("predecessor_migrations")
+                    else:
+                        contract["maintenance_bridge"]["predecessor_migrations"] = invalid
+                    contract_path.write_text(json.dumps(contract, indent=2) + "\n")
+                    result = run_cli(
+                        cli,
+                        "plan",
+                        "upgrade",
+                        str(predecessor),
+                        "--format",
+                        "json",
+                    )
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertEqual(json.loads(result.stdout)["status"], "error")
+                    self.assertEqual(file_snapshot(predecessor), predecessor_before)
+
+            divergent = base / "source-divergent-core"
+            divergent_cli = copy_source(divergent)
+            protocol_path = divergent / ".vibe/core/protocol.json"
+            protocol = json.loads(protocol_path.read_text())
+            protocol["predecessor_migrations"] = {
+                **mirror,
+                "registry_sha256": "0" * 64,
+            }
+            protocol_path.write_text(json.dumps(protocol, indent=2) + "\n")
+            result = run_cli(
+                divergent_cli,
+                "plan",
+                "upgrade",
+                str(predecessor),
+                "--format",
+                "json",
+            )
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(file_snapshot(predecessor), predecessor_before)
+
+            release = base / "release"
+            built = run_cli(CLI, "package", "--output", str(release))
+            self.assertEqual(built.returncode, 0, built.stderr)
+            for name, invalid in invalid_values.items():
+                with self.subTest(release_manifest_mirror=name):
+                    changed = base / f"release-{name}"
+                    shutil.copytree(release, changed)
+                    manifest_path = changed / "release-manifest.json"
+                    manifest = json.loads(manifest_path.read_text())
+                    if invalid == "missing":
+                        manifest.pop("predecessor_migrations")
+                    else:
+                        manifest["predecessor_migrations"] = invalid
+                    manifest_path.write_text(
+                        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True)
+                        + "\n"
+                    )
+                    refresh_release_checksums(changed, "release-manifest.json")
+                    validation = run_cli(
+                        CLI,
+                        "validate-release",
+                        str(changed),
+                        "--format",
+                        "json",
+                    )
+                    self.assertEqual(validation.returncode, 1, validation.stderr)
+                    self.assertIn(
+                        "release predecessor-migration registry mirror is unsupported",
+                        json.loads(validation.stdout)["errors"],
+                    )
 
     def test_prerelease_package_requires_clean_commit_and_records_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -890,6 +1605,20 @@ class VibeCliTests(unittest.TestCase):
             cli_two = copy_source(source_two)
             (source_one / ".vibe/core/version").write_text("0.1.0\n")
             (source_two / ".vibe/core/version").write_text("0.2.0\n")
+            source_one_contract_path = source_one / "agent-install.json"
+            source_one_contract = json.loads(source_one_contract_path.read_text())
+            source_one_contract["kit_version"] = "0.1.0"
+            source_one_contract_path.write_text(
+                json.dumps(source_one_contract, ensure_ascii=False, indent=2, sort_keys=True)
+                + "\n"
+            )
+            source_one_contract["activation"]["activation_set_sha256"] = (
+                independent_activation_digest(source_one)
+            )
+            source_one_contract_path.write_text(
+                json.dumps(source_one_contract, ensure_ascii=False, indent=2, sort_keys=True)
+                + "\n"
+            )
 
             installed = run_cli(cli_one, "init", str(target))
             self.assertEqual(installed.returncode, 0, installed.stderr)
@@ -914,6 +1643,20 @@ class VibeCliTests(unittest.TestCase):
                     "Do not claim completion without relevant verification evidence.",
                     "Do not claim completion without relevant verification evidence. Upgraded rule.",
                 )
+            )
+            source_two_contract_path = source_two / "agent-install.json"
+            source_two_contract = json.loads(source_two_contract_path.read_text())
+            source_two_contract["kit_version"] = "0.2.0"
+            source_two_contract_path.write_text(
+                json.dumps(source_two_contract, ensure_ascii=False, indent=2, sort_keys=True)
+                + "\n"
+            )
+            source_two_contract["activation"]["activation_set_sha256"] = (
+                independent_activation_digest(source_two)
+            )
+            source_two_contract_path.write_text(
+                json.dumps(source_two_contract, ensure_ascii=False, indent=2, sort_keys=True)
+                + "\n"
             )
             upgraded = run_cli(cli_two, "upgrade", str(target), "--format", "json")
             self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
@@ -983,6 +1726,89 @@ class VibeCliTests(unittest.TestCase):
             self.assertIn("WARN: locally modified managed file", doctor.stdout)
             self.assertIn("Version integrity: OK", doctor.stdout)
 
+    def test_doctor_json_classifies_activation_and_stale_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "diagnostic-project"
+            installed = run_cli(CLI, "init", str(target), "--format", "json")
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+
+            healthy = run_cli(
+                target / "bin/vibe", "doctor", str(target), "--format", "json"
+            )
+            self.assertEqual(healthy.returncode, 0, healthy.stderr)
+            receipt = json.loads(healthy.stdout)
+            self.assertEqual(receipt["status"], "healthy")
+            self.assertEqual(receipt["diagnostics"], [])
+            self.assertEqual(receipt["activation"]["status"], "match")
+            self.assertEqual(
+                receipt["activation"]["actual_activation_set_sha256"],
+                receipt["activation"]["expected_activation_set_sha256"],
+            )
+            self.assertRegex(receipt["manifest_sha256"], r"^[0-9a-f]{64}$")
+            self.assertEqual(receipt["target_fingerprint"]["kit_version"], KIT_VERSION)
+            self.assertEqual(receipt["target_fingerprint"]["core_protocol"], 4)
+            self.assertEqual(receipt["target_fingerprint"]["agent_install_schema"], 2)
+            self.assertEqual(receipt["target_fingerprint"]["manifest_sha256"], receipt["manifest_sha256"])
+
+            quality = target / ".vibe/core/quality-gates.md"
+            original_quality = quality.read_bytes()
+            quality.write_bytes(original_quality + b"\nlocal change\n")
+            changed = run_cli(
+                target / "bin/vibe", "doctor", str(target), "--format", "json"
+            )
+            self.assertEqual(changed.returncode, 0, changed.stderr)
+            changed_receipt = json.loads(changed.stdout)
+            self.assertEqual(changed_receipt["status"], "warning")
+            self.assertEqual(changed_receipt["activation"]["status"], "mismatch")
+            diagnostic = next(
+                item
+                for item in changed_receipt["diagnostics"]
+                if item["code"] == "managed-file-hash-mismatch"
+            )
+            self.assertEqual(diagnostic["level"], "warning")
+            self.assertEqual(diagnostic["readiness_effect"], "blocking")
+            self.assertEqual(diagnostic["path"], ".vibe/core/quality-gates.md")
+            self.assertEqual(changed.stderr, "")
+            quality.write_bytes(original_quality)
+
+            stale_skill = target / ".agents/skills/vibe-retired/SKILL.md"
+            stale_skill.parent.mkdir(parents=True)
+            stale_skill.write_text(
+                "---\nname: vibe-retired\ndescription: Retired fixture skill.\n---\n"
+            )
+            stale = run_cli(
+                target / "bin/vibe", "doctor", str(target), "--format", "json"
+            )
+            self.assertEqual(stale.returncode, 0, stale.stderr)
+            stale_receipt = json.loads(stale.stdout)
+            stale_codes = [item["code"] for item in stale_receipt["diagnostics"]]
+            self.assertIn("stale-runtime-path-preserved", stale_codes)
+            self.assertIn(
+                ".agents/skills/vibe-retired/SKILL.md",
+                stale_receipt["activation"]["stale_runtime_paths"],
+            )
+
+            manifest_path = target / ".vibe/manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            legacy = target / "legacy/retained.txt"
+            legacy.parent.mkdir()
+            legacy.write_text("retained\n")
+            manifest["managed_files"]["legacy/retained.txt"] = hashlib.sha256(
+                legacy.read_bytes()
+            ).hexdigest()
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+            nonruntime = run_cli(
+                target / "bin/vibe", "doctor", str(target), "--format", "json"
+            )
+            self.assertEqual(nonruntime.returncode, 0, nonruntime.stderr)
+            nonruntime_receipt = json.loads(nonruntime.stdout)
+            nonruntime_diagnostic = next(
+                item
+                for item in nonruntime_receipt["diagnostics"]
+                if item["code"] == "stale-nonruntime-path-preserved"
+            )
+            self.assertEqual(nonruntime_diagnostic["readiness_effect"], "non-blocking")
+
     @staticmethod
     def _remove_manifest_version(target: Path) -> None:
         path = target / ".vibe/manifest.json"
@@ -995,6 +1821,13 @@ class VibeCliTests(unittest.TestCase):
         path = target / ".vibe/manifest.json"
         manifest = json.loads(path.read_text())
         manifest["framework_version"] = version
+        path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+    @staticmethod
+    def _set_manifest_field(target: Path, key: str, value: object) -> None:
+        path = target / ".vibe/manifest.json"
+        manifest = json.loads(path.read_text())
+        manifest[key] = value
         path.write_text(json.dumps(manifest, indent=2) + "\n")
 
     def test_upgrade_is_atomic_when_managed_file_conflicts(self) -> None:
@@ -1045,6 +1878,91 @@ class VibeCliTests(unittest.TestCase):
             all_checks = run_cli(target / "bin/vibe", "verify", str(target))
             self.assertEqual(all_checks.returncode, 1)
             self.assertIn("Verification failed", all_checks.stderr)
+
+    def test_verify_json_reports_full_matrix_bounded_redacted_output_and_skips(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "verify-json-project"
+            installed = run_cli(CLI, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            failing = (
+                "python3 -c \"import sys; print('sk-test_abcdefghijklmnop'); "
+                "print('" + ("x" * 17000) + "'); print('sk-test_abcdefghijklmnop'); "
+                "print('" + str(target) + "'); "
+                "sys.exit(3)\""
+            )
+            (target / ".vibe/project.yaml").write_text(
+                "schema_version: 1\ncommands:\n"
+                + f"  lint: {json.dumps('true')}\n"
+                + '  typecheck: ""\n'
+                + f"  test: {json.dumps(failing)}\n"
+                + f"  build: {json.dumps('true')}\n"
+            )
+
+            result = run_cli(
+                target / "bin/vibe", "verify", str(target), "--format", "json"
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(result.stderr, "")
+            receipt = json.loads(result.stdout)
+            self.assertEqual(receipt["schema_version"], 1)
+            self.assertEqual(receipt["status"], "failed")
+            self.assertEqual(
+                [check["name"] for check in receipt["checks"]],
+                ["lint", "typecheck", "test", "build"],
+            )
+            self.assertEqual(
+                [check["outcome"] for check in receipt["checks"]],
+                ["passed", "unconfigured", "failed", "passed"],
+            )
+            self.assertEqual(
+                receipt["selection"],
+                {"mode": "default", "requested": [], "coverage": "all-configured"},
+            )
+            failed = receipt["checks"][2]
+            self.assertEqual(failed["exit_code"], 3)
+            self.assertTrue(failed["output"]["stdout_truncated"])
+            self.assertNotIn("sk-test_abcdefghijklmnop", failed["output"]["stdout_tail"])
+            self.assertIn("[REDACTED]", failed["output"]["stdout_tail"])
+            self.assertNotIn(str(target), failed["output"]["stdout_tail"])
+
+            partial = run_cli(
+                target / "bin/vibe",
+                "verify",
+                str(target),
+                "--only",
+                "test",
+                "--only",
+                "test",
+                "--format",
+                "json",
+            )
+            self.assertEqual(partial.returncode, 1, partial.stderr)
+            partial_receipt = json.loads(partial.stdout)
+            self.assertEqual(
+                partial_receipt["selection"],
+                {"mode": "only", "requested": ["test"], "coverage": "partial"},
+            )
+            self.assertEqual(len(partial_receipt["checks"]), 1)
+
+            module = load_cli_module()
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with mock.patch.object(
+                module.subprocess, "run", side_effect=OSError("fixture start failure")
+            ), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                return_code = module.verify(target, [], "json")
+            self.assertEqual(return_code, 2)
+            self.assertEqual(stderr.getvalue(), "")
+            blocked = json.loads(stdout.getvalue())
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertEqual(blocked["summary"]["skipped"], 3)
+            self.assertTrue(
+                all(
+                    check["reason_code"] == "process-start-failed"
+                    for check in blocked["checks"]
+                    if check["configured"]
+                )
+            )
 
     def test_feedback_deduplicates_dismisses_and_resurfaces(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

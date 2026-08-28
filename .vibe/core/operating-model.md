@@ -78,3 +78,7 @@ Completion reports should state:
 - commands or scenarios run and their results;
 - checks not run and why;
 - known limitations or follow-ups.
+
+## Upgrade takeover
+
+Vibe Kit version changes use the host-orchestrated lifecycle in the installed, framework-managed `AGENT_INSTALL.md` and `agent-install.json`. The CLI owns offline materialization, diagnostics, configured check execution, installed-contract authentication, and structural `validate-takeover`; it never authenticates host receipts or derives runtime activation/readiness. Preserve one owner for an unfinished goal across same-task reload, automatic successor handoff, or the portable manual new-task fallback. Only a structurally valid result plus positive target-content activation evidence permits onboarding adaptation and target-rule re-evaluation. Current repository Codex metadata claims manual fallback only unless a running host supplies a conforming live receipt.

@@ -13,6 +13,14 @@ This repository uses Vibe Kit. Before substantive work:
 
 Users work in ordinary development language and are not required to name a Vibe Skill or CLI command. If onboarding is `pending`, `refresh-needed`, missing, or contradicted by scaffold placeholders/current repository evidence, run `vibe-project-onboarding` internally before the routed workflow. Preserve the user's original request, complete only evidence-backed context updates, then resume that request in the same task. Treat malformed state as a diagnosable blocking project issue; do not silently replace project-owned state.
 
+## Post-upgrade takeover
+
+An upgrade request confirms one exact project/version once. After a safe read-only plan, apply without another conversational confirmation, then run the installed target doctor. Apply and doctor prove only upgraded files/health; never infer that this task loaded new rules.
+
+Follow the installed, framework-managed `AGENT_INSTALL.md` and `agent-install.json` for takeover schema 1. Before trusting a takeover object, pass it to installed `bin/vibe validate-takeover --format json`; structural validity does not authenticate host evidence or prove ready. Activation requires a positive host reload/successor receipt bound to the actual target activation set, or a valid manual new-task receipt. The repository Codex adapter and bootstrap Plugin currently claim only the manual fallback unless the running host independently supplies conforming live evidence. Without it, stop after the consistent upgrade and give exactly one action: create a new Codex task in the same project. Do not say the project is ready.
+
+Only the activated task may inspect/refresh onboarding, run final default verification, re-evaluate an unfinished original request under target rules, and resume it. Keep transfer state in the host task boundary; never persist goal text or takeover state in the repository. Reserve “upgraded”, “activated”, and “ready” for their versioned evidence, and let only the active successor provide the final completion message.
+
 ## Work routing
 
 - New behavior or an end-to-end product change: use `vibe-feature-flow`.

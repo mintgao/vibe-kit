@@ -1,6 +1,12 @@
 import re
+import json
+import hashlib
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
+
+from tests.fake_takeover_host import FakeTakeoverHost
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +31,7 @@ def readiness_fields(text: str) -> dict:
 
 
 class WorkflowContractTests(unittest.TestCase):
-    """Static managed-contract tests; these do not certify live Agent behavior."""
+    """Managed-contract and controlled-host tests; never live-host certification."""
 
     def test_core_declares_complete_fail_closed_state_model(self) -> None:
         core = CORE_PATH.read_text()
@@ -167,6 +173,326 @@ class WorkflowContractTests(unittest.TestCase):
             "当前不会解析 work-item 状态或机械阻止文件写入",
             chinese_readme,
         )
+
+    def test_post_upgrade_takeover_contract_is_closed_and_manual_fallback_only(self) -> None:
+        contract = json.loads((ROOT / "agent-install.json").read_text())
+        self.assertEqual(contract["schema_version"], 2)
+        self.assertEqual(contract["protocol_version"], 2)
+        self.assertEqual(contract["kit_version"], "0.6.0")
+        self.assertEqual(
+            contract["lifecycle"]["stages"],
+            [
+                "source-resolved",
+                "planned",
+                "applied",
+                "upgraded",
+                "activated",
+                "adapted",
+                "verified",
+                "re-evaluated",
+                "ready",
+            ],
+        )
+        capabilities = contract["adapter"]["capabilities"]
+        self.assertFalse(capabilities["same_task_reload"]["current_claim"])
+        self.assertFalse(
+            capabilities["automatic_successor_handoff"]["current_claim"]
+        )
+        self.assertEqual(capabilities["manual_new_task"]["status"], "supported")
+        self.assertEqual(
+            contract["activation"]["current_repository_capability"],
+            "manual-fallback-only",
+        )
+        self.assertEqual(
+            contract["takeover"]["unknown_or_inconsistent_state"], "fail-closed"
+        )
+        registry = contract["takeover"]["contract_registry"]
+        independent_digest = hashlib.sha256(
+            json.dumps(
+                registry,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        self.assertEqual(
+            independent_digest,
+            contract["takeover"]["contract_registry_sha256"],
+        )
+        protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
+        self.assertEqual(
+            independent_digest,
+            protocol["takeover_contract_registry_sha256"],
+        )
+        predecessor_registry = {
+            "entries": [
+                {
+                    "migration_id": "v0.5.0-unmanaged-agent-contracts-v1",
+                    "mode": "replace-and-adopt-complete-set",
+                    "paths": {
+                        "AGENT_INSTALL.md": "321a2e1017a09405b1d44570f21f59e0b135c127abd81f9d8258c89b3f95a304",
+                        "agent-install.json": "3ac9c51a83f1487fb298c0fd919bca99252c8972b138ae4925d44ee1544ffb4f",
+                    },
+                    "predecessor": {
+                        "adapter_name": "codex",
+                        "adapter_protocol": 3,
+                        "agent_install_protocol": 1,
+                        "agent_install_schema": 1,
+                        "core_protocol": 3,
+                        "framework_version": "0.5.0",
+                        "install_identity_sha256": "70dd0eac0f54d328a803bc71ef409f66c0a6d8dc8016ce27bb80b2fa4b410fb5",
+                        "manifest_schema": 1,
+                    },
+                    "target": {
+                        "framework_version": "0.6.0",
+                        "source_types": [
+                            "github-release", "plugin-bundled",
+                            "offline-bundle", "local-payload",
+                        ],
+                    },
+                }
+            ],
+            "schema_version": 1,
+        }
+        predecessor_digest = hashlib.sha256(
+            json.dumps(
+                predecessor_registry,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        self.assertEqual(
+            predecessor_digest,
+            "6cbee96e5da8b4d4b5c87403e710aac0740041027a00466f288a670834d1967d",
+        )
+        predecessor_mirror = {
+            "schema_version": 1,
+            "registry_sha256": predecessor_digest,
+            "authority": "target-cli-compiled",
+            "modes": ["replace-and-adopt-complete-set"],
+        }
+        self.assertEqual(
+            contract["maintenance_bridge"]["predecessor_migrations"],
+            predecessor_mirror,
+        )
+        self.assertEqual(protocol["predecessor_migrations"], predecessor_mirror)
+        self.assertEqual(
+            contract["privacy"]["takeover_repository_persistence"], False
+        )
+
+    def test_controlled_activation_paths_require_positive_receipts(self) -> None:
+        guide = (ROOT / "AGENT_INSTALL.md").read_text()
+        plugin = (
+            ROOT
+            / "distribution/plugin-src/vibe-kit/skills/vibe-maintain/SKILL.md"
+        ).read_text()
+        normalized_guide = " ".join(guide.split())
+        for receipt in ("host-reload", "host-successor-start", "manual-task-start"):
+            self.assertIn(receipt, guide)
+        self.assertIn("idempotent successor creation", guide)
+        self.assertIn("never create a second possible successor", normalized_guide)
+        self.assertIn("currently claim only the manual fallback", normalized_guide)
+        self.assertIn("supplies neither same-task reload nor automatic successor", plugin)
+        self.assertIn("do not say ready", plugin)
+        self.assertIn("positive live conformance receipts", normalized_guide)
+
+    def test_activation_gates_adaptation_verification_and_target_rule_routing(self) -> None:
+        agents = (ROOT / "AGENTS.md").read_text()
+        onboarding = (
+            ROOT / ".agents/skills/vibe-project-onboarding/SKILL.md"
+        ).read_text()
+        implementation = (
+            ROOT / ".agents/skills/vibe-implementation-flow/SKILL.md"
+        ).read_text()
+        for text in (agents, onboarding, implementation):
+            self.assertIn("activation", text.lower())
+            self.assertIn("target", text.lower())
+        self.assertIn("Only the activated task", agents)
+        self.assertIn("default `./bin/vibe verify . --format json`", onboarding)
+        self.assertIn("Re-evaluate", onboarding)
+        self.assertIn("before editing", implementation)
+        self.assertIn("apply/doctor receipt as activation evidence", implementation)
+
+    def test_installed_takeover_contracts_are_managed_activation_critical(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            installed = subprocess.run(
+                [str(ROOT / "bin/vibe"), "init", str(project), "--format", "json"],
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            manifest = json.loads((project / ".vibe/manifest.json").read_text())
+            for relative in ("AGENT_INSTALL.md", "agent-install.json"):
+                with self.subTest(relative=relative):
+                    self.assertTrue((project / relative).is_file())
+                    self.assertIn(relative, manifest["managed_files"])
+                    self.assertIn(relative, manifest["activation"]["paths"])
+                    self.assertIn(relative, manifest["activation"]["runtime_discovery_roots"])
+
+            (project / "agent-install.json").unlink()
+            doctor = subprocess.run(
+                [str(project / "bin/vibe"), "doctor", str(project), "--format", "json"],
+                text=True, capture_output=True, check=False,
+            )
+            receipt = json.loads(doctor.stdout)
+            self.assertEqual(doctor.returncode, 1)
+            self.assertEqual(receipt["status"], "broken")
+            codes = {item["code"] for item in receipt["diagnostics"]}
+            self.assertIn("managed-file-missing", codes)
+            self.assertIn("agent-install-contract-invalid", codes)
+            validation = subprocess.run(
+                [str(project / "bin/vibe"), "validate-takeover", "--format", "json"],
+                input='{"secret":"VALIDATOR_SECRET_SENTINEL"}',
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(validation.returncode, 2)
+            self.assertNotIn("VALIDATOR_SECRET_SENTINEL", validation.stdout)
+            self.assertEqual(json.loads(validation.stdout)["status"], "error")
+
+    def test_controlled_host_validates_activation_paths_custody_and_privacy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            installed = subprocess.run(
+                [str(ROOT / "bin/vibe"), "init", str(project), "--format", "json"],
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            host = FakeTakeoverHost(project)
+
+            for path in (
+                "same-task-reload",
+                "automatic-successor-handoff",
+                "manual-new-task",
+            ):
+                with self.subTest(path=path):
+                    code, receipt, stderr = host.validate(host.ready(path))
+                    self.assertEqual(code, 0, (receipt, stderr))
+                    self.assertEqual(receipt["status"], "valid")
+                    self.assertFalse(receipt["host_evidence_authenticated"])
+                    self.assertFalse(receipt["ready_claim"])
+
+            wrong_task = host.ready("same-task-reload")
+            wrong_task["activation"]["active_task_id"] = "wrong-task"
+            self.assertEqual(host.validate(wrong_task)[0], 1)
+            pre_apply = host.ready()
+            pre_apply["stages"]["applied"]["evidence"][0]["sequence"] = 100
+            self.assertEqual(host.validate(pre_apply)[0], 1)
+            manifest_mismatch = host.ready()
+            manifest_mismatch["activation"]["observed_manifest_sha256"] = "3" * 64
+            self.assertEqual(host.validate(manifest_mismatch)[0], 1)
+            activation_mismatch = host.ready()
+            activation_mismatch["activation"]["observed_activation_set_sha256"] = "4" * 64
+            self.assertEqual(host.validate(activation_mismatch)[0], 1)
+
+            first = host.create_successor("stable-key")
+            second = host.create_successor("stable-key")
+            self.assertEqual(first, second)
+            self.assertEqual(host.create_attempts, 1)
+            self.assertIsNone(host.create_successor("ambiguous-key", ambiguous=True))
+            self.assertIsNone(host.lookup_successor("ambiguous-key"))
+            self.assertEqual(host.create_attempts, 2)
+
+            replay = host.ready("manual-new-task")
+            replay["goal"]["custody_history"].append(
+                dict(replay["goal"]["custody_history"][-1])
+            )
+            self.assertEqual(host.validate(replay)[0], 1)
+            wrong_project = host.ready("manual-new-task")
+            wrong_project["project_root"] = "/canonical/wrong-project"
+            self.assertEqual(host.validate(wrong_project)[0], 1)
+            missing_transfer = host.ready("manual-new-task")
+            missing_transfer["goal"]["transfer_id"] = None
+            self.assertEqual(host.validate(missing_transfer)[0], 1)
+            terminal_source = host.ready("automatic-successor-handoff")
+            terminal_source["goal"]["custody_history"].append(
+                {"state": "source-owned", "task_id": "source-task", "sequence": 99}
+            )
+            terminal_source["goal"]["custody"] = "source-owned"
+            terminal_source["goal"]["owner_task_id"] = "source-task"
+            self.assertEqual(host.validate(terminal_source)[0], 1)
+
+            degraded = host.degraded_manual()
+            code, receipt, _ = host.validate(degraded)
+            self.assertEqual(code, 0, receipt)
+            self.assertEqual(receipt["status"], "valid")
+            serialized = json.dumps(degraded, sort_keys=True)
+            self.assertNotIn(host.synthetic_goal, serialized)
+            self.assertNotIn(host.synthetic_goal, json.dumps(receipt, sort_keys=True))
+            for path in project.rglob("*"):
+                if path.is_file():
+                    self.assertNotIn(host.synthetic_goal.encode(), path.read_bytes())
+
+    def test_controlled_host_validates_adaptation_verification_and_routing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            installed = subprocess.run(
+                [str(ROOT / "bin/vibe"), "init", str(project), "--format", "json"],
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            host = FakeTakeoverHost(project)
+
+            for adaptation in ("unchanged-complete", "refreshed"):
+                self.assertEqual(host.validate(host.ready(adaptation=adaptation))[0], 0)
+            for reason, action in (
+                ("onboarding-invalid", "resolve-project-context"),
+                ("onboarding-contradicted", "resolve-project-context"),
+                ("adaptation-write-incomplete", "inspect-adaptation-changes"),
+            ):
+                value = host.block(host.ready(), "adapted", reason, action)
+                self.assertEqual(host.validate(value)[0], 0, reason)
+            for reason in (
+                "verification-failed", "verification-skipped", "verification-error"
+            ):
+                value = host.block(host.ready(), "verified", reason, "fix-configured-check")
+                self.assertEqual(host.validate(value)[0], 0, reason)
+            for reason, action in (
+                ("target-rule-blocker", "resolve-target-rule-blocker"),
+                ("material-user-decision", "answer-material-decision"),
+            ):
+                value = host.block(host.ready(), "re-evaluated", reason, action)
+                self.assertEqual(host.validate(value)[0], 0, reason)
+
+            maintenance = host.ready(goal_kind="maintenance-only")
+            self.assertEqual(host.validate(maintenance)[0], 0)
+            false_ready = host.ready()
+            false_ready["overall_status"] = "in-progress"
+            self.assertEqual(host.validate(false_ready)[0], 1)
+            partial_verification = host.ready()
+            partial_verification["stages"]["verified"]["evidence"] = []
+            self.assertEqual(host.validate(partial_verification)[0], 1)
+            malformed_receipt = host.ready()
+            malformed_receipt["stages"]["verified"]["evidence"][0][
+                "raw_output"
+            ] = host.synthetic_goal
+            malformed_result = host.validate(malformed_receipt)
+            self.assertEqual(malformed_result[0], 1)
+            self.assertNotIn(host.synthetic_goal, json.dumps(malformed_result[1]))
+            unknown_enum = host.ready()
+            unknown_enum["goal"]["continuation"] = "completed"
+            self.assertEqual(host.validate(unknown_enum)[0], 1)
+            unknown_field = host.ready()
+            unknown_field["goal_text"] = host.synthetic_goal
+            unknown_result = host.validate(unknown_field)
+            self.assertEqual(unknown_result[0], 1)
+            self.assertNotIn(host.synthetic_goal, json.dumps(unknown_result[1]))
+            duplicate_owner = host.ready("automatic-successor-handoff")
+            duplicate_owner["completion_owner_task_id"] = duplicate_owner["activation"]["source_task_id"]
+            self.assertEqual(host.validate(duplicate_owner)[0], 1)
+
+            for index, stage in enumerate(
+                ("planned", "applied", "upgraded", "activated", "adapted", "verified")
+            ):
+                with self.subTest(dependency=stage):
+                    dependency = host.ready()
+                    predecessor = (
+                        "source-resolved" if stage == "planned" else
+                        ("planned", "applied", "upgraded", "activated", "adapted")[index - 1]
+                    )
+                    dependency["stages"][predecessor]["state"] = "not-started"
+                    dependency["stages"][predecessor]["evidence"] = []
+                    self.assertEqual(host.validate(dependency)[0], 1)
 
 
 if __name__ == "__main__":

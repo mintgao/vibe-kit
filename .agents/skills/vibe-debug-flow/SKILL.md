@@ -5,6 +5,8 @@ description: Investigate a bug, incident, flaky test, performance regression, or
 
 # Debug flow
 
+If a fix request crosses a Vibe Kit upgrade boundary, the activated target-version task must complete evidence-backed adaptation and default verification, then re-evaluate the fix/readiness gate under target rules before shared edits. The source task stops after handoff or manual-new-task degradation.
+
 Follow evidence before edits.
 
 1. Establish expected and observed behavior, impact, environment, frequency, and the smallest reproducible case.

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
 import hashlib
 import json
@@ -13,6 +14,7 @@ import platform
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -34,7 +36,8 @@ FEEDBACK_MODES = ("ask", "local", "off")
 RELEASE_MANIFEST_SCHEMA = 1
 RELEASE_STATUSES = ("release-candidate-unpublished", "prerelease", "stable")
 AGENT_RESULT_SCHEMA = 1
-AGENT_INSTALL_PROTOCOL = 1
+AGENT_INSTALL_SCHEMA = 2
+AGENT_INSTALL_PROTOCOL = 2
 SOURCE_TYPES = ("local-payload", "github-release", "plugin-bundled", "offline-bundle")
 ONBOARDING_STATUSES = ("pending", "complete", "refresh-needed")
 DERIVED_ONBOARDING_STATUSES = ("review-required", "invalid")
@@ -50,8 +53,446 @@ AGENT_COMMAND_STATUSES = {
     "adopt": ("success", "error"),
     "upgrade": ("success", "blocked", "error"),
     "doctor": ("healthy", "warning", "broken", "error"),
+    "verify": ("passed", "failed", "blocked", "error"),
+    "validate-takeover": ("valid", "invalid", "error"),
     "validate-release": ("valid", "invalid", "error"),
 }
+CORE_PROTOCOL = 4
+CODEX_ADAPTER_PROTOCOL = 4
+TAKEOVER_SCHEMA_VERSION = 1
+MAINTENANCE_BRIDGE_SCHEMA_VERSION = 1
+VERIFY_OUTPUT_LIMIT = 16 * 1024
+ACTIVATION_SET_ALGORITHM = (
+    "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2"
+)
+ACTIVATION_DIGEST_SENTINEL = "0" * 64
+PREDECESSOR_MIGRATION_REGISTRY = {
+    "entries": [
+        {
+            "migration_id": "v0.5.0-unmanaged-agent-contracts-v1",
+            "mode": "replace-and-adopt-complete-set",
+            "paths": {
+                "AGENT_INSTALL.md": "321a2e1017a09405b1d44570f21f59e0b135c127abd81f9d8258c89b3f95a304",
+                "agent-install.json": "3ac9c51a83f1487fb298c0fd919bca99252c8972b138ae4925d44ee1544ffb4f",
+            },
+            "predecessor": {
+                "adapter_name": "codex",
+                "adapter_protocol": 3,
+                "agent_install_protocol": 1,
+                "agent_install_schema": 1,
+                "core_protocol": 3,
+                "framework_version": "0.5.0",
+                "install_identity_sha256": "70dd0eac0f54d328a803bc71ef409f66c0a6d8dc8016ce27bb80b2fa4b410fb5",
+                "manifest_schema": 1,
+            },
+            "target": {
+                "framework_version": "0.6.0",
+                "source_types": [
+                    "github-release",
+                    "plugin-bundled",
+                    "offline-bundle",
+                    "local-payload",
+                ],
+            },
+        }
+    ],
+    "schema_version": 1,
+}
+PREDECESSOR_MIGRATION_REGISTRY_SHA256 = hashlib.sha256(
+    json.dumps(
+        PREDECESSOR_MIGRATION_REGISTRY,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+).hexdigest()
+EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256 = (
+    "6cbee96e5da8b4d4b5c87403e710aac0740041027a00466f288a670834d1967d"
+)
+if PREDECESSOR_MIGRATION_REGISTRY_SHA256 != (
+    EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256
+):
+    raise RuntimeError("compiled predecessor-migration registry digest is invalid")
+PREDECESSOR_MIGRATION_MIRROR = {
+    "schema_version": 1,
+    "registry_sha256": PREDECESSOR_MIGRATION_REGISTRY_SHA256,
+    "authority": "target-cli-compiled",
+    "modes": ["replace-and-adopt-complete-set"],
+}
+
+
+def valid_predecessor_migration_mirror(value: object) -> bool:
+    """Require the exact closed mirror without Python bool/int equality leaks."""
+    return (
+        isinstance(value, dict)
+        and set(value) == {
+            "schema_version", "registry_sha256", "authority", "modes"
+        }
+        and type(value.get("schema_version")) is int
+        and value.get("schema_version") == 1
+        and isinstance(value.get("registry_sha256"), str)
+        and value.get("registry_sha256") == PREDECESSOR_MIGRATION_REGISTRY_SHA256
+        and isinstance(value.get("authority"), str)
+        and value.get("authority") == "target-cli-compiled"
+        and isinstance(value.get("modes"), list)
+        and value.get("modes") == ["replace-and-adopt-complete-set"]
+    )
+
+
+PREDECESSOR_MIGRATION_ENTRY = PREDECESSOR_MIGRATION_REGISTRY["entries"][0]
+PREDECESSOR_MIGRATION_PATHS = tuple(
+    PREDECESSOR_MIGRATION_ENTRY["paths"].keys()
+)
+PREDECESSOR_MIGRATION_NOTE = (
+    "authenticated predecessor migration "
+    "v0.5.0-unmanaged-agent-contracts-v1; complete set"
+)
+PREDECESSOR_MIGRATION_CONFLICT_NOTE = (
+    "untracked managed path differs; predecessor migration not authenticated"
+)
+TAKEOVER_STAGE_ORDER = (
+    "source-resolved",
+    "planned",
+    "applied",
+    "upgraded",
+    "activated",
+    "adapted",
+    "verified",
+    "re-evaluated",
+    "ready",
+)
+TAKEOVER_STAGE_STATES = ("not-started", "satisfied", "blocked", "not-applicable")
+TAKEOVER_OVERALL_STATUSES = ("in-progress", "ready", "degraded", "blocked")
+TAKEOVER_EVIDENCE_KINDS = (
+    "source-attestation",
+    "plan-receipt",
+    "apply-receipt",
+    "doctor-receipt",
+    "activation-receipt",
+    "manual-task-start",
+    "handoff-claim",
+    "onboarding-state",
+    "adaptation-review",
+    "verify-receipt",
+    "routing-record",
+)
+TAKEOVER_REASON_CODES = (
+    "source-untrusted", "source-digest-mismatch", "unsupported-source-channel",
+    "unsupported-predecessor", "unknown-contract", "maintenance-bridge-unsupported",
+    "plan-blocked", "managed-conflict", "apply-failed-no-write",
+    "conflict-evidence-written", "unknown-partial", "doctor-broken",
+    "diagnostic-blocking", "activation-receipt-unavailable",
+    "activation-receipt-invalid", "automatic-handoff-unavailable",
+    "handoff-ambiguous", "handoff-failed", "manual-new-task-required",
+    "onboarding-invalid", "onboarding-contradicted", "adaptation-write-incomplete",
+    "verification-failed", "verification-skipped", "verification-error",
+    "target-rule-blocker", "material-user-decision", "host-permission-required",
+    "internal-error",
+)
+TAKEOVER_NEXT_ACTION_CODES = (
+    "select-trusted-source", "use-conformant-maintenance-entry",
+    "choose-supported-target", "review-conflict-candidates",
+    "inspect-and-recover-installation", "approve-required-host-permission",
+    "inspect-existing-handoff", "create-new-project-task",
+    "resolve-project-context", "inspect-adaptation-changes",
+    "fix-configured-check", "resolve-target-rule-blocker",
+    "answer-material-decision", "report-internal-failure",
+)
+TAKEOVER_REASON_ACTION = {
+    "source-untrusted": "select-trusted-source",
+    "source-digest-mismatch": "select-trusted-source",
+    "unsupported-source-channel": "select-trusted-source",
+    "unknown-contract": "use-conformant-maintenance-entry",
+    "maintenance-bridge-unsupported": "use-conformant-maintenance-entry",
+    "unsupported-predecessor": "choose-supported-target",
+    "plan-blocked": "review-conflict-candidates",
+    "managed-conflict": "review-conflict-candidates",
+    "conflict-evidence-written": "review-conflict-candidates",
+    "unknown-partial": "inspect-and-recover-installation",
+    "doctor-broken": "inspect-and-recover-installation",
+    "diagnostic-blocking": "inspect-and-recover-installation",
+    "host-permission-required": "approve-required-host-permission",
+    "handoff-ambiguous": "inspect-existing-handoff",
+    "activation-receipt-unavailable": "create-new-project-task",
+    "automatic-handoff-unavailable": "create-new-project-task",
+    "manual-new-task-required": "create-new-project-task",
+    "onboarding-invalid": "resolve-project-context",
+    "onboarding-contradicted": "resolve-project-context",
+    "adaptation-write-incomplete": "inspect-adaptation-changes",
+    "verification-failed": "fix-configured-check",
+    "verification-skipped": "fix-configured-check",
+    "verification-error": "fix-configured-check",
+    "target-rule-blocker": "resolve-target-rule-blocker",
+    "material-user-decision": "answer-material-decision",
+    "apply-failed-no-write": "report-internal-failure",
+    "activation-receipt-invalid": "report-internal-failure",
+    "handoff-failed": "report-internal-failure",
+    "internal-error": "report-internal-failure",
+}
+TAKEOVER_REASON_STAGE = {
+    "source-untrusted": "source-resolved",
+    "source-digest-mismatch": "source-resolved",
+    "unsupported-source-channel": "source-resolved",
+    "unsupported-predecessor": "source-resolved",
+    "unknown-contract": "source-resolved",
+    "maintenance-bridge-unsupported": "source-resolved",
+    "plan-blocked": "planned",
+    "managed-conflict": "planned",
+    "host-permission-required": "planned",
+    "apply-failed-no-write": "applied",
+    "conflict-evidence-written": "applied",
+    "unknown-partial": "applied",
+    "doctor-broken": "upgraded",
+    "diagnostic-blocking": "upgraded",
+    "activation-receipt-unavailable": "activated",
+    "activation-receipt-invalid": "activated",
+    "automatic-handoff-unavailable": "activated",
+    "handoff-ambiguous": "activated",
+    "handoff-failed": "activated",
+    "manual-new-task-required": "activated",
+    "onboarding-invalid": "adapted",
+    "onboarding-contradicted": "adapted",
+    "adaptation-write-incomplete": "adapted",
+    "verification-failed": "verified",
+    "verification-skipped": "verified",
+    "verification-error": "verified",
+    "target-rule-blocker": "re-evaluated",
+    "material-user-decision": "re-evaluated",
+    "internal-error": "ready",
+}
+TAKEOVER_GOAL_CUSTODY = (
+    "none",
+    "source-owned",
+    "automatic-transfer-pending",
+    "automatic-successor-owned",
+    "manual-transfer-required",
+    "manual-transfer-pending",
+    "manual-successor-owned",
+)
+TAKEOVER_CUSTODY_TRANSITIONS = {
+    "none": [],
+    "source-owned": ["automatic-transfer-pending", "manual-transfer-required"],
+    "automatic-transfer-pending": ["automatic-successor-owned"],
+    "automatic-successor-owned": [],
+    "manual-transfer-required": ["manual-transfer-pending"],
+    "manual-transfer-pending": ["manual-successor-owned"],
+    "manual-successor-owned": [],
+}
+TAKEOVER_READY_INVARIANTS = (
+    "exact-result-shape",
+    "stage-dependencies-satisfied",
+    "only-maintenance-re-evaluation-not-applicable",
+    "stage-outcomes-consistent",
+    "last-completed-is-last-satisfied-stage",
+    "write-state-project-files-written",
+    "reason-action-consistent",
+    "activation-receipt-bound",
+    "activation-after-apply",
+    "activation-identities-match-target",
+    "default-verification-passed",
+    "no-blocking-diagnostic",
+    "custody-history-valid",
+    "single-active-custodian",
+    "completion-owner-is-active-task",
+    "unfinished-goal-owner-is-completion-owner",
+    "ready-has-no-reason-or-next-action",
+    "overall-ready-iff-ready-stage-satisfied",
+    "custody-sequences-globally-unique",
+    "custody-history-strictly-increasing",
+    "custody-first-state-valid",
+    "custody-transitions-direct",
+    "custody-final-equals-current",
+    "custody-owner-derived",
+    "successor-custody-terminal",
+)
+
+
+def build_takeover_contract_registry() -> Dict[str, object]:
+    """Return the complete compiled schema-1 structural takeover registry."""
+    return {
+        "result_shape": {
+            "additional_properties": False,
+            "required_top_level": [
+                "takeover_schema_version", "takeover_id", "evidence_origin",
+                "completion_owner_task_id", "project_root", "source", "versions",
+                "target_fingerprint", "overall_status", "last_completed_stage",
+                "write_state", "activation", "goal", "stages", "next_action",
+            ],
+            "required_source_fields": [
+                "type", "ref", "artifact_sha256", "payload_tree_sha256"
+            ],
+            "required_versions_fields": ["from", "target"],
+            "required_fingerprint_fields": [
+                "kit_version", "core_protocol", "agent_install_schema",
+                "agent_install_protocol", "adapter_name", "adapter_protocol",
+                "manifest_sha256", "activation_set_sha256",
+            ],
+            "required_stage_keys": list(TAKEOVER_STAGE_ORDER),
+            "required_stage_fields": ["state", "outcome", "reason_code", "evidence"],
+            "required_evidence_fields": ["kind", "ref", "sha256", "task_id", "sequence"],
+            "required_activation_fields": [
+                "path", "receipt_kind", "receipt_id", "source_task_id",
+                "active_task_id", "handoff_idempotency_key",
+                "observed_manifest_sha256", "observed_activation_set_sha256",
+            ],
+            "required_goal_fields": [
+                "kind", "custody", "continuation", "transfer_id", "owner_task_id",
+                "custody_history",
+            ],
+            "required_custody_history_fields": ["state", "task_id", "sequence"],
+            "required_next_action_fields": ["code", "detail"],
+        },
+        "scalar_types": {
+            "opaque_id_max_chars": 256,
+            "path_or_ref_max_chars": 4096,
+            "detail_max_chars": 512,
+            "sha256_pattern": "^[0-9a-f]{64}$",
+            "strict_semver_pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+            "sequence_minimum": 0,
+        },
+        "array_limits": {"evidence_per_stage": 32, "custody_history": 4},
+        "enums": {
+            "source_types": ["github-release", "plugin-bundled", "offline-bundle", "local-payload"],
+            "evidence_origins": ["runtime", "controlled-fixture"],
+            "overall_statuses": list(TAKEOVER_OVERALL_STATUSES),
+            "write_states": list(WRITE_STATES),
+            "stage_states": list(TAKEOVER_STAGE_STATES),
+            "evidence_kinds": list(TAKEOVER_EVIDENCE_KINDS),
+            "activation_paths": ["none", "same-task-reload", "automatic-successor-handoff", "manual-new-task"],
+            "receipt_kinds": ["host-reload", "host-successor-start", "manual-task-start"],
+            "goal_kinds": ["maintenance-only", "unfinished"],
+            "goal_custody": list(TAKEOVER_GOAL_CUSTODY),
+            "goal_continuation": ["not-applicable", "paused", "ready-to-resume", "resumed", "blocked"],
+            "adapted_outcomes": ["unchanged-complete", "refreshed", "blocked"],
+            "re_evaluated_outcomes": ["routable", "blocked-by-target-rules", "maintenance-only"],
+            "reason_codes": list(TAKEOVER_REASON_CODES),
+            "next_action_codes": list(TAKEOVER_NEXT_ACTION_CODES),
+        },
+        "source_rules": {
+            "github-release": {"artifact_sha256": "required", "ref": "required"},
+            "offline-bundle": {"artifact_sha256": "required", "ref": "required"},
+            "plugin-bundled": {"artifact_sha256": "must-be-null", "ref": "required"},
+            "local-payload": {"artifact_sha256": "must-be-null", "ref": "required"},
+        },
+        "stage_order": list(TAKEOVER_STAGE_ORDER),
+        "stage_dependencies": {
+            "source-resolved": [],
+            "planned": ["source-resolved"],
+            "applied": ["planned"],
+            "upgraded": ["applied"],
+            "activated": ["upgraded"],
+            "adapted": ["activated"],
+            "verified": ["adapted"],
+            "re-evaluated": ["verified"],
+            "ready": list(TAKEOVER_STAGE_ORDER[:7]),
+        },
+        "not_applicable_rules": [{
+            "stage": "re-evaluated",
+            "required_goal_kind": "maintenance-only",
+            "required_outcome": "maintenance-only",
+        }],
+        "stage_outcome_rules": {
+            "adapted": {
+                "satisfied": ["unchanged-complete", "refreshed"],
+                "blocked": ["blocked"],
+                "not-applicable": [],
+            },
+            "re-evaluated": {
+                "satisfied": ["routable"],
+                "blocked": ["blocked-by-target-rules"],
+                "not-applicable": ["maintenance-only"],
+            },
+        },
+        "reason_action_map": dict(TAKEOVER_REASON_ACTION),
+        "reason_stage_map": dict(TAKEOVER_REASON_STAGE),
+        "evidence_rules": {
+            "source-resolved": ["source-attestation"],
+            "planned": ["plan-receipt"],
+            "applied": ["apply-receipt"],
+            "upgraded": ["doctor-receipt"],
+            "activated": [],
+            "adapted": ["onboarding-state", "adaptation-review"],
+            "verified": ["doctor-receipt", "verify-receipt"],
+            "re-evaluated": ["routing-record"],
+            "ready": [],
+        },
+        "evidence_placement": {
+            "source-attestation": ["source-resolved"],
+            "plan-receipt": ["planned"],
+            "apply-receipt": ["applied"],
+            "doctor-receipt": ["upgraded", "verified"],
+            "activation-receipt": ["activated"],
+            "manual-task-start": ["activated"],
+            "handoff-claim": ["activated"],
+            "onboarding-state": ["adapted"],
+            "adaptation-review": ["adapted"],
+            "verify-receipt": ["verified"],
+            "routing-record": ["re-evaluated"],
+        },
+        "activation_receipt_bindings": {
+            "host-reload": {
+                "path": "same-task-reload", "active_task_relation": "equals-source-task",
+                "handoff_idempotency_key": "must-be-null",
+                "required_evidence": ["activation-receipt"],
+                "required_custody_at_ready": "source-owned",
+            },
+            "host-successor-start": {
+                "path": "automatic-successor-handoff", "active_task_relation": "differs-from-source-task",
+                "handoff_idempotency_key": "required",
+                "required_evidence": ["activation-receipt", "handoff-claim"],
+                "required_custody_at_ready": "automatic-successor-owned",
+            },
+            "manual-task-start": {
+                "path": "manual-new-task", "active_task_relation": "differs-from-source-task",
+                "handoff_idempotency_key": "must-be-null",
+                "required_evidence": ["manual-task-start"],
+                "required_custody_at_ready": "manual-successor-owned",
+            },
+        },
+        "custody_transitions": copy.deepcopy(TAKEOVER_CUSTODY_TRANSITIONS),
+        "ready_invariants": list(TAKEOVER_READY_INVARIANTS),
+    }
+
+
+TAKEOVER_CONTRACT_REGISTRY = build_takeover_contract_registry()
+TAKEOVER_CONTRACT_REGISTRY_SHA256 = hashlib.sha256(
+    json.dumps(
+        TAKEOVER_CONTRACT_REGISTRY,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+).hexdigest()
+DIAGNOSTIC_REGISTRY = {
+    "managed-file-hash-mismatch": ("warning", "blocking"),
+    "agents-block-hash-mismatch": ("warning", "blocking"),
+    "onboarding-state-missing": ("warning", "blocking"),
+    "stale-runtime-path-preserved": ("warning", "blocking"),
+    "stale-nonruntime-path-preserved": ("warning", "non-blocking"),
+    "version-integrity-failed": ("error", "blocking"),
+    "manifest-missing-or-invalid": ("error", "blocking"),
+    "managed-file-missing": ("error", "blocking"),
+    "agents-file-missing": ("error", "blocking"),
+    "agents-block-missing": ("error", "blocking"),
+    "required-project-file-missing": ("error", "blocking"),
+    "project-config-invalid": ("error", "blocking"),
+    "onboarding-state-invalid": ("error", "blocking"),
+    "skill-contract-invalid": ("error", "blocking"),
+    "agent-contract-invalid": ("error", "blocking"),
+    "agent-install-guide-invalid": ("error", "blocking"),
+    "agent-install-contract-invalid": ("error", "blocking"),
+    "diagnostic-internal-error": ("error", "blocking"),
+}
+DOCTOR_NON_BLOCKING_WARNING_CODES = ("stale-nonruntime-path-preserved",)
+RUNTIME_DISCOVERY_ROOTS = (
+    "AGENT_INSTALL.md",
+    "agent-install.json",
+    "bin/vibe",
+    ".vibe/core/",
+    ".agents/skills/",
+    ".codex/agents/",
+    "AGENTS.md#managed-block",
+)
 RELEASE_ARCHIVE_MAX_FILES = 5000
 RELEASE_ARCHIVE_MAX_FILE_SIZE = 2 * 1024 * 1024
 RELEASE_ARCHIVE_MAX_TOTAL_SIZE = 20 * 1024 * 1024
@@ -278,6 +719,7 @@ def validate_source_provenance(
         "type": source_type,
         "ref": normalized_ref,
         "artifact_sha256": normalized_digest,
+        "payload_tree_sha256": payload_tree_sha256(source_root()),
     }
 
 
@@ -348,9 +790,10 @@ def onboarding_result(target: Path) -> Dict[str, object]:
 
 def managed_source_files(root: Path) -> List[Path]:
     files: List[Path] = []
-    explicit = root / "bin/vibe"
-    if explicit.is_file():
-        files.append(explicit)
+    for relative in ("AGENT_INSTALL.md", "agent-install.json", "bin/vibe"):
+        explicit = root / relative
+        if explicit.is_file():
+            files.append(explicit)
 
     core = root / ".vibe/core"
     if core.is_dir():
@@ -390,6 +833,471 @@ def incoming_agents_block(root: Path) -> str:
     if block is None:
         raise VibeError("Framework AGENTS.md does not contain managed markers.")
     return block
+
+
+def strict_semver(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"\d+\.\d+\.\d+", value) is not None
+
+
+def canonical_json_sha256(value: object) -> str:
+    encoded = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def reject_duplicate_json_keys(pairs: Sequence[Tuple[str, object]]) -> Dict[str, object]:
+    result: Dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def load_json_object_strict(path: Path) -> Dict[str, object]:
+    try:
+        raw = path.read_bytes()
+        text = raw.decode("utf-8")
+        value = json.loads(text, object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise VibeError(f"invalid JSON object: {path}") from error
+    if not isinstance(value, dict):
+        raise VibeError(f"invalid JSON object: {path}")
+    return value
+
+
+def payload_tree_sha256_from_hashes(hashes: Dict[str, str]) -> str:
+    digest = hashlib.sha256()
+    for relative, file_hash in sorted(hashes.items()):
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(file_hash.encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def payload_tree_sha256(root: Path) -> str:
+    version = framework_version(root)
+    hashes = {
+        path.relative_to(root).as_posix(): sha256(path)
+        for path in release_payload_files(root, version)
+    }
+    return payload_tree_sha256_from_hashes(hashes)
+
+
+def load_agent_install_contract(root: Path) -> Dict[str, object]:
+    path = root / "agent-install.json"
+    try:
+        return load_json_object_strict(path)
+    except VibeError as error:
+        raise VibeError(f"Agent-install contract is invalid: {path}") from error
+
+
+def safe_project_relative_path(relative: object) -> Optional[PurePosixPath]:
+    if not isinstance(relative, str) or not relative or "\\" in relative or ":" in relative:
+        return None
+    value = PurePosixPath(relative)
+    if value.is_absolute() or any(part in ("", ".", "..") for part in value.parts):
+        return None
+    return value
+
+
+def authenticated_path_state(
+    root: Path, relative: str
+) -> Tuple[str, Optional[str]]:
+    """Return absent/regular/invalid without following a project-internal symlink."""
+    value = safe_project_relative_path(relative)
+    if value is None:
+        return "invalid", None
+    components: List[Tuple[Path, Tuple[int, int, int, int, int]]] = []
+    current = root
+    try:
+        for index, part in enumerate(value.parts):
+            current = current / part
+            metadata = os.lstat(str(current))
+            if stat.S_ISLNK(metadata.st_mode):
+                return "invalid", None
+            leaf = index == len(value.parts) - 1
+            if leaf:
+                if not stat.S_ISREG(metadata.st_mode):
+                    return "invalid", None
+            elif not stat.S_ISDIR(metadata.st_mode):
+                return "invalid", None
+            components.append(
+                (
+                    current,
+                    (
+                        metadata.st_mode,
+                        metadata.st_dev,
+                        metadata.st_ino,
+                        metadata.st_size,
+                        metadata.st_mtime_ns,
+                    ),
+                )
+            )
+    except FileNotFoundError:
+        return "absent", None
+    except OSError:
+        return "invalid", None
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    digest = hashlib.sha256()
+    try:
+        descriptor = os.open(str(current), flags)
+        with os.fdopen(descriptor, "rb") as handle:
+            opened = os.fstat(handle.fileno())
+            if not stat.S_ISREG(opened.st_mode):
+                return "invalid", None
+            leaf_signature = components[-1][1]
+            if (opened.st_mode, opened.st_dev, opened.st_ino, opened.st_size) != (
+                leaf_signature[0],
+                leaf_signature[1],
+                leaf_signature[2],
+                leaf_signature[3],
+            ):
+                return "invalid", None
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        for path, signature in components:
+            metadata = os.lstat(str(path))
+            if stat.S_ISLNK(metadata.st_mode) or (
+                metadata.st_mode,
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+            ) != signature:
+                return "invalid", None
+    except OSError:
+        return "invalid", None
+    return "regular", digest.hexdigest()
+
+
+def predecessor_migration_evidence(phase: str) -> Dict[str, object]:
+    entry = PREDECESSOR_MIGRATION_ENTRY
+    predecessor = entry["predecessor"]
+    return {
+        "schema_version": 1,
+        "migration_id": entry["migration_id"],
+        "phase": phase,
+        "authentication": "target-cli-compiled-registry",
+        "from_version": predecessor["framework_version"],
+        "to_version": entry["target"]["framework_version"],
+        "paths": list(PREDECESSOR_MIGRATION_PATHS),
+        "predecessor_install_identity_sha256": predecessor[
+            "install_identity_sha256"
+        ],
+        "predecessor_contract_set_sha256": "5ae7da78e4799f23056afc16b8b1511384b12db50dfb5209a64e5b465a71b15d",
+        "registry_sha256": PREDECESSOR_MIGRATION_REGISTRY_SHA256,
+    }
+
+
+def validate_target_predecessor_migration_contract(root: Path) -> None:
+    if framework_version(root) != "0.6.0":
+        raise VibeError("predecessor migration is supported only by target 0.6.0")
+    contract = load_agent_install_contract(root)
+    try:
+        protocol = load_json_object_strict(root / ".vibe/core/protocol.json")
+    except VibeError as error:
+        raise VibeError("target predecessor-migration protocol mirror is invalid") from error
+    bridge = contract.get("maintenance_bridge")
+    contract_mirror = (
+        bridge.get("predecessor_migrations") if isinstance(bridge, dict) else None
+    )
+    protocol_mirror = protocol.get("predecessor_migrations")
+    if (
+        PREDECESSOR_MIGRATION_REGISTRY_SHA256
+        != EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256
+        or not valid_predecessor_migration_mirror(contract_mirror)
+        or not valid_predecessor_migration_mirror(protocol_mirror)
+        or contract_mirror != protocol_mirror
+    ):
+        raise VibeError("target predecessor-migration registry mirror is invalid")
+
+
+def authenticate_v050_predecessor(target: Path) -> bool:
+    entry = PREDECESSOR_MIGRATION_ENTRY
+    predecessor = entry["predecessor"]
+    try:
+        manifest_state, manifest_hash = authenticated_path_state(
+            target, MANIFEST_PATH.as_posix()
+        )
+        installed_state, installed_hash = authenticated_path_state(
+            target, INSTALLED_VERSION_PATH.as_posix()
+        )
+        core_version_state, core_version_hash = authenticated_path_state(
+            target, ".vibe/core/version"
+        )
+        protocol_state, protocol_hash = authenticated_path_state(
+            target, ".vibe/core/protocol.json"
+        )
+        agents_state, agents_hash = authenticated_path_state(target, "AGENTS.md")
+        if (
+            manifest_state != "regular"
+            or installed_state != "regular"
+            or core_version_state != "regular"
+            or protocol_state != "regular"
+            or agents_state != "regular"
+        ):
+            return False
+        manifest = load_json_object_strict(target / MANIFEST_PATH)
+        if authenticated_path_state(target, MANIFEST_PATH.as_posix()) != (
+            "regular",
+            manifest_hash,
+        ):
+            return False
+        if (
+            type(manifest.get("schema_version")) is not int
+            or manifest.get("schema_version") != predecessor["manifest_schema"]
+            or manifest.get("framework_version") != predecessor["framework_version"]
+        ):
+            return False
+        official_version_hash = hashlib.sha256(b"0.5.0\n").hexdigest()
+        if installed_hash != official_version_hash or core_version_hash != (
+            official_version_hash
+        ):
+            return False
+        managed_files = manifest.get("managed_files")
+        agents_block_hash = manifest.get("agents_block_hash")
+        if (
+            not isinstance(managed_files, dict)
+            or not isinstance(agents_block_hash, str)
+            or re.fullmatch(r"[0-9a-f]{64}", agents_block_hash) is None
+            or any(path in managed_files for path in PREDECESSOR_MIGRATION_PATHS)
+        ):
+            return False
+        normalized_managed: Dict[str, str] = {}
+        for relative, expected in managed_files.items():
+            if (
+                safe_project_relative_path(relative) is None
+                or not isinstance(expected, str)
+                or re.fullmatch(r"[0-9a-f]{64}", expected) is None
+            ):
+                return False
+            state, actual = authenticated_path_state(target, relative)
+            if state != "regular" or actual != expected:
+                return False
+            normalized_managed[relative] = expected
+        if normalized_managed.get(".vibe/core/protocol.json") != protocol_hash:
+            return False
+        protocol = load_json_object_strict(target / ".vibe/core/protocol.json")
+        if authenticated_path_state(target, ".vibe/core/protocol.json") != (
+            "regular",
+            protocol_hash,
+        ):
+            return False
+        codex = (
+            protocol.get("adapters", {}).get("codex", {})
+            if isinstance(protocol.get("adapters"), dict)
+            else {}
+        )
+        if (
+            protocol.get("manifest_schema") != predecessor["manifest_schema"]
+            or protocol.get("core_protocol") != predecessor["core_protocol"]
+            or protocol.get("agent_install_protocol")
+            != predecessor["agent_install_protocol"]
+            or not isinstance(codex, dict)
+            or codex.get("version") != predecessor["adapter_protocol"]
+            or codex.get("core_protocol") != predecessor["core_protocol"]
+        ):
+            return False
+        agents_text = (target / "AGENTS.md").read_text(encoding="utf-8")
+        if authenticated_path_state(target, "AGENTS.md") != (
+            "regular",
+            agents_hash,
+        ):
+            return False
+        agents_block = extract_agents_block(agents_text)
+        if agents_block is None or sha256_text(agents_block) != agents_block_hash:
+            return False
+        identity = {
+            "agents_block_hash": agents_block_hash,
+            "framework_version": manifest["framework_version"],
+            "managed_files": dict(sorted(normalized_managed.items())),
+            "schema_version": manifest["schema_version"],
+        }
+        if canonical_json_sha256(identity) != predecessor["install_identity_sha256"]:
+            return False
+        for relative, expected in entry["paths"].items():
+            state, actual = authenticated_path_state(target, relative)
+            if state != "regular" or actual != expected:
+                return False
+    except (OSError, UnicodeError, VibeError, KeyError, TypeError):
+        return False
+    return True
+
+
+def predecessor_migration_decision(target: Path) -> str:
+    official_members = 0
+    for relative, expected in PREDECESSOR_MIGRATION_ENTRY["paths"].items():
+        state, actual = authenticated_path_state(target, relative)
+        if state == "regular" and actual == expected:
+            official_members += 1
+    if official_members == 0:
+        return "ordinary"
+    if official_members != len(PREDECESSOR_MIGRATION_PATHS):
+        return "conflict"
+    return "eligible" if authenticate_v050_predecessor(target) else "conflict"
+
+
+def normalized_agent_install_sha256(path: Path) -> str:
+    value = load_json_object_strict(path)
+    activation = value.get("activation")
+    if not isinstance(activation, dict):
+        raise VibeError("Agent-install activation contract is missing")
+    declared = activation.get("activation_set_sha256")
+    if not isinstance(declared, str) or re.fullmatch(r"[0-9a-f]{64}", declared) is None:
+        raise VibeError("Agent-install activation-set digest is invalid")
+    normalized = copy.deepcopy(value)
+    normalized_activation = normalized["activation"]
+    if not isinstance(normalized_activation, dict):
+        raise VibeError("Agent-install activation contract is missing")
+    normalized_activation["activation_set_sha256"] = ACTIVATION_DIGEST_SENTINEL
+    encoded = json.dumps(
+        normalized,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def normalized_agent_install_bytes_sha256(content: bytes) -> str:
+    try:
+        value = json.loads(
+            content.decode("utf-8"), object_pairs_hook=reject_duplicate_json_keys
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise VibeError("Agent-install contract bytes are invalid") from error
+    if not isinstance(value, dict) or not isinstance(value.get("activation"), dict):
+        raise VibeError("Agent-install activation contract bytes are invalid")
+    normalized = copy.deepcopy(value)
+    normalized["activation"]["activation_set_sha256"] = ACTIVATION_DIGEST_SENTINEL
+    canonical = json.dumps(
+        normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def reference_activation_identity_from_entries(
+    entries: Dict[str, bytes], contract: Dict[str, object], protocol: Dict[str, object]
+) -> Tuple[List[str], Dict[str, str], str]:
+    """Independently recompute release activation identity from actual entry bytes."""
+    paths = sorted(
+        [
+            relative
+            for relative in entries
+            if relative in ("AGENT_INSTALL.md", "agent-install.json", "bin/vibe")
+            or relative.startswith(".vibe/core/")
+            or relative.startswith(".agents/skills/vibe-")
+            or relative.startswith(".codex/agents/vibe-")
+        ]
+        + ["AGENTS.md#managed-block"]
+    )
+    hashes: Dict[str, str] = {}
+    for relative in paths:
+        if relative == "AGENTS.md#managed-block":
+            try:
+                block = extract_agents_block(entries["AGENTS.md"].decode("utf-8"))
+            except (KeyError, UnicodeError, VibeError) as error:
+                raise VibeError("release AGENTS.md managed block is invalid") from error
+            if block is None:
+                raise VibeError("release AGENTS.md managed block is missing")
+            hashes[relative] = hashlib.sha256(block.encode("utf-8")).hexdigest()
+        elif relative == "agent-install.json":
+            hashes[relative] = normalized_agent_install_bytes_sha256(entries[relative])
+        else:
+            hashes[relative] = hashlib.sha256(entries[relative]).hexdigest()
+    adapter = contract.get("adapter")
+    if not isinstance(adapter, dict):
+        raise VibeError("release Agent-install adapter is invalid")
+    fingerprint = {
+        "kit_version": contract.get("kit_version"),
+        "core_protocol": protocol.get("core_protocol"),
+        "agent_install_schema": contract.get("schema_version"),
+        "agent_install_protocol": contract.get("protocol_version"),
+        "adapter_name": adapter.get("name"),
+        "adapter_protocol": adapter.get("protocol"),
+    }
+    canonical = json.dumps(
+        {"fingerprint": fingerprint, "path_hashes": dict(sorted(hashes.items()))},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return paths, dict(sorted(hashes.items())), hashlib.sha256(canonical).hexdigest()
+
+
+def activation_paths(root: Path) -> List[str]:
+    paths = [
+        path.relative_to(root).as_posix()
+        for path in managed_source_files(root)
+    ]
+    paths.append("AGENTS.md#managed-block")
+    return sorted(paths)
+
+
+def activation_path_hashes(root: Path, paths: Sequence[str]) -> Dict[str, str]:
+    hashes: Dict[str, str] = {}
+    for relative in paths:
+        if relative == "AGENTS.md#managed-block":
+            hashes[relative] = sha256_text(incoming_agents_block(root))
+            continue
+        path = root / relative
+        if not path.is_file():
+            raise VibeError(f"Activation path is missing: {relative}")
+        hashes[relative] = (
+            normalized_agent_install_sha256(path)
+            if relative == "agent-install.json"
+            else sha256(path)
+        )
+    return dict(sorted(hashes.items()))
+
+
+def activation_fingerprint_base(root: Path) -> Dict[str, object]:
+    protocol = release_protocol(root)
+    contract = load_agent_install_contract(root)
+    adapter = contract.get("adapter")
+    if not isinstance(adapter, dict):
+        raise VibeError("Agent-install adapter contract is missing")
+    return {
+        "kit_version": framework_version(root),
+        "core_protocol": protocol.get("core_protocol"),
+        "agent_install_schema": contract.get("schema_version"),
+        "agent_install_protocol": contract.get("protocol_version"),
+        "adapter_name": adapter.get("name"),
+        "adapter_protocol": adapter.get("protocol"),
+    }
+
+
+def activation_set_digest(
+    fingerprint: Dict[str, object], path_hashes: Dict[str, str]
+) -> str:
+    return canonical_json_sha256(
+        {"fingerprint": fingerprint, "path_hashes": dict(sorted(path_hashes.items()))}
+    )
+
+
+def source_activation_identity(root: Path) -> Dict[str, object]:
+    paths = activation_paths(root)
+    path_hashes = activation_path_hashes(root, paths)
+    fingerprint = activation_fingerprint_base(root)
+    digest = activation_set_digest(fingerprint, path_hashes)
+    return {
+        "fingerprint": {
+            **fingerprint,
+            "manifest_sha256": None,
+            "activation_set_sha256": digest,
+        },
+        "paths": paths,
+        "path_hashes": path_hashes,
+        "activation_set_sha256": digest,
+    }
 
 
 def merge_agents_text(current: str, incoming_block: str) -> str:
@@ -608,12 +1516,21 @@ def write_manifest(
     agents_block_hash: str,
     provenance: Dict[str, object],
 ) -> None:
+    activation = source_activation_identity(source_root())
     manifest = {
         "schema_version": 1,
         "framework_version": version,
         "managed_files": dict(sorted(managed_hashes.items())),
         "agents_block_hash": agents_block_hash,
         "source": provenance,
+        "target_fingerprint": activation["fingerprint"],
+        "activation": {
+            "algorithm": ACTIVATION_SET_ALGORITHM,
+            "paths": activation["paths"],
+            "path_hashes": activation["path_hashes"],
+            "activation_set_sha256": activation["activation_set_sha256"],
+            "runtime_discovery_roots": list(RUNTIME_DISCOVERY_ROOTS),
+        },
     }
     atomic_write_text(
         target / MANIFEST_PATH,
@@ -757,6 +1674,7 @@ def install(
         raise mutation_filesystem_error(command, target, error) from error
     if output_format == "json":
         write_state = "project-files-written"
+        activation = source_activation_identity(source)
         print_json(
             result_envelope(
                 command,
@@ -770,9 +1688,18 @@ def install(
                 managed_files_installed=len(managed_hashes),
                 project_owned_files_created=len(created),
                 onboarding=onboarding_result(target),
+                target_fingerprint=activation["fingerprint"],
+                activation={
+                    "state": "not-proven",
+                    "path": "none",
+                    "manual_new_task_supported": True,
+                    "same_task_reload_claimed": False,
+                    "automatic_successor_handoff_claimed": False,
+                },
                 handoff={
                     "required": True,
-                    "instruction": "Open a new Codex task in this project and state the development goal normally.",
+                    "action": "create-new-project-task",
+                    "instruction": "Open one new Codex task in this project; the new task loads the installed rules.",
                 },
             )
         )
@@ -848,11 +1775,33 @@ def install_plan(operation: str, target: Path) -> Tuple[List[Dict[str, str]], st
     return entries, "<not installed>", version
 
 
-def upgrade_plan(target: Path) -> Tuple[List[Dict[str, str]], str, str]:
+def upgrade_plan(
+    target: Path,
+) -> Tuple[List[Dict[str, str]], str, str, List[Dict[str, object]]]:
     source = source_root()
     target = target.resolve()
-    manifest = load_manifest(target)
     version = framework_version(source)
+    if version == "0.6.0":
+        validate_target_predecessor_migration_contract(source)
+        migration_decision = predecessor_migration_decision(target)
+    else:
+        migration_decision = "ordinary"
+    try:
+        manifest = load_manifest(target)
+    except VibeError:
+        if migration_decision == "conflict":
+            return (
+                [
+                    plan_entry(
+                        "conflict", relative, PREDECESSOR_MIGRATION_CONFLICT_NOTE
+                    )
+                    for relative in PREDECESSOR_MIGRATION_PATHS
+                ],
+                "<invalid>",
+                version,
+                [],
+            )
+        raise
     previous = {str(key): str(value) for key, value in manifest["managed_files"].items()}
     incoming_files = managed_source_files(source)
     incoming_by_relative = {
@@ -861,16 +1810,27 @@ def upgrade_plan(target: Path) -> Tuple[List[Dict[str, str]], str, str]:
     entries: List[Dict[str, str]] = []
 
     for relative, incoming in incoming_by_relative.items():
+        if relative in PREDECESSOR_MIGRATION_PATHS:
+            if migration_decision == "eligible":
+                entries.append(plan_entry("update", relative, PREDECESSOR_MIGRATION_NOTE))
+                continue
+            if migration_decision == "conflict":
+                entries.append(
+                    plan_entry(
+                        "conflict", relative, PREDECESSOR_MIGRATION_CONFLICT_NOTE
+                    )
+                )
+                continue
         destination = target / relative
         incoming_hash = sha256(incoming)
         recorded_hash = previous.get(relative)
-        if not destination.exists():
+        path_state, current_hash = authenticated_path_state(target, relative)
+        if path_state == "absent":
             entries.append(plan_entry("create", relative, "missing managed file"))
             continue
-        if not destination.is_file():
+        if path_state != "regular" or current_hash is None:
             entries.append(plan_entry("conflict", relative, "managed path is not a file"))
             continue
-        current_hash = sha256(destination)
         if recorded_hash is None and current_hash != incoming_hash:
             entries.append(plan_entry("conflict", relative, "untracked managed path differs"))
         elif (
@@ -930,7 +1890,12 @@ def upgrade_plan(target: Path) -> Tuple[List[Dict[str, str]], str, str]:
         else:
             action = "update"
         entries.append(plan_entry(action, relative, "installation state"))
-    return entries, current_version, version
+    migrations = (
+        [predecessor_migration_evidence("planned")]
+        if migration_decision == "eligible"
+        else []
+    )
+    return entries, current_version, version, migrations
 
 
 def print_plan(
@@ -941,32 +1906,38 @@ def print_plan(
     target_version: str,
     output_format: str,
     provenance: Dict[str, object],
+    compatibility_migrations: Sequence[Dict[str, object]] = (),
 ) -> int:
     conflicts = [entry for entry in entries if entry["action"] == "conflict"]
     counts: Dict[str, int] = {}
     for entry in entries:
         counts[entry["action"]] = counts.get(entry["action"], 0) + 1
     if output_format == "json":
+        values: Dict[str, object] = {
+            "operation": operation,
+            "target": str(target.resolve()),
+            "current_version": current,
+            "target_version": target_version,
+            "source": provenance,
+            "entries": list(entries),
+            "counts": dict(sorted(counts.items())),
+            "files_changed": False,
+            "recovery": (
+                {
+                    "action": "inspect-conflicts",
+                    "paths": [entry["path"] for entry in conflicts],
+                }
+                if conflicts
+                else None
+            ),
+        }
+        if compatibility_migrations:
+            values["compatibility_migrations"] = list(compatibility_migrations)
         print_json(
             result_envelope(
                 "plan",
                 "blocked" if conflicts else "safe",
-                operation=operation,
-                target=str(target.resolve()),
-                current_version=current,
-                target_version=target_version,
-                source=provenance,
-                entries=list(entries),
-                counts=dict(sorted(counts.items())),
-                files_changed=False,
-                recovery=(
-                    {
-                        "action": "inspect-conflicts",
-                        "paths": [entry["path"] for entry in conflicts],
-                    }
-                    if conflicts
-                    else None
-                ),
+                **values,
             )
         )
         return 2 if conflicts else 0
@@ -998,8 +1969,11 @@ def plan(
     )
     if operation in ("init", "adopt"):
         entries, current, target_version = install_plan(operation, target)
+        compatibility_migrations: List[Dict[str, object]] = []
     else:
-        entries, current, target_version = upgrade_plan(target)
+        entries, current, target_version, compatibility_migrations = upgrade_plan(
+            target
+        )
     return print_plan(
         operation,
         target,
@@ -1008,6 +1982,7 @@ def plan(
         target_version,
         output_format,
         provenance,
+        compatibility_migrations,
     )
 
 
@@ -1025,6 +2000,87 @@ def write_conflict_candidates(
     return root
 
 
+def unique_conflicts(
+    conflicts: Sequence[Tuple[str, Optional[Path]]]
+) -> List[Tuple[str, Optional[Path]]]:
+    result: List[Tuple[str, Optional[Path]]] = []
+    seen = set()
+    for relative, incoming in conflicts:
+        if relative not in seen:
+            result.append((relative, incoming))
+            seen.add(relative)
+    return result
+
+
+def report_upgrade_conflicts(
+    source: Path,
+    target: Path,
+    version: str,
+    provenance: Dict[str, object],
+    conflicts: Sequence[Tuple[str, Optional[Path]]],
+    output_format: str,
+) -> int:
+    conflicts = unique_conflicts(conflicts)
+    try:
+        root = write_conflict_candidates(source, target, conflicts)
+    except (OSError, UnicodeError) as error:
+        raise mutation_filesystem_error("upgrade", target, error) from error
+    if output_format == "json":
+        write_state = "conflict-evidence-written"
+        print_json(
+            result_envelope(
+                "upgrade",
+                "blocked",
+                target=str(target),
+                kit_version=version,
+                source=provenance,
+                write_state=write_state,
+                writes_performed=writes_performed(write_state),
+                managed_files_changed=False,
+                conflict_candidates=str(root),
+                conflicts=[relative for relative, _ in conflicts],
+                recovery={"action": "inspect-conflict-candidates"},
+            )
+        )
+        return 2
+    print("Upgrade aborted; no managed framework files were changed.", file=sys.stderr)
+    print(f"Incoming conflict candidates: {root}", file=sys.stderr)
+    for relative, _ in conflicts:
+        print(f"  - {relative}", file=sys.stderr)
+    return 2
+
+
+def report_upgrade_unknown_partial_migration(
+    target: Path,
+    version: str,
+    provenance: Dict[str, object],
+    error: BaseException,
+    output_format: str,
+) -> int:
+    failure = mutation_filesystem_error("upgrade", target, error)
+    if output_format == "json":
+        print_json(
+            result_envelope(
+                "upgrade",
+                "error",
+                operation="upgrade",
+                target=str(target),
+                kit_version=version,
+                source=provenance,
+                error={"code": failure.code, "message": str(failure)},
+                write_state=failure.write_state,
+                writes_performed=True,
+                recovery=failure.recovery,
+                compatibility_migrations=[
+                    predecessor_migration_evidence("unknown-partial")
+                ],
+            )
+        )
+        return 2
+    print(f"error: {failure}", file=sys.stderr)
+    return 2
+
+
 def upgrade(
     target: Path,
     output_format: str,
@@ -1038,7 +2094,27 @@ def upgrade(
     provenance = validate_source_provenance(
         source_type, source_ref, artifact_sha256, version
     )
-    manifest = load_manifest(target)
+    if version == "0.6.0":
+        validate_target_predecessor_migration_contract(source)
+        migration_decision = predecessor_migration_decision(target)
+    else:
+        migration_decision = "ordinary"
+    try:
+        manifest = load_manifest(target)
+    except VibeError:
+        if migration_decision == "conflict":
+            return report_upgrade_conflicts(
+                source,
+                target,
+                version,
+                provenance,
+                [
+                    (relative, source / relative)
+                    for relative in PREDECESSOR_MIGRATION_PATHS
+                ],
+                output_format,
+            )
+        raise
     previous = {str(key): str(value) for key, value in manifest["managed_files"].items()}
     incoming_files = managed_source_files(source)
     incoming_by_relative = {
@@ -1047,15 +2123,29 @@ def upgrade(
     conflicts: List[Tuple[str, Optional[Path]]] = []
 
     for relative, incoming in incoming_by_relative.items():
+        if relative in PREDECESSOR_MIGRATION_PATHS:
+            if migration_decision == "eligible":
+                continue
+            if migration_decision == "conflict":
+                conflicts.append((relative, incoming))
+                continue
         destination = target / relative
         incoming_hash = sha256(incoming)
         recorded_hash = previous.get(relative)
-        if not destination.exists():
-            continue
-        if not destination.is_file():
-            conflicts.append((relative, incoming))
-            continue
-        current_hash = sha256(destination)
+        if relative in PREDECESSOR_MIGRATION_PATHS:
+            path_state, current_hash = authenticated_path_state(target, relative)
+            if path_state == "absent":
+                continue
+            if path_state != "regular" or current_hash is None:
+                conflicts.append((relative, incoming))
+                continue
+        else:
+            if not destination.exists():
+                continue
+            if not destination.is_file():
+                conflicts.append((relative, incoming))
+                continue
+            current_hash = sha256(destination)
         if recorded_hash is None:
             if current_hash != incoming_hash:
                 conflicts.append((relative, incoming))
@@ -1085,43 +2175,85 @@ def upgrade(
         conflicts.append(("AGENTS.md", None))
 
     if conflicts:
-        try:
-            root = write_conflict_candidates(source, target, conflicts)
-        except (OSError, UnicodeError) as error:
-            raise mutation_filesystem_error("upgrade", target, error) from error
-        if output_format == "json":
-            write_state = "conflict-evidence-written"
-            print_json(
-                result_envelope(
-                    "upgrade",
-                    "blocked",
-                    target=str(target),
-                    kit_version=version,
-                    source=provenance,
-                    write_state=write_state,
-                    writes_performed=writes_performed(write_state),
-                    managed_files_changed=False,
-                    conflict_candidates=str(root),
-                    conflicts=[relative for relative, _ in conflicts],
-                    recovery={"action": "inspect-conflict-candidates"},
-                )
-            )
-            return 2
-        print("Upgrade aborted; no managed framework files were changed.", file=sys.stderr)
-        print(f"Incoming conflict candidates: {root}", file=sys.stderr)
-        for relative, _ in conflicts:
-            print(f"  - {relative}", file=sys.stderr)
-        return 2
+        return report_upgrade_conflicts(
+            source, target, version, provenance, conflicts, output_format
+        )
 
+    if migration_decision == "eligible":
+        try:
+            validate_target_predecessor_migration_contract(source)
+        except VibeError:
+            return report_upgrade_conflicts(
+                source,
+                target,
+                version,
+                provenance,
+                [
+                    (relative, incoming_by_relative[relative])
+                    for relative in PREDECESSOR_MIGRATION_PATHS
+                ],
+                output_format,
+            )
+        if predecessor_migration_decision(target) != "eligible":
+            return report_upgrade_conflicts(
+                source,
+                target,
+                version,
+                provenance,
+                [
+                    (relative, incoming_by_relative[relative])
+                    for relative in PREDECESSOR_MIGRATION_PATHS
+                ],
+                output_format,
+            )
+
+    project_mutation_started = False
+    migration_mutation_started = False
     try:
         updated = 0
         preserved_local = 0
         new_hashes: Dict[str, str] = {}
-        for relative, incoming in incoming_by_relative.items():
+        ordered_relatives = list(incoming_by_relative)
+        if migration_decision == "eligible":
+            ordered_relatives = list(PREDECESSOR_MIGRATION_PATHS) + [
+                relative
+                for relative in ordered_relatives
+                if relative not in PREDECESSOR_MIGRATION_PATHS
+            ]
+        for relative in ordered_relatives:
+            incoming = incoming_by_relative[relative]
             destination = target / relative
             incoming_hash = sha256(incoming)
             recorded_hash = previous.get(relative)
-            current_hash = sha256(destination) if destination.is_file() else None
+            if migration_decision == "eligible" and relative in (
+                PREDECESSOR_MIGRATION_PATHS
+            ):
+                expected_predecessor_hash = PREDECESSOR_MIGRATION_ENTRY["paths"][
+                    relative
+                ]
+                path_state, current_hash = authenticated_path_state(target, relative)
+                if path_state != "regular" or current_hash != expected_predecessor_hash:
+                    if project_mutation_started:
+                        return report_upgrade_unknown_partial_migration(
+                            target,
+                            version,
+                            provenance,
+                            VibeError("predecessor migration member changed during apply"),
+                            output_format,
+                        )
+                    return report_upgrade_conflicts(
+                        source,
+                        target,
+                        version,
+                        provenance,
+                        [
+                            (path, incoming_by_relative[path])
+                            for path in PREDECESSOR_MIGRATION_PATHS
+                        ],
+                        output_format,
+                    )
+            else:
+                current_hash = sha256(destination) if destination.is_file() else None
             if (
                 recorded_hash is not None
                 and current_hash is not None
@@ -1132,6 +2264,9 @@ def upgrade(
                 preserved_local += 1
                 continue
             if current_hash != incoming_hash:
+                project_mutation_started = True
+                if relative in PREDECESSOR_MIGRATION_PATHS:
+                    migration_mutation_started = True
                 atomic_copy(incoming, destination)
                 updated += 1
             new_hashes[relative] = incoming_hash
@@ -1153,27 +2288,49 @@ def upgrade(
         else:
             merged = merge_agents_text(current_agents_text, incoming_block)
             if merged != current_agents_text:
+                project_mutation_started = True
                 atomic_write_text(agents_path, merged)
                 updated += 1
             new_block_hash = incoming_block_hash
 
+        project_mutation_started = True
         write_manifest(target, version, new_hashes, new_block_hash, provenance)
     except (OSError, UnicodeError) as error:
+        if migration_decision == "eligible" and migration_mutation_started:
+            return report_upgrade_unknown_partial_migration(
+                target, version, provenance, error, output_format
+            )
         raise mutation_filesystem_error("upgrade", target, error) from error
     if output_format == "json":
         write_state = "project-files-written"
+        activation = source_activation_identity(source)
+        values: Dict[str, object] = {
+            "target": str(target),
+            "kit_version": version,
+            "source": provenance,
+            "write_state": write_state,
+            "writes_performed": writes_performed(write_state),
+            "managed_files_updated": updated,
+            "locally_modified_entries_preserved": preserved_local,
+            "stale_managed_paths_preserved": stale,
+            "target_fingerprint": activation["fingerprint"],
+            "activation": {
+                "state": "not-proven",
+                "path": "none",
+                "manual_new_task_supported": True,
+                "same_task_reload_claimed": False,
+                "automatic_successor_handoff_claimed": False,
+            },
+        }
+        if migration_decision == "eligible":
+            values["compatibility_migrations"] = [
+                predecessor_migration_evidence("applied")
+            ]
         print_json(
             result_envelope(
                 "upgrade",
                 "success",
-                target=str(target),
-                kit_version=version,
-                source=provenance,
-                write_state=write_state,
-                writes_performed=writes_performed(write_state),
-                managed_files_updated=updated,
-                locally_modified_entries_preserved=preserved_local,
-                stale_managed_paths_preserved=stale,
+                **values,
             )
         )
         return 0
@@ -1220,41 +2377,320 @@ def validate_agent(path: Path) -> List[str]:
     return errors
 
 
+def bounded_diagnostic_detail(target: Path, detail: str) -> str:
+    sanitized = detail.replace(str(target.resolve()), ".")
+    sanitized = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", sanitized)
+    sanitized = "".join(
+        character
+        for character in sanitized
+        if character in "\n\t" or ord(character) >= 32
+    )
+    encoded = sanitized.encode("utf-8", errors="replace")
+    if len(encoded) > 512:
+        encoded = encoded[:509]
+        while True:
+            try:
+                sanitized = encoded.decode("utf-8") + "..."
+                break
+            except UnicodeDecodeError:
+                encoded = encoded[:-1]
+    else:
+        sanitized = encoded.decode("utf-8", errors="replace")
+    return sanitized
+
+
+def doctor_diagnostic(
+    target: Path, code: str, path: Optional[str], detail: str
+) -> Dict[str, object]:
+    registry = DIAGNOSTIC_REGISTRY.get(code)
+    if registry is None:
+        raise ValueError(f"unknown doctor diagnostic code: {code}")
+    level, readiness_effect = registry
+    return {
+        "code": code,
+        "level": level,
+        "readiness_effect": readiness_effect,
+        "path": path,
+        "detail": bounded_diagnostic_detail(target, detail),
+    }
+
+
+def runtime_discovery_path(relative: str) -> bool:
+    return (
+        relative in ("AGENT_INSTALL.md", "agent-install.json", "bin/vibe")
+        or relative.startswith(".vibe/core/")
+        or relative.startswith(".agents/skills/")
+        or relative.startswith(".codex/agents/")
+        or relative == "AGENTS.md#managed-block"
+    )
+
+
 def doctor(target: Path, output_format: str) -> int:
     target = target.resolve()
     errors: List[str] = []
     warnings: List[str] = []
+    diagnostics: List[Dict[str, object]] = []
     readiness = "review-required"
     readiness_kind = "derived"
+
+    def add(code: str, detail: str, path: Optional[str] = None) -> None:
+        diagnostic = doctor_diagnostic(target, code, path, detail)
+        diagnostics.append(diagnostic)
+        if diagnostic["level"] == "warning":
+            warnings.append(detail)
+        else:
+            errors.append(detail)
+
     manifest, manifest_version, manifest_display = read_manifest_for_doctor(target)
     versions_ok, version_result = version_integrity(
         target, manifest_version, manifest_display
     )
     if not versions_ok:
-        errors.append(version_result)
+        add("version-integrity-failed", version_result)
 
-    if manifest is not None:
+    if manifest is None:
+        add(
+            "manifest-missing-or-invalid",
+            f"installation manifest is missing or invalid: {MANIFEST_PATH.as_posix()}",
+            MANIFEST_PATH.as_posix(),
+        )
+    else:
         managed_files = manifest.get("managed_files")
         if not isinstance(managed_files, dict):
-            errors.append(f"invalid managed file manifest: {target / MANIFEST_PATH}")
+            add(
+                "manifest-missing-or-invalid",
+                f"invalid managed file manifest: {MANIFEST_PATH.as_posix()}",
+                MANIFEST_PATH.as_posix(),
+            )
             managed_files = {}
         for relative, expected in managed_files.items():
-            path = target / str(relative)
+            relative_text = str(relative)
+            path = target / relative_text
             if not path.is_file():
-                errors.append(f"missing managed file: {relative}")
+                add(
+                    "managed-file-missing",
+                    f"missing managed file: {relative_text}",
+                    relative_text,
+                )
             elif sha256(path) != str(expected):
-                warnings.append(f"locally modified managed file: {relative}")
+                add(
+                    "managed-file-hash-mismatch",
+                    f"locally modified managed file: {relative_text}",
+                    relative_text,
+                )
         agents = target / "AGENTS.md"
         if not agents.is_file():
-            errors.append("missing AGENTS.md")
+            add("agents-file-missing", "missing AGENTS.md", "AGENTS.md")
         else:
-            block = extract_agents_block(agents.read_text(encoding="utf-8"))
+            try:
+                block = extract_agents_block(agents.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, VibeError) as error:
+                block = None
+                add(
+                    "agents-block-missing",
+                    f"invalid Vibe Kit block in AGENTS.md: {error}",
+                    "AGENTS.md#managed-block",
+                )
             if block is None:
-                errors.append("missing Vibe Kit block in AGENTS.md")
+                if not any(
+                    item["code"] == "agents-block-missing" for item in diagnostics
+                ):
+                    add(
+                        "agents-block-missing",
+                        "missing Vibe Kit block in AGENTS.md",
+                        "AGENTS.md#managed-block",
+                    )
             elif manifest.get("agents_block_hash") and sha256_text(block) != manifest.get(
                 "agents_block_hash"
             ):
-                warnings.append("locally modified Vibe Kit block in AGENTS.md")
+                add(
+                    "agents-block-hash-mismatch",
+                    "locally modified Vibe Kit block in AGENTS.md",
+                    "AGENTS.md#managed-block",
+                )
+
+        guide_path = target / "AGENT_INSTALL.md"
+        guide_expected = managed_files.get("AGENT_INSTALL.md")
+        if not guide_path.is_file() or not validate_agent_install_guide_bytes(
+            guide_path.read_bytes() if guide_path.is_file() else b""
+        ) or guide_expected != (sha256(guide_path) if guide_path.is_file() else None):
+            add(
+                "agent-install-guide-invalid",
+                "installed Agent-install guide is missing, modified, or malformed",
+                "AGENT_INSTALL.md",
+            )
+
+        contract_path = target / "agent-install.json"
+        contract_value: Optional[Dict[str, object]] = None
+        try:
+            contract_value = load_agent_install_contract(target)
+        except VibeError:
+            pass
+        protocol_value: Dict[str, object] = {}
+        try:
+            protocol_value = release_protocol(target)
+        except VibeError:
+            pass
+        contract_takeover = (
+            contract_value.get("takeover") if isinstance(contract_value, dict) else None
+        )
+        contract_activation = (
+            contract_value.get("activation") if isinstance(contract_value, dict) else None
+        )
+        contract_expected = managed_files.get("agent-install.json")
+        contract_valid = (
+            isinstance(contract_value, dict)
+            and contract_expected == sha256(contract_path)
+            and not validate_agent_install_contract_shape(contract_value)
+            and contract_value.get("kit_version") == manifest_version
+            and protocol_value.get("core_protocol") == CORE_PROTOCOL
+            and protocol_value.get("agent_install_protocol") == AGENT_INSTALL_PROTOCOL
+            and protocol_value.get("takeover_contract_registry_sha256")
+            == TAKEOVER_CONTRACT_REGISTRY_SHA256
+            and valid_predecessor_migration_mirror(
+                protocol_value.get("predecessor_migrations")
+            )
+            and isinstance(contract_takeover, dict)
+            and contract_takeover.get("contract_registry_sha256")
+            == TAKEOVER_CONTRACT_REGISTRY_SHA256
+            and isinstance(contract_activation, dict)
+        )
+        if not contract_valid:
+            add(
+                "agent-install-contract-invalid",
+                "installed Agent-install machine contract is missing, modified, or inconsistent",
+                "agent-install.json",
+            )
+
+        activation = manifest.get("activation")
+        fingerprint_value = manifest.get("target_fingerprint")
+        activation_valid = isinstance(activation, dict) and isinstance(
+            fingerprint_value, dict
+        )
+        if activation_valid:
+            paths = activation.get("paths")
+            expected_hashes = activation.get("path_hashes")
+            expected_digest = activation.get("activation_set_sha256")
+            roots = activation.get("runtime_discovery_roots")
+            base_fingerprint = {
+                key: fingerprint_value.get(key)
+                for key in (
+                    "kit_version",
+                    "core_protocol",
+                    "agent_install_schema",
+                    "agent_install_protocol",
+                    "adapter_name",
+                    "adapter_protocol",
+                )
+            }
+            activation_valid = (
+                isinstance(paths, list)
+                and paths == sorted(set(paths))
+                and all(isinstance(item, str) and item for item in paths)
+                and isinstance(expected_hashes, dict)
+                and set(expected_hashes) == set(paths)
+                and all(
+                    isinstance(value, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", value)
+                    for value in expected_hashes.values()
+                )
+                and isinstance(expected_digest, str)
+                and re.fullmatch(r"[0-9a-f]{64}", expected_digest) is not None
+                and activation.get("algorithm") == ACTIVATION_SET_ALGORITHM
+                and roots == list(RUNTIME_DISCOVERY_ROOTS)
+                and base_fingerprint
+                == {
+                    "kit_version": manifest_version,
+                    "core_protocol": CORE_PROTOCOL,
+                    "agent_install_schema": AGENT_INSTALL_SCHEMA,
+                    "agent_install_protocol": AGENT_INSTALL_PROTOCOL,
+                    "adapter_name": "codex",
+                    "adapter_protocol": CODEX_ADAPTER_PROTOCOL,
+                }
+                and activation_set_digest(base_fingerprint, expected_hashes)
+                == expected_digest
+                and fingerprint_value.get("activation_set_sha256")
+                == expected_digest
+                and isinstance(contract_activation, dict)
+                and contract_activation.get("activation_set_algorithm")
+                == ACTIVATION_SET_ALGORITHM
+                and contract_activation.get("activation_paths") == paths
+                and contract_activation.get("activation_set_sha256") == expected_digest
+            )
+        if not activation_valid:
+            add(
+                "manifest-missing-or-invalid",
+                "installation manifest activation identity is missing, unknown, or inconsistent",
+                MANIFEST_PATH.as_posix(),
+            )
+        else:
+            expected_paths = set(activation["paths"])
+            stale_candidates = set(str(key) for key in managed_files) - expected_paths
+            try:
+                discovered = {
+                    path.relative_to(target).as_posix()
+                    for path in managed_source_files(target)
+                }
+                stale_candidates.update(discovered - expected_paths)
+            except (OSError, UnicodeError) as error:
+                add(
+                    "diagnostic-internal-error",
+                    f"could not inspect runtime discovery roots: {error}",
+                )
+            for relative in sorted(stale_candidates):
+                code = (
+                    "stale-runtime-path-preserved"
+                    if runtime_discovery_path(relative)
+                    else "stale-nonruntime-path-preserved"
+                )
+                add(code, f"stale managed path preserved: {relative}", relative)
+
+            actual_hashes: Dict[str, str] = {}
+            for relative in activation["paths"]:
+                if relative == "AGENTS.md#managed-block":
+                    agents_path = target / "AGENTS.md"
+                    if agents_path.is_file():
+                        try:
+                            actual_block = extract_agents_block(
+                                agents_path.read_text(encoding="utf-8")
+                            )
+                        except (OSError, UnicodeError, VibeError):
+                            actual_block = None
+                        if actual_block is not None:
+                            actual_hashes[relative] = sha256_text(actual_block)
+                    continue
+                actual_path = target / relative
+                if actual_path.is_file():
+                    try:
+                        actual_hashes[relative] = (
+                            normalized_agent_install_sha256(actual_path)
+                            if relative == "agent-install.json"
+                            else sha256(actual_path)
+                        )
+                    except VibeError:
+                        pass
+            actual_digest = (
+                activation_set_digest(base_fingerprint, actual_hashes)
+                if set(actual_hashes) == expected_paths
+                else None
+            )
+            manifest["_doctor_activation"] = {
+                "status": "match" if actual_digest == expected_digest else "mismatch",
+                "expected_activation_set_sha256": expected_digest,
+                "actual_activation_set_sha256": actual_digest,
+                "differing_paths": sorted(
+                    relative
+                    for relative in expected_paths
+                    if actual_hashes.get(relative)
+                    != activation["path_hashes"].get(relative)
+                ),
+                "stale_runtime_paths": sorted(
+                    item for item in stale_candidates if runtime_discovery_path(item)
+                ),
+                "stale_nonruntime_paths": sorted(
+                    item for item in stale_candidates if not runtime_discovery_path(item)
+                ),
+            }
 
     for required in (
         Path(".vibe/project.yaml"),
@@ -1262,33 +2698,60 @@ def doctor(target: Path, output_format: str) -> int:
         Path(".vibe/core/operating-model.md"),
     ):
         if not (target / required).is_file():
-            errors.append(f"missing required file: {required}")
+            add(
+                "required-project-file-missing",
+                f"missing required file: {required.as_posix()}",
+                required.as_posix(),
+            )
 
     project_config = target / ".vibe/project.yaml"
     if project_config.is_file():
         try:
             parse_feedback_mode(project_config)
         except VibeError as error:
-            errors.append(str(error))
+            add("project-config-invalid", str(error), ".vibe/project.yaml")
 
-    try:
-        readiness, readiness_warnings = onboarding_readiness(target)
-        readiness_kind = (
-            "persisted" if readiness in ONBOARDING_STATUSES else "derived"
-        )
-        warnings.extend(readiness_warnings)
-    except VibeError as error:
-        errors.append(str(error))
-        readiness = "invalid"
+    if not (target / ONBOARDING_PATH).is_file():
+        readiness = "review-required"
         readiness_kind = "derived"
+        add(
+            "onboarding-state-missing",
+            "onboarding state is missing; review repository context before substantive work",
+            ONBOARDING_PATH.as_posix(),
+        )
+    else:
+        try:
+            readiness, _ = onboarding_readiness(target)
+            readiness_kind = (
+                "persisted" if readiness in ONBOARDING_STATUSES else "derived"
+            )
+        except VibeError as error:
+            add("onboarding-state-invalid", str(error), ONBOARDING_PATH.as_posix())
+            readiness = "invalid"
+            readiness_kind = "derived"
 
     for skill in (target / ".agents/skills").glob("vibe-*/SKILL.md"):
-        errors.extend(validate_skill(skill))
+        for error in validate_skill(skill):
+            add(
+                "skill-contract-invalid",
+                error,
+                skill.relative_to(target).as_posix(),
+            )
     for agent in (target / ".codex/agents").glob("vibe-*.toml"):
-        errors.extend(validate_agent(agent))
+        for error in validate_agent(agent):
+            add(
+                "agent-contract-invalid",
+                error,
+                agent.relative_to(target).as_posix(),
+            )
 
     if output_format == "json":
         status = "broken" if errors else ("warning" if warnings else "healthy")
+        raw_manifest_sha256 = (
+            sha256(target / MANIFEST_PATH)
+            if (target / MANIFEST_PATH).is_file()
+            else None
+        )
         print_json(
             result_envelope(
                 "doctor",
@@ -1300,6 +2763,27 @@ def doctor(target: Path, output_format: str) -> int:
                     "detail": version_result,
                 },
                 onboarding={"status": readiness, "kind": readiness_kind},
+                manifest_sha256=raw_manifest_sha256,
+                target_fingerprint=(
+                    {
+                        **manifest.get("target_fingerprint", {}),
+                        "manifest_sha256": raw_manifest_sha256,
+                    }
+                    if isinstance(manifest, dict)
+                    and isinstance(manifest.get("target_fingerprint"), dict)
+                    else None
+                ),
+                activation=(
+                    manifest.get("_doctor_activation")
+                    if isinstance(manifest, dict)
+                    else None
+                ),
+                diagnostics=diagnostics,
+                diagnostic_registry={
+                    "non_blocking_warning_codes": list(
+                        DOCTOR_NON_BLOCKING_WARNING_CODES
+                    )
+                },
                 warnings=warnings,
                 errors=errors,
                 network_used=False,
@@ -1434,29 +2918,190 @@ def parse_commands(path: Path) -> Dict[str, str]:
     return commands
 
 
-def verify(target: Path, only: Sequence[str]) -> int:
+def sanitize_verify_stream(target: Path, content: bytes) -> Tuple[str, bool]:
+    text = content.decode("utf-8", errors="replace")
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+    text = "".join(
+        character
+        for character in text
+        if character in "\n\t" or ord(character) >= 32
+    )
+    canonical_root = str(target.resolve())
+    root_aliases = [canonical_root]
+    if canonical_root.startswith("/private/"):
+        root_aliases.append(canonical_root[len("/private"):])
+    for root_alias in sorted(root_aliases, key=len, reverse=True):
+        text = text.replace(root_alias, ".")
+    for pattern in SECRET_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    encoded = text.encode("utf-8", errors="replace")
+    truncated = len(encoded) > VERIFY_OUTPUT_LIMIT
+    if truncated:
+        encoded = encoded[-VERIFY_OUTPUT_LIMIT:]
+        while True:
+            try:
+                text = encoded.decode("utf-8")
+                break
+            except UnicodeDecodeError:
+                encoded = encoded[1:]
+    else:
+        text = encoded.decode("utf-8", errors="replace")
+    return text, truncated
+
+
+def verify_output(
+    stdout: bytes, stderr: bytes, target: Path
+) -> Dict[str, object]:
+    stdout_tail, stdout_truncated = sanitize_verify_stream(target, stdout)
+    stderr_tail, stderr_truncated = sanitize_verify_stream(target, stderr)
+    return {
+        "stdout_tail": stdout_tail,
+        "stderr_tail": stderr_tail,
+        "stdout_truncated": stdout_truncated,
+        "stderr_truncated": stderr_truncated,
+    }
+
+
+def verify(target: Path, only: Sequence[str], output_format: str) -> int:
     target = target.resolve()
     config = target / ".vibe/project.yaml"
     if not config.is_file():
         raise VibeError(f"Project configuration is missing: {config}")
     commands = parse_commands(config)
-    selected = list(only) if only else list(VERIFY_ORDER)
-    runnable = [(key, commands.get(key, "")) for key in selected if commands.get(key, "")]
-    if not runnable:
-        print("No verification commands are configured.")
-        return 0
+    requested = [key for key in VERIFY_ORDER if key in set(only)] if only else []
+    selected = requested if only else list(VERIFY_ORDER)
+    checks: List[Dict[str, object]] = []
+    for key in selected:
+        command = commands.get(key, "")
+        if not command:
+            checks.append(
+                {
+                    "name": key,
+                    "configured": False,
+                    "applicability": "not-applicable",
+                    "required": False,
+                    "outcome": "unconfigured",
+                    "exit_code": None,
+                    "reason_code": "not-configured",
+                    "provenance": {
+                        "kind": "cli",
+                        "task_id": None,
+                        "operation_id": None,
+                    },
+                    "output": verify_output(b"", b"", target),
+                }
+            )
+            continue
+        if output_format == "text":
+            print(f"\n==> {key}: {command}", flush=True)
+        try:
+            result = subprocess.run(
+                command,
+                cwd=str(target),
+                shell=True,
+                check=False,
+                capture_output=True,
+            )
+        except OSError as error:
+            captured = verify_output(b"", str(error).encode("utf-8"), target)
+            checks.append(
+                {
+                    "name": key,
+                    "configured": True,
+                    "applicability": "applicable",
+                    "required": True,
+                    "outcome": "skipped",
+                    "exit_code": None,
+                    "reason_code": "process-start-failed",
+                    "provenance": {
+                        "kind": "cli",
+                        "task_id": None,
+                        "operation_id": None,
+                    },
+                    "output": captured,
+                }
+            )
+            if output_format == "text":
+                print(captured["stderr_tail"], file=sys.stderr, end="")
+            continue
+        captured = verify_output(result.stdout, result.stderr, target)
+        outcome = "passed" if result.returncode == 0 else "failed"
+        checks.append(
+            {
+                "name": key,
+                "configured": True,
+                "applicability": "applicable",
+                "required": True,
+                "outcome": outcome,
+                "exit_code": result.returncode,
+                "reason_code": None,
+                "provenance": {
+                    "kind": "cli",
+                    "task_id": None,
+                    "operation_id": None,
+                },
+                "output": captured,
+            }
+        )
+        if output_format == "text":
+            if captured["stdout_tail"]:
+                print(captured["stdout_tail"], end="")
+            if captured["stderr_tail"]:
+                print(captured["stderr_tail"], file=sys.stderr, end="")
 
-    failures: List[str] = []
-    for key, command in runnable:
-        print(f"\n==> {key}: {command}", flush=True)
-        result = subprocess.run(command, cwd=str(target), shell=True, check=False)
-        if result.returncode != 0:
-            failures.append(f"{key} ({result.returncode})")
-    if failures:
+    summary = {
+        outcome: sum(1 for check in checks if check["outcome"] == outcome)
+        for outcome in ("passed", "failed", "unconfigured", "skipped")
+    }
+    if summary["skipped"]:
+        status = "blocked"
+        exit_code = 2
+    elif summary["failed"]:
+        status = "failed"
+        exit_code = 1
+    else:
+        status = "passed"
+        exit_code = 0
+    if output_format == "json":
+        print_json(
+            result_envelope(
+                "verify",
+                status,
+                target=str(target),
+                selection={
+                    "mode": "only" if only else "default",
+                    "requested": requested,
+                    "coverage": "partial" if only else "all-configured",
+                },
+                producer="cli",
+                cli_invoked=True,
+                checks=checks,
+                summary=summary,
+            )
+        )
+        return exit_code
+    configured_names = [
+        str(check["name"]) for check in checks if check["configured"]
+    ]
+    if not configured_names:
+        print("No project verification checks are configured.")
+    elif status == "passed":
+        print("\nVerification passed: " + ", ".join(configured_names))
+    elif status == "failed":
+        failures = [
+            f"{check['name']} ({check['exit_code']})"
+            for check in checks
+            if check["outcome"] == "failed"
+        ]
         print("\nVerification failed: " + ", ".join(failures), file=sys.stderr)
-        return 1
-    print("\nVerification passed: " + ", ".join(key for key, _ in runnable))
-    return 0
+    else:
+        skipped = [
+            str(check["name"])
+            for check in checks
+            if check["outcome"] == "skipped"
+        ]
+        print("\nVerification blocked: " + ", ".join(skipped), file=sys.stderr)
+    return exit_code
 
 
 def normalized_slug(value: str) -> str:
@@ -1580,7 +3225,9 @@ def release_source_metadata(root: Path) -> Dict[str, object]:
     return {"type": "git-working-tree", "ref": ref, "tree_state": tree_state}
 
 
-def plugin_source_entries(root: Path, version: str) -> Dict[str, Tuple[bytes, int]]:
+def plugin_source_entries(
+    root: Path, version: str, expected_payload_tree_sha256: str
+) -> Dict[str, Tuple[bytes, int]]:
     plugin_root = root / "distribution/plugin-src/vibe-kit"
     manifest_path = plugin_root / ".codex-plugin/plugin.json"
     if not manifest_path.is_file():
@@ -1591,6 +3238,8 @@ def plugin_source_entries(root: Path, version: str) -> Dict[str, Tuple[bytes, in
         raise VibeError(f"Plugin manifest is invalid: {error}") from error
     if manifest.get("name") != "vibe-kit" or manifest.get("version") != version:
         raise VibeError("Plugin name/version must match the Vibe Kit release")
+    if manifest.get("payload_tree_sha256") != expected_payload_tree_sha256:
+        raise VibeError("Plugin payload-tree identity must match the Vibe Kit release payload")
     for forbidden in ("mcpServers", "hooks", "apps"):
         if forbidden in manifest:
             raise VibeError(f"bootstrap Plugin must not declare {forbidden}")
@@ -1644,6 +3293,7 @@ def release_marketplace_payload() -> Dict[str, object]:
 def package_release(output: Optional[Path], status: str) -> int:
     root = source_root()
     version = framework_version(root)
+    validate_target_predecessor_migration_contract(root)
     destination = (
         output.resolve()
         if output is not None
@@ -1667,7 +3317,33 @@ def package_release(output: Optional[Path], status: str) -> int:
         relative = path.relative_to(root).as_posix()
         payload_entries[relative] = (path.read_bytes(), release_file_mode(relative))
     protocol = release_protocol(root)
-    plugin_entries = plugin_source_entries(root, version)
+    try:
+        packaged_contract = json.loads(
+            payload_entries["agent-install.json"][0].decode("utf-8"),
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
+        if not isinstance(packaged_contract, dict):
+            raise ValueError("contract is not an object")
+        _, _, packaged_activation_digest = reference_activation_identity_from_entries(
+            {relative: value[0] for relative, value in payload_entries.items()},
+            packaged_contract,
+            protocol,
+        )
+        declared_activation_digest = packaged_contract.get("activation", {}).get(
+            "activation_set_sha256"
+        ) if isinstance(packaged_contract.get("activation"), dict) else None
+        if declared_activation_digest != packaged_activation_digest:
+            raise ValueError("activation digest is not finalized")
+    except (KeyError, UnicodeError, json.JSONDecodeError, ValueError, VibeError) as error:
+        raise VibeError(
+            "release Agent-install activation identity must complete the v2 two-pass calculation"
+        ) from error
+    payload_hashes = {
+        relative: hashlib.sha256(content).hexdigest()
+        for relative, (content, _) in sorted(payload_entries.items())
+    }
+    payload_digest = payload_tree_sha256_from_hashes(payload_hashes)
+    plugin_entries = plugin_source_entries(root, version, payload_digest)
 
     destination.mkdir(parents=True, exist_ok=True)
     release_name = f"vibe-kit-{version}.zip"
@@ -1701,10 +3377,6 @@ def package_release(output: Optional[Path], status: str) -> int:
         if path.is_file()
     }
 
-    payload_hashes = {
-        relative: hashlib.sha256(content).hexdigest()
-        for relative, (content, _) in sorted(payload_entries.items())
-    }
     artifact_paths = [release_archive, plugin_archive, marketplace_path]
     artifacts = []
     for path in artifact_paths:
@@ -1719,10 +3391,21 @@ def package_release(output: Optional[Path], status: str) -> int:
         "schema_version": RELEASE_MANIFEST_SCHEMA,
         "status": status,
         "kit_version": version,
+        "agent_install_schema": AGENT_INSTALL_SCHEMA,
         "manifest_schema": protocol.get("manifest_schema"),
         "core_protocol": protocol.get("core_protocol"),
         "feedback_protocol": protocol.get("feedback_protocol"),
         "agent_install_protocol": protocol.get("agent_install_protocol"),
+        "takeover_contract_registry_sha256": protocol.get(
+            "takeover_contract_registry_sha256"
+        ),
+        "predecessor_migrations": protocol.get("predecessor_migrations"),
+        "takeover_schema": TAKEOVER_SCHEMA_VERSION,
+        "maintenance_bridge_schema": MAINTENANCE_BRIDGE_SCHEMA_VERSION,
+        "payload_tree_sha256": payload_digest,
+        "activation_set_sha256": load_agent_install_contract(root).get(
+            "activation", {}
+        ).get("activation_set_sha256"),
         "adapters": protocol.get("adapters"),
         "runtime": {
             "python": ">=3.9",
@@ -1832,6 +3515,194 @@ def read_normalized_archive(path: Path, expected_root: str) -> Tuple[Dict[str, b
 
 def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[str]:
     errors: List[str] = []
+    expected_top_level = {
+        "schema_version",
+        "protocol_version",
+        "kit_version",
+        "adapter",
+        "maintenance_bridge",
+        "canonical_source",
+        "release_channels",
+        "source_identity",
+        "lifecycle",
+        "activation",
+        "takeover",
+        "cli",
+        "onboarding",
+        "privacy",
+        "evolution",
+        "trust",
+    }
+    if set(contract) != expected_top_level:
+        errors.append("agent install contract top-level fields are unknown or incomplete")
+    adapter = contract.get("adapter")
+    expected_capabilities = {
+        "same_task_reload": {
+            "status": "conditional",
+            "current_claim": False,
+            "required_receipt": "host-reload",
+        },
+        "automatic_successor_handoff": {
+            "status": "conditional",
+            "current_claim": False,
+            "required_receipt": "host-successor-start",
+        },
+        "manual_new_task": {
+            "status": "supported",
+            "required_receipt": "manual-task-start",
+        },
+    }
+    if not isinstance(adapter, dict) or adapter.get("capabilities") != expected_capabilities:
+        errors.append("agent install adapter capability claims are unsupported")
+
+    bridge = contract.get("maintenance_bridge")
+    expected_bridge = {
+        "schema_version": MAINTENANCE_BRIDGE_SCHEMA_VERSION,
+        "supported_installed_manifest_schemas": [1],
+        "supported_installed_agent_protocols": [0, 1],
+        "minimum_installed_kit_version": "0.2.0",
+        "maximum_installed_kit_version_exclusive": "0.6.0",
+        "target_agent_install_schema": AGENT_INSTALL_SCHEMA,
+        "target_agent_install_protocol": AGENT_INSTALL_PROTOCOL,
+        "target_cli_result_schema": AGENT_RESULT_SCHEMA,
+        "predecessor_migrations": PREDECESSOR_MIGRATION_MIRROR,
+        "operations": ["plan-upgrade", "upgrade", "doctor"],
+    }
+    if bridge != expected_bridge:
+        errors.append("agent install maintenance bridge is unsupported")
+
+    source_identity = contract.get("source_identity")
+    expected_source_identity = {
+        "source_types": list(SOURCE_TYPES[1:3]) + [SOURCE_TYPES[0]],
+    }
+    if not isinstance(source_identity, dict):
+        errors.append("agent install source identity contract is missing")
+    else:
+        if source_identity.get("source_types") != [
+            "github-release",
+            "plugin-bundled",
+            "offline-bundle",
+            "local-payload",
+        ]:
+            errors.append("agent install source types are unsupported")
+        if source_identity.get("payload_tree_algorithm") != (
+            "sha256-path-nul-file-sha256-newline-v1"
+        ):
+            errors.append("agent install payload-tree algorithm is unsupported")
+        for key in (
+            "github_release_requires",
+            "offline_bundle_requires",
+            "plugin_bundled_requires",
+            "local_payload_requires",
+        ):
+            value = source_identity.get(key)
+            if not isinstance(value, list) or not value or len(set(value)) != len(value):
+                errors.append(f"agent install source requirement is invalid: {key}")
+
+    lifecycle = contract.get("lifecycle")
+    expected_lifecycle = {
+        "stages": [
+            "source-resolved",
+            "planned",
+            "applied",
+            "upgraded",
+            "activated",
+            "adapted",
+            "verified",
+            "re-evaluated",
+            "ready",
+        ],
+        "stage_states": ["not-started", "satisfied", "blocked", "not-applicable"],
+        "overall_statuses": ["in-progress", "ready", "degraded", "blocked"],
+        "new_project_operation": "init",
+        "existing_project_operation": "adopt",
+        "existing_installation_policy": "request-version-change-decision",
+        "ready_owner": "host-agent-adapter",
+        "cli_ready_claim": False,
+    }
+    if lifecycle != expected_lifecycle:
+        errors.append("agent install lifecycle contract is unsupported")
+
+    activation = contract.get("activation")
+    if not isinstance(activation, dict):
+        errors.append("agent install activation contract is missing")
+    else:
+        expected_activation_static = {
+            "activation_set_algorithm": ACTIVATION_SET_ALGORITHM,
+            "runtime_discovery_roots": list(RUNTIME_DISCOVERY_ROOTS),
+            "paths": [
+                "none",
+                "same-task-reload",
+                "automatic-successor-handoff",
+                "manual-new-task",
+            ],
+            "receipt_kinds": [
+                "host-reload",
+                "host-successor-start",
+                "manual-task-start",
+            ],
+            "stale_runtime_diagnostic": "stale-runtime-path-preserved",
+            "stale_nonruntime_diagnostic": "stale-nonruntime-path-preserved",
+            "current_repository_capability": "manual-fallback-only",
+        }
+        for key, expected in expected_activation_static.items():
+            if activation.get(key) != expected:
+                errors.append(f"agent install activation field is unsupported: {key}")
+        declared_paths = activation.get("activation_paths")
+        if not isinstance(declared_paths, list) or declared_paths != sorted(
+            set(declared_paths)
+        ):
+            errors.append("agent install activation paths are invalid")
+        if not re.fullmatch(
+            r"[0-9a-f]{64}", str(activation.get("activation_set_sha256", ""))
+        ):
+            errors.append("agent install activation-set digest is invalid")
+
+    takeover = contract.get("takeover")
+    registry_enums = TAKEOVER_CONTRACT_REGISTRY["enums"]
+    if not isinstance(registry_enums, dict):
+        raise AssertionError("compiled takeover enum registry is invalid")
+    expected_takeover_lists = {
+        "evidence_kinds": registry_enums["evidence_kinds"],
+        "adapted_outcomes": registry_enums["adapted_outcomes"],
+        "re_evaluated_outcomes": registry_enums["re_evaluated_outcomes"],
+        "reason_codes": registry_enums["reason_codes"],
+        "next_action_codes": registry_enums["next_action_codes"],
+        "goal_kinds": registry_enums["goal_kinds"],
+        "goal_custody": registry_enums["goal_custody"],
+        "goal_continuation": registry_enums["goal_continuation"],
+    }
+    if not isinstance(takeover, dict):
+        errors.append("agent install takeover contract is missing")
+    else:
+        if takeover.get("schema_version") != TAKEOVER_SCHEMA_VERSION:
+            errors.append("agent install takeover schema is unsupported")
+        if takeover.get("storage") != "host-task-state-only":
+            errors.append("agent install takeover storage boundary is unsupported")
+        if takeover.get("unknown_or_inconsistent_state") != "fail-closed":
+            errors.append("agent install takeover evolution is unsupported")
+        for key, expected in expected_takeover_lists.items():
+            if takeover.get(key) != expected:
+                errors.append(f"agent install takeover enum is unsupported: {key}")
+        if takeover.get("validator") != {
+            "command": "validate-takeover",
+            "input": "stdin-json",
+            "result_schema_version": AGENT_RESULT_SCHEMA,
+            "statuses": list(AGENT_COMMAND_STATUSES["validate-takeover"]),
+            "persistence": "none",
+            "authority": "structural-consistency-only",
+        }:
+            errors.append("agent install takeover validator contract is unsupported")
+        registry = takeover.get("contract_registry")
+        registry_digest = takeover.get("contract_registry_sha256")
+        if registry != TAKEOVER_CONTRACT_REGISTRY:
+            errors.append("agent install takeover contract registry is unsupported")
+        if registry_digest != TAKEOVER_CONTRACT_REGISTRY_SHA256 or (
+            isinstance(registry, dict)
+            and canonical_json_sha256(registry) != registry_digest
+        ):
+            errors.append("agent install takeover contract registry digest is invalid")
+
     cli = contract.get("cli")
     if not isinstance(cli, dict):
         return ["agent install contract CLI result contract is missing"]
@@ -1847,6 +3718,43 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
         errors.append("agent install contract write states are unsupported")
     if cli.get("writes_performed_rule") != "false-only-for-none":
         errors.append("agent install contract writes_performed rule is unsupported")
+    doctor_contract = cli.get("doctor")
+    expected_warning_registry = {
+        code: effect
+        for code, (level, effect) in DIAGNOSTIC_REGISTRY.items()
+        if level == "warning"
+    }
+    expected_error_codes = [
+        code for code, (level, _) in DIAGNOSTIC_REGISTRY.items() if level == "error"
+    ]
+    if not isinstance(doctor_contract, dict) or doctor_contract != {
+        "diagnostic_shape": [
+            "code", "level", "readiness_effect", "path", "detail"
+        ],
+        "warning_registry": expected_warning_registry,
+        "error_codes": expected_error_codes,
+        "non_blocking_warning_allowlist": list(DOCTOR_NON_BLOCKING_WARNING_CODES),
+    }:
+        errors.append("agent install doctor diagnostic contract is unsupported")
+    verify_contract = cli.get("verify")
+    if not isinstance(verify_contract, dict) or verify_contract != {
+        "statuses": list(AGENT_COMMAND_STATUSES["verify"]),
+        "default_order": list(VERIFY_ORDER),
+        "outcomes": ["passed", "failed", "unconfigured", "skipped"],
+        "skipped_reasons": [
+            "host-permission-denied",
+            "host-capability-unavailable",
+            "side-effect-not-authorized",
+            "execution-interrupted",
+            "process-start-failed",
+        ],
+        "takeover_required_selection": {
+            "mode": "default", "coverage": "all-configured"
+        },
+        "output_tail_bytes": VERIFY_OUTPUT_LIMIT,
+        "network_attestation": "not-provided",
+    }:
+        errors.append("agent install verify contract is unsupported")
 
     onboarding = contract.get("onboarding")
     if not isinstance(onboarding, dict):
@@ -1873,6 +3781,19 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
             errors.append(
                 "agent install contract onboarding preservation rule is unsupported"
             )
+        if onboarding.get("adaptation_requires_activation") is not True or (
+            onboarding.get("contradiction_policy")
+            != "block-without-uncertain-overwrite"
+        ):
+            errors.append("agent install adaptation contract is unsupported")
+
+    if contract.get("privacy") != {
+        "takeover_repository_persistence": False,
+        "goal_text_in_cli_receipts": False,
+        "goal_text_in_release_artifacts": False,
+        "transfer_scope": "minimal-active-objective-and-durable-evidence-references",
+    }:
+        errors.append("agent install takeover privacy contract is unsupported")
 
     evolution = contract.get("evolution")
     expected_evolution = {
@@ -1886,6 +3807,917 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
     return errors
 
 
+def validate_agent_install_guide_bytes(content: bytes) -> bool:
+    try:
+        text = content.decode("utf-8")
+    except UnicodeError:
+        return False
+    return (
+        text.startswith("# Agent installation and takeover contract\n")
+        and "https://github.com/mintgao/vibe-kit" in text
+        and "`agent-install.json`" in text
+        and "validate-takeover" in text
+    )
+
+
+def authentication_error(code: str, path: str) -> Dict[str, str]:
+    return {"code": code, "path": path}
+
+
+def installed_takeover_contract_context(
+    root: Path,
+) -> Tuple[Optional[Dict[str, object]], List[Dict[str, str]]]:
+    """Authenticate the installed takeover contract before candidate validation."""
+    root = root.resolve()
+    errors: List[Dict[str, str]] = []
+
+    def add(code: str, path: str) -> None:
+        item = authentication_error(code, path)
+        if item not in errors:
+            errors.append(item)
+
+    manifest, manifest_version, manifest_display = read_manifest_for_doctor(root)
+    versions_ok, _ = version_integrity(root, manifest_version, manifest_display)
+    if not versions_ok or manifest is None:
+        add("installed-version-integrity-failed", MANIFEST_PATH.as_posix())
+
+    guide_path = root / "AGENT_INSTALL.md"
+    contract_path = root / "agent-install.json"
+    if not guide_path.is_file():
+        add("installed-agent-contract-missing", "AGENT_INSTALL.md")
+    else:
+        try:
+            guide_valid = validate_agent_install_guide_bytes(guide_path.read_bytes())
+        except OSError:
+            guide_valid = False
+        if not guide_valid:
+            add("installed-agent-contract-schema-mismatch", "AGENT_INSTALL.md")
+    if not contract_path.is_file():
+        add("installed-agent-contract-missing", "agent-install.json")
+        return None, errors
+
+    try:
+        contract = load_agent_install_contract(root)
+    except VibeError:
+        add("installed-agent-contract-schema-mismatch", "agent-install.json")
+        return None, errors
+
+    managed_files = manifest.get("managed_files") if isinstance(manifest, dict) else None
+    try:
+        contract_hash = sha256(contract_path)
+    except OSError:
+        contract_hash = None
+    try:
+        guide_hash = sha256(guide_path) if guide_path.is_file() else None
+    except OSError:
+        guide_hash = None
+    if not isinstance(managed_files, dict) or managed_files.get(
+        "agent-install.json"
+    ) != contract_hash:
+        add("installed-agent-contract-hash-mismatch", "agent-install.json")
+    if not isinstance(managed_files, dict) or managed_files.get(
+        "AGENT_INSTALL.md"
+    ) != guide_hash:
+        add("installed-agent-contract-hash-mismatch", "AGENT_INSTALL.md")
+
+    if (
+        contract.get("schema_version") != AGENT_INSTALL_SCHEMA
+        or contract.get("protocol_version") != AGENT_INSTALL_PROTOCOL
+        or contract.get("kit_version") != manifest_version
+        or validate_agent_install_contract_shape(contract)
+    ):
+        add("installed-agent-contract-schema-mismatch", "agent-install.json")
+
+    try:
+        protocol = release_protocol(root)
+    except VibeError:
+        protocol = {}
+    adapter = contract.get("adapter")
+    codex = protocol.get("adapters", {}).get("codex", {}) if isinstance(
+        protocol.get("adapters"), dict
+    ) else {}
+    if (
+        protocol.get("core_protocol") != CORE_PROTOCOL
+        or protocol.get("agent_install_protocol") != AGENT_INSTALL_PROTOCOL
+        or protocol.get("takeover_contract_registry_sha256")
+        != TAKEOVER_CONTRACT_REGISTRY_SHA256
+        or not valid_predecessor_migration_mirror(
+            protocol.get("predecessor_migrations")
+        )
+        or not isinstance(adapter, dict)
+        or adapter.get("name") != "codex"
+        or adapter.get("protocol") != CODEX_ADAPTER_PROTOCOL
+        or not isinstance(codex, dict)
+        or codex.get("version") != CODEX_ADAPTER_PROTOCOL
+        or codex.get("core_protocol") != CORE_PROTOCOL
+    ):
+        add("installed-core-contract-mismatch", ".vibe/core/protocol.json")
+
+    takeover = contract.get("takeover")
+    registry = takeover.get("contract_registry") if isinstance(takeover, dict) else None
+    registry_digest = (
+        takeover.get("contract_registry_sha256") if isinstance(takeover, dict) else None
+    )
+    if (
+        registry != TAKEOVER_CONTRACT_REGISTRY
+        or registry_digest != TAKEOVER_CONTRACT_REGISTRY_SHA256
+        or not isinstance(registry, dict)
+        or canonical_json_sha256(registry) != TAKEOVER_CONTRACT_REGISTRY_SHA256
+    ):
+        add("compiled-contract-registry-mismatch", "agent-install.json#/takeover/contract_registry")
+
+    activation_contract = contract.get("activation")
+    manifest_activation = manifest.get("activation") if isinstance(manifest, dict) else None
+    manifest_fingerprint = (
+        manifest.get("target_fingerprint") if isinstance(manifest, dict) else None
+    )
+    actual_digest: Optional[str] = None
+    expected_digest: Optional[str] = None
+    try:
+        paths = activation_paths(root)
+        hashes = activation_path_hashes(root, paths)
+        fingerprint = activation_fingerprint_base(root)
+        actual_digest = activation_set_digest(fingerprint, hashes)
+        expected_digest = (
+            activation_contract.get("activation_set_sha256")
+            if isinstance(activation_contract, dict)
+            else None
+        )
+        activation_valid = (
+            isinstance(activation_contract, dict)
+            and activation_contract.get("activation_set_algorithm")
+            == ACTIVATION_SET_ALGORITHM
+            and activation_contract.get("activation_paths") == paths
+            and isinstance(manifest_activation, dict)
+            and manifest_activation.get("algorithm") == ACTIVATION_SET_ALGORITHM
+            and manifest_activation.get("paths") == paths
+            and manifest_activation.get("path_hashes") == hashes
+            and manifest_activation.get("activation_set_sha256") == actual_digest
+            and isinstance(manifest_fingerprint, dict)
+            and manifest_fingerprint.get("activation_set_sha256") == actual_digest
+            and expected_digest == actual_digest
+        )
+    except (OSError, UnicodeError, VibeError):
+        activation_valid = False
+    if not activation_valid:
+        add("installed-activation-identity-mismatch", "agent-install.json#/activation")
+
+    if errors:
+        return None, errors
+    raw_manifest_sha256 = sha256(root / MANIFEST_PATH)
+    context = {
+        "project_root": str(root),
+        "manifest_sha256": raw_manifest_sha256,
+        "activation_set_sha256": actual_digest,
+        "target_fingerprint": {
+            "kit_version": manifest_version,
+            "core_protocol": CORE_PROTOCOL,
+            "agent_install_schema": AGENT_INSTALL_SCHEMA,
+            "agent_install_protocol": AGENT_INSTALL_PROTOCOL,
+            "adapter_name": "codex",
+            "adapter_protocol": CODEX_ADAPTER_PROTOCOL,
+            "manifest_sha256": raw_manifest_sha256,
+            "activation_set_sha256": actual_digest,
+        },
+    }
+    return context, []
+
+
+def takeover_validation_error(code: str, path: str) -> Dict[str, str]:
+    return {"code": code, "path": path}
+
+
+def validate_takeover_object(
+    candidate: object, context: Dict[str, object]
+) -> List[Dict[str, str]]:
+    """Validate schema-1 takeover structure; never authenticate host evidence truth."""
+    errors: List[Dict[str, str]] = []
+
+    def add(code: str, path: str) -> None:
+        item = takeover_validation_error(code, path)
+        if item not in errors:
+            errors.append(item)
+
+    def closed(value: object, fields: Sequence[str], path: str) -> bool:
+        if not isinstance(value, dict):
+            add("exact-result-shape", path)
+            return False
+        if set(value) != set(fields):
+            add("exact-result-shape", path)
+            return False
+        return True
+
+    def opaque(value: object, maximum: int = 256) -> bool:
+        return (
+            isinstance(value, str)
+            and 1 <= len(value) <= maximum
+            and all(ord(character) >= 32 and character != "\x7f" for character in value)
+        )
+
+    def nullable_opaque(value: object, maximum: int = 256) -> bool:
+        return value is None or opaque(value, maximum)
+
+    def digest(value: object) -> bool:
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+    def nullable_digest(value: object) -> bool:
+        return value is None or digest(value)
+
+    registry = TAKEOVER_CONTRACT_REGISTRY
+    shape = registry["result_shape"]
+    enums = registry["enums"]
+    limits = registry["array_limits"]
+    if not isinstance(shape, dict) or not isinstance(enums, dict) or not isinstance(limits, dict):
+        return [takeover_validation_error("compiled-contract-registry-mismatch", "$")]
+    top_fields = shape["required_top_level"]
+    if not closed(candidate, top_fields, "$"):
+        return errors
+    result = candidate
+    if not isinstance(result, dict):
+        return errors
+
+    if result.get("takeover_schema_version") != TAKEOVER_SCHEMA_VERSION:
+        add("exact-result-shape", "$.takeover_schema_version")
+    if not opaque(result.get("takeover_id")):
+        add("exact-result-shape", "$.takeover_id")
+    if result.get("evidence_origin") not in enums["evidence_origins"]:
+        add("exact-result-shape", "$.evidence_origin")
+    if not nullable_opaque(result.get("completion_owner_task_id")):
+        add("exact-result-shape", "$.completion_owner_task_id")
+    project_root = result.get("project_root")
+    if not opaque(project_root, 4096) or not isinstance(project_root, str) or (
+        not Path(project_root).is_absolute()
+        or str(Path(project_root).resolve()) != project_root
+    ):
+        add("exact-result-shape", "$.project_root")
+    elif project_root != context.get("project_root"):
+        add("activation-identities-match-target", "$.project_root")
+    if result.get("overall_status") not in enums["overall_statuses"]:
+        add("exact-result-shape", "$.overall_status")
+    if result.get("write_state") not in enums["write_states"]:
+        add("exact-result-shape", "$.write_state")
+    if result.get("last_completed_stage") is not None and result.get(
+        "last_completed_stage"
+    ) not in TAKEOVER_STAGE_ORDER:
+        add("last-completed-is-last-satisfied-stage", "$.last_completed_stage")
+
+    source = result.get("source")
+    if closed(source, shape["required_source_fields"], "$.source"):
+        source_type = source.get("type")
+        if source_type not in enums["source_types"]:
+            add("exact-result-shape", "$.source.type")
+        if not opaque(source.get("ref"), 4096):
+            add("exact-result-shape", "$.source.ref")
+        if not nullable_digest(source.get("artifact_sha256")):
+            add("exact-result-shape", "$.source.artifact_sha256")
+        if not digest(source.get("payload_tree_sha256")):
+            add("exact-result-shape", "$.source.payload_tree_sha256")
+        source_rules = registry["source_rules"]
+        rule = source_rules.get(source_type) if isinstance(source_rules, dict) else None
+        if isinstance(rule, dict):
+            artifact_rule = rule.get("artifact_sha256")
+            artifact = source.get("artifact_sha256")
+            if artifact_rule == "required" and not digest(artifact):
+                add("exact-result-shape", "$.source.artifact_sha256")
+            if artifact_rule == "must-be-null" and artifact is not None:
+                add("exact-result-shape", "$.source.artifact_sha256")
+
+    versions = result.get("versions")
+    fingerprint = result.get("target_fingerprint")
+    if closed(versions, shape["required_versions_fields"], "$.versions"):
+        if not strict_semver(versions.get("from")):
+            add("exact-result-shape", "$.versions.from")
+        if not strict_semver(versions.get("target")):
+            add("exact-result-shape", "$.versions.target")
+    if closed(fingerprint, shape["required_fingerprint_fields"], "$.target_fingerprint"):
+        expected_static = {
+            "core_protocol": CORE_PROTOCOL,
+            "agent_install_schema": AGENT_INSTALL_SCHEMA,
+            "agent_install_protocol": AGENT_INSTALL_PROTOCOL,
+            "adapter_name": "codex",
+            "adapter_protocol": CODEX_ADAPTER_PROTOCOL,
+        }
+        if not strict_semver(fingerprint.get("kit_version")):
+            add("exact-result-shape", "$.target_fingerprint.kit_version")
+        for key, expected in expected_static.items():
+            if fingerprint.get(key) != expected:
+                add("activation-identities-match-target", f"$.target_fingerprint.{key}")
+        if not nullable_digest(fingerprint.get("manifest_sha256")):
+            add("exact-result-shape", "$.target_fingerprint.manifest_sha256")
+        if not nullable_digest(fingerprint.get("activation_set_sha256")):
+            add("exact-result-shape", "$.target_fingerprint.activation_set_sha256")
+        if isinstance(versions, dict) and versions.get("target") != fingerprint.get("kit_version"):
+            add("activation-identities-match-target", "$.versions.target")
+
+    activation = result.get("activation")
+    if closed(activation, shape["required_activation_fields"], "$.activation"):
+        if activation.get("path") not in enums["activation_paths"]:
+            add("activation-receipt-bound", "$.activation.path")
+        if activation.get("receipt_kind") is not None and activation.get(
+            "receipt_kind"
+        ) not in enums["receipt_kinds"]:
+            add("activation-receipt-bound", "$.activation.receipt_kind")
+        for key in ("receipt_id", "active_task_id", "handoff_idempotency_key"):
+            if not nullable_opaque(activation.get(key)):
+                add("exact-result-shape", f"$.activation.{key}")
+        if not opaque(activation.get("source_task_id")):
+            add("exact-result-shape", "$.activation.source_task_id")
+        for key in ("observed_manifest_sha256", "observed_activation_set_sha256"):
+            if not nullable_digest(activation.get(key)):
+                add("exact-result-shape", f"$.activation.{key}")
+
+    stages = result.get("stages")
+    stage_values: Dict[str, Dict[str, object]] = {}
+    all_sequences: List[int] = []
+    evidence_by_stage: Dict[str, List[Dict[str, object]]] = {}
+    if closed(stages, shape["required_stage_keys"], "$.stages"):
+        for stage_name in TAKEOVER_STAGE_ORDER:
+            stage = stages.get(stage_name)
+            stage_path = f"$.stages.{stage_name}"
+            if not closed(stage, shape["required_stage_fields"], stage_path):
+                continue
+            if not isinstance(stage, dict):
+                continue
+            stage_values[stage_name] = stage
+            state = stage.get("state")
+            if state not in enums["stage_states"]:
+                add("stage-outcomes-consistent", f"{stage_path}.state")
+            evidence = stage.get("evidence")
+            if not isinstance(evidence, list) or len(evidence) > int(limits["evidence_per_stage"]):
+                add("exact-result-shape", f"{stage_path}.evidence")
+                evidence = []
+            valid_evidence: List[Dict[str, object]] = []
+            for index, item in enumerate(evidence):
+                item_path = f"{stage_path}.evidence[{index}]"
+                if not closed(item, shape["required_evidence_fields"], item_path):
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                if item.get("kind") not in enums["evidence_kinds"]:
+                    add("exact-result-shape", f"{item_path}.kind")
+                placement = registry["evidence_placement"].get(item.get("kind"), [])
+                if stage_name not in placement:
+                    add("stage-dependencies-satisfied", f"{item_path}.kind")
+                if not opaque(item.get("ref"), 4096):
+                    add("exact-result-shape", f"{item_path}.ref")
+                if not nullable_digest(item.get("sha256")):
+                    add("exact-result-shape", f"{item_path}.sha256")
+                if not nullable_opaque(item.get("task_id")):
+                    add("exact-result-shape", f"{item_path}.task_id")
+                sequence = item.get("sequence")
+                if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 0:
+                    add("exact-result-shape", f"{item_path}.sequence")
+                else:
+                    all_sequences.append(sequence)
+                item_kind = item.get("kind")
+                source_task_for_evidence = (
+                    activation.get("source_task_id")
+                    if isinstance(activation, dict)
+                    else None
+                )
+                active_task_for_evidence = (
+                    activation.get("active_task_id")
+                    if isinstance(activation, dict)
+                    else None
+                )
+                expected_task = (
+                    source_task_for_evidence
+                    if stage_name in (
+                        "source-resolved", "planned", "applied", "upgraded"
+                    )
+                    else active_task_for_evidence
+                )
+                if item.get("task_id") != expected_task:
+                    add("activation-receipt-bound", f"{item_path}.task_id")
+                if item_kind == "source-attestation" and isinstance(source, dict) and (
+                    item.get("sha256") != source.get("payload_tree_sha256")
+                ):
+                    add("activation-identities-match-target", f"{item_path}.sha256")
+                if item_kind in ("activation-receipt", "manual-task-start") and isinstance(
+                    activation, dict
+                ):
+                    if item.get("ref") != activation.get("receipt_id"):
+                        add("activation-receipt-bound", f"{item_path}.ref")
+                    if item.get("sha256") != activation.get(
+                        "observed_activation_set_sha256"
+                    ):
+                        add("activation-identities-match-target", f"{item_path}.sha256")
+                valid_evidence.append(item)
+            evidence_by_stage[stage_name] = valid_evidence
+
+    goal = result.get("goal")
+    custody_history: List[Dict[str, object]] = []
+    if closed(goal, shape["required_goal_fields"], "$.goal"):
+        if goal.get("kind") not in enums["goal_kinds"]:
+            add("exact-result-shape", "$.goal.kind")
+        if goal.get("custody") not in enums["goal_custody"]:
+            add("custody-history-valid", "$.goal.custody")
+        if goal.get("continuation") not in enums["goal_continuation"]:
+            add("custody-history-valid", "$.goal.continuation")
+        for key in ("transfer_id", "owner_task_id"):
+            if not nullable_opaque(goal.get(key)):
+                add("exact-result-shape", f"$.goal.{key}")
+        history = goal.get("custody_history")
+        if not isinstance(history, list) or len(history) > int(limits["custody_history"]):
+            add("custody-history-valid", "$.goal.custody_history")
+            history = []
+        for index, item in enumerate(history):
+            item_path = f"$.goal.custody_history[{index}]"
+            if not closed(item, shape["required_custody_history_fields"], item_path):
+                continue
+            if not isinstance(item, dict):
+                continue
+            if item.get("state") not in enums["goal_custody"]:
+                add("custody-history-valid", f"{item_path}.state")
+            if not nullable_opaque(item.get("task_id")):
+                add("custody-history-valid", f"{item_path}.task_id")
+            sequence = item.get("sequence")
+            if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 0:
+                add("custody-history-valid", f"{item_path}.sequence")
+            else:
+                all_sequences.append(sequence)
+            custody_history.append(item)
+
+    next_action = result.get("next_action")
+    if next_action is not None and closed(
+        next_action, shape["required_next_action_fields"], "$.next_action"
+    ):
+        if next_action.get("code") not in enums["next_action_codes"]:
+            add("reason-action-consistent", "$.next_action.code")
+        detail = next_action.get("detail")
+        if not opaque(detail, 512) or (isinstance(detail, str) and ("\r" in detail or "\n" in detail)):
+            add("exact-result-shape", "$.next_action.detail")
+
+    # Stage state, outcome, predecessor and evidence placement rules.
+    blocked_stages: List[str] = []
+    satisfied_stages: List[str] = []
+    for stage_name in TAKEOVER_STAGE_ORDER:
+        stage = stage_values.get(stage_name)
+        if stage is None:
+            continue
+        state = stage.get("state")
+        outcome = stage.get("outcome")
+        reason = stage.get("reason_code")
+        if state == "satisfied":
+            satisfied_stages.append(stage_name)
+        if state == "blocked":
+            blocked_stages.append(stage_name)
+        if stage_name == "adapted":
+            allowed = registry["stage_outcome_rules"]["adapted"].get(state, [])
+            if outcome not in allowed and not (state == "not-started" and outcome is None):
+                add("stage-outcomes-consistent", f"$.stages.{stage_name}.outcome")
+        elif stage_name == "re-evaluated":
+            allowed = registry["stage_outcome_rules"]["re-evaluated"].get(state, [])
+            if outcome not in allowed and not (state == "not-started" and outcome is None):
+                add("stage-outcomes-consistent", f"$.stages.{stage_name}.outcome")
+        elif outcome is not None:
+            add("stage-outcomes-consistent", f"$.stages.{stage_name}.outcome")
+        if state == "blocked":
+            if reason not in TAKEOVER_REASON_ACTION or TAKEOVER_REASON_STAGE.get(reason) != stage_name:
+                add("reason-action-consistent", f"$.stages.{stage_name}.reason_code")
+        elif reason is not None:
+            add("reason-action-consistent", f"$.stages.{stage_name}.reason_code")
+        if state == "not-applicable" and not (
+            stage_name == "re-evaluated"
+            and isinstance(goal, dict)
+            and goal.get("kind") == "maintenance-only"
+            and outcome == "maintenance-only"
+        ):
+            add("only-maintenance-re-evaluation-not-applicable", f"$.stages.{stage_name}")
+        if state == "satisfied":
+            dependencies = registry["stage_dependencies"].get(stage_name, [])
+            if any(stage_values.get(name, {}).get("state") != "satisfied" for name in dependencies):
+                add("stage-dependencies-satisfied", f"$.stages.{stage_name}")
+            required_evidence = registry["evidence_rules"].get(stage_name, [])
+            actual_kinds = {item.get("kind") for item in evidence_by_stage.get(stage_name, [])}
+            if any(kind not in actual_kinds for kind in required_evidence):
+                add("stage-dependencies-satisfied", f"$.stages.{stage_name}.evidence")
+        elif state == "not-started" and evidence_by_stage.get(stage_name):
+            add("stage-dependencies-satisfied", f"$.stages.{stage_name}.evidence")
+        elif state == "not-applicable" and stage_name == "re-evaluated":
+            actual_kinds = {
+                item.get("kind") for item in evidence_by_stage.get(stage_name, [])
+            }
+            if "routing-record" not in actual_kinds:
+                add("only-maintenance-re-evaluation-not-applicable", f"$.stages.{stage_name}.evidence")
+
+    if len(blocked_stages) > 1:
+        add("stage-dependencies-satisfied", "$.stages")
+    if blocked_stages:
+        blocked_index = TAKEOVER_STAGE_ORDER.index(blocked_stages[0])
+        for later in TAKEOVER_STAGE_ORDER[blocked_index + 1:]:
+            if stage_values.get(later, {}).get("state") != "not-started":
+                add("stage-dependencies-satisfied", f"$.stages.{later}")
+    computed_last = satisfied_stages[-1] if satisfied_stages else None
+    if result.get("last_completed_stage") != computed_last:
+        add("last-completed-is-last-satisfied-stage", "$.last_completed_stage")
+
+    if len(all_sequences) != len(set(all_sequences)):
+        add("custody-sequences-globally-unique", "$.stages")
+    custody_sequences = [
+        item.get("sequence") for item in custody_history if isinstance(item.get("sequence"), int)
+    ]
+    if custody_sequences != sorted(custody_sequences) or len(custody_sequences) != len(
+        set(custody_sequences)
+    ):
+        add("custody-history-strictly-increasing", "$.goal.custody_history")
+
+    source_task = activation.get("source_task_id") if isinstance(activation, dict) else None
+    active_task = activation.get("active_task_id") if isinstance(activation, dict) else None
+    if isinstance(goal, dict):
+        kind = goal.get("kind")
+        custody = goal.get("custody")
+        if kind == "maintenance-only":
+            if custody_history or custody != "none" or goal.get("transfer_id") is not None or (
+                goal.get("owner_task_id") is not None
+                or goal.get("continuation") != "not-applicable"
+            ):
+                add("custody-history-valid", "$.goal")
+        elif kind == "unfinished":
+            if not custody_history or custody_history[0].get("state") != "source-owned" or (
+                custody_history[0].get("task_id") != source_task
+            ):
+                add("custody-first-state-valid", "$.goal.custody_history")
+            for previous, current in zip(custody_history, custody_history[1:]):
+                allowed = TAKEOVER_CUSTODY_TRANSITIONS.get(previous.get("state"), [])
+                if current.get("state") not in allowed:
+                    add("custody-transitions-direct", "$.goal.custody_history")
+            for index, item in enumerate(custody_history):
+                state = item.get("state")
+                task_id = item.get("task_id")
+                expected_history_task = {
+                    "source-owned": source_task,
+                    "automatic-transfer-pending": source_task,
+                    "automatic-successor-owned": active_task,
+                    "manual-transfer-required": None,
+                    "manual-transfer-pending": active_task,
+                    "manual-successor-owned": active_task,
+                }.get(state)
+                if task_id != expected_history_task:
+                    add(
+                        "custody-owner-derived",
+                        f"$.goal.custody_history[{index}].task_id",
+                    )
+            if custody_history and custody_history[-1].get("state") != custody:
+                add("custody-final-equals-current", "$.goal.custody")
+            final_task = custody_history[-1].get("task_id") if custody_history else None
+            derived_owner = final_task if custody in (
+                "source-owned", "automatic-transfer-pending",
+                "automatic-successor-owned", "manual-successor-owned",
+            ) else None
+            if goal.get("owner_task_id") != derived_owner:
+                add("custody-owner-derived", "$.goal.owner_task_id")
+            if custody in ("source-owned", "automatic-transfer-pending") and final_task != source_task:
+                add("custody-owner-derived", "$.goal.custody_history")
+            if custody in ("automatic-successor-owned", "manual-successor-owned") and final_task != active_task:
+                add("custody-owner-derived", "$.goal.custody_history")
+            if custody == "manual-transfer-required" and final_task is not None:
+                add("custody-owner-derived", "$.goal.custody_history")
+            if custody == "automatic-transfer-pending" and isinstance(activation, dict) and not opaque(
+                activation.get("handoff_idempotency_key")
+            ):
+                add("custody-owner-derived", "$.activation.handoff_idempotency_key")
+            if custody in (
+                "automatic-transfer-pending", "automatic-successor-owned",
+                "manual-transfer-required", "manual-transfer-pending",
+                "manual-successor-owned",
+            ) and not opaque(goal.get("transfer_id")):
+                add("custody-history-valid", "$.goal.transfer_id")
+            if custody == "source-owned" and goal.get("transfer_id") is not None:
+                add("custody-history-valid", "$.goal.transfer_id")
+
+    # Activation bindings, event ordering and content identities.
+    if isinstance(activation, dict):
+        path = activation.get("path")
+        receipt_kind = activation.get("receipt_kind")
+        if path == "none":
+            for key in (
+                "receipt_kind", "receipt_id", "active_task_id",
+                "handoff_idempotency_key", "observed_manifest_sha256",
+                "observed_activation_set_sha256",
+            ):
+                if activation.get(key) is not None:
+                    add("activation-receipt-bound", f"$.activation.{key}")
+        else:
+            bindings = registry["activation_receipt_bindings"]
+            binding = bindings.get(receipt_kind) if isinstance(bindings, dict) else None
+            if not isinstance(binding, dict) or binding.get("path") != path:
+                add("activation-receipt-bound", "$.activation")
+            else:
+                relation = binding.get("active_task_relation")
+                if relation == "equals-source-task" and active_task != source_task:
+                    add("activation-receipt-bound", "$.activation.active_task_id")
+                if relation == "differs-from-source-task" and (
+                    active_task is None or active_task == source_task
+                ):
+                    add("activation-receipt-bound", "$.activation.active_task_id")
+                key_rule = binding.get("handoff_idempotency_key")
+                if key_rule == "required" and not opaque(activation.get("handoff_idempotency_key")):
+                    add("activation-receipt-bound", "$.activation.handoff_idempotency_key")
+                if key_rule == "must-be-null" and activation.get("handoff_idempotency_key") is not None:
+                    add("activation-receipt-bound", "$.activation.handoff_idempotency_key")
+                activated_kinds = {
+                    item.get("kind") for item in evidence_by_stage.get("activated", [])
+                }
+                if any(kind not in activated_kinds for kind in binding.get("required_evidence", [])):
+                    add("activation-receipt-bound", "$.stages.activated.evidence")
+            if not opaque(activation.get("receipt_id")):
+                add("activation-receipt-bound", "$.activation.receipt_id")
+        if stage_values.get("activated", {}).get("state") == "satisfied":
+            expected_fp = context.get("target_fingerprint")
+            if fingerprint != expected_fp:
+                add("activation-identities-match-target", "$.target_fingerprint")
+            if activation.get("observed_manifest_sha256") != context.get("manifest_sha256"):
+                add("activation-identities-match-target", "$.activation.observed_manifest_sha256")
+            if activation.get("observed_activation_set_sha256") != context.get(
+                "activation_set_sha256"
+            ):
+                add("activation-identities-match-target", "$.activation.observed_activation_set_sha256")
+            apply_sequences = [
+                item.get("sequence") for item in evidence_by_stage.get("applied", [])
+                if item.get("kind") == "apply-receipt" and isinstance(item.get("sequence"), int)
+            ]
+            activation_sequences = [
+                item.get("sequence") for item in evidence_by_stage.get("activated", [])
+                if item.get("kind") in ("activation-receipt", "manual-task-start")
+                and isinstance(item.get("sequence"), int)
+            ]
+            if not apply_sequences or not activation_sequences or min(activation_sequences) <= max(apply_sequences):
+                add("activation-after-apply", "$.stages.activated.evidence")
+            if isinstance(goal, dict) and goal.get("kind") == "unfinished":
+                history_sequence = {
+                    item.get("state"): item.get("sequence") for item in custody_history
+                }
+                handoff_sequences = [
+                    item.get("sequence")
+                    for item in evidence_by_stage.get("activated", [])
+                    if item.get("kind") == "handoff-claim"
+                    and isinstance(item.get("sequence"), int)
+                ]
+                if path == "same-task-reload" and (
+                    len(custody_history) != 1 or goal.get("custody") != "source-owned"
+                ):
+                    add("custody-history-valid", "$.goal.custody_history")
+                if path == "automatic-successor-handoff":
+                    owner_sequence = history_sequence.get("automatic-successor-owned")
+                    if (
+                        not handoff_sequences
+                        or not activation_sequences
+                        or min(handoff_sequences) <= min(activation_sequences)
+                        or not isinstance(owner_sequence, int)
+                        or owner_sequence <= max(handoff_sequences)
+                    ):
+                        add("successor-custody-terminal", "$.goal.custody_history")
+                if path == "manual-new-task":
+                    pending_sequence = history_sequence.get("manual-transfer-pending")
+                    owner_sequence = history_sequence.get("manual-successor-owned")
+                    if (
+                        not isinstance(pending_sequence, int)
+                        or not activation_sequences
+                        or min(activation_sequences) <= pending_sequence
+                        or not isinstance(owner_sequence, int)
+                        or owner_sequence <= max(activation_sequences)
+                    ):
+                        add("successor-custody-terminal", "$.goal.custody_history")
+
+    if stage_values.get("applied", {}).get("state") == "satisfied" and result.get(
+        "write_state"
+    ) != "project-files-written":
+        add("write-state-project-files-written", "$.write_state")
+
+    reason = None
+    if blocked_stages:
+        reason = stage_values[blocked_stages[0]].get("reason_code")
+    overall = result.get("overall_status")
+    if overall in ("blocked", "degraded"):
+        if not blocked_stages or not isinstance(next_action, dict) or (
+            TAKEOVER_REASON_ACTION.get(reason) != next_action.get("code")
+        ):
+            add("reason-action-consistent", "$.next_action")
+    elif next_action is not None:
+        add("reason-action-consistent", "$.next_action")
+    if overall == "degraded" and not (
+        result.get("write_state") == "project-files-written"
+        and stage_values.get("upgraded", {}).get("state") == "satisfied"
+        and stage_values.get("activated", {}).get("state") == "blocked"
+        and reason == "manual-new-task-required"
+        and isinstance(next_action, dict)
+        and next_action.get("code") == "create-new-project-task"
+    ):
+        add("reason-action-consistent", "$.overall_status")
+
+    ready_satisfied = stage_values.get("ready", {}).get("state") == "satisfied"
+    if (overall == "ready") != ready_satisfied:
+        add("overall-ready-iff-ready-stage-satisfied", "$.overall_status")
+    if ready_satisfied:
+        if blocked_stages or result.get("write_state") != "project-files-written":
+            add("no-blocking-diagnostic", "$.stages.ready")
+        if result.get("completion_owner_task_id") != active_task or active_task is None:
+            add("completion-owner-is-active-task", "$.completion_owner_task_id")
+        if next_action is not None or stage_values["ready"].get("reason_code") is not None:
+            add("ready-has-no-reason-or-next-action", "$.stages.ready")
+        if isinstance(goal, dict) and goal.get("kind") == "maintenance-only":
+            if stage_values.get("re-evaluated", {}).get("state") != "not-applicable":
+                add("only-maintenance-re-evaluation-not-applicable", "$.stages.re-evaluated")
+        elif isinstance(goal, dict):
+            if stage_values.get("re-evaluated", {}).get("state") != "satisfied" or (
+                goal.get("continuation") not in ("ready-to-resume", "resumed")
+            ):
+                add("unfinished-goal-owner-is-completion-owner", "$.goal")
+            if goal.get("owner_task_id") != result.get("completion_owner_task_id"):
+                add("unfinished-goal-owner-is-completion-owner", "$.goal.owner_task_id")
+            bindings = registry["activation_receipt_bindings"]
+            binding = bindings.get(activation.get("receipt_kind")) if isinstance(
+                activation, dict
+            ) and isinstance(bindings, dict) else None
+            if not isinstance(binding, dict) or goal.get("custody") != binding.get(
+                "required_custody_at_ready"
+            ):
+                add("single-active-custodian", "$.goal.custody")
+            if activation.get("path") in ("automatic-successor-handoff", "manual-new-task") and (
+                result.get("completion_owner_task_id") == source_task
+            ):
+                add("successor-custody-terminal", "$.completion_owner_task_id")
+    elif result.get("completion_owner_task_id") is not None:
+        add("completion-owner-is-active-task", "$.completion_owner_task_id")
+    return errors
+
+
+def validate_takeover(root: Path, output_format: str) -> int:
+    try:
+        context, authentication_errors = installed_takeover_contract_context(root)
+    except (OSError, UnicodeError, VibeError):
+        context = None
+        authentication_errors = [
+            authentication_error(
+                "installed-version-integrity-failed", MANIFEST_PATH.as_posix()
+            )
+        ]
+    if authentication_errors or context is None:
+        result = result_envelope(
+            "validate-takeover",
+            "error",
+            structural_only=True,
+            host_evidence_authenticated=False,
+            ready_claim=False,
+            errors=authentication_errors,
+        )
+        if output_format == "json":
+            print_json(result)
+        else:
+            print("Takeover validation could not authenticate the installed contract.", file=sys.stderr)
+        return 2
+    try:
+        raw = sys.stdin.read()
+        candidate = json.loads(raw, object_pairs_hook=reject_duplicate_json_keys)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        candidate = None
+        validation_errors = [takeover_validation_error("exact-result-shape", "$")]
+    else:
+        validation_errors = validate_takeover_object(candidate, context)
+    status = "invalid" if validation_errors else "valid"
+    result = result_envelope(
+        "validate-takeover",
+        status,
+        structural_only=True,
+        host_evidence_authenticated=False,
+        ready_claim=False,
+        errors=validation_errors,
+    )
+    if output_format == "json":
+        print_json(result)
+    elif validation_errors:
+        for item in validation_errors:
+            print(f"INVALID: {item['code']} at {item['path']}", file=sys.stderr)
+    else:
+        print("Takeover structure is valid; host evidence is not authenticated.")
+    return 1 if validation_errors else 0
+
+
+def canonical_takeover_fixture(context: Dict[str, object]) -> Dict[str, object]:
+    """Build the bounded maintenance-only canonical case used by release validation."""
+    fingerprint = copy.deepcopy(context["target_fingerprint"])
+    source_task = "controlled-source-task"
+    active_task = "controlled-manual-successor"
+
+    def evidence(
+        kind: str, ref: str, sequence: int, task_id: Optional[str], digest_value: Optional[str] = None
+    ) -> Dict[str, object]:
+        return {
+            "kind": kind,
+            "ref": ref,
+            "sha256": digest_value,
+            "task_id": task_id,
+            "sequence": sequence,
+        }
+
+    return {
+        "takeover_schema_version": TAKEOVER_SCHEMA_VERSION,
+        "takeover_id": "controlled-takeover",
+        "evidence_origin": "controlled-fixture",
+        "completion_owner_task_id": active_task,
+        "project_root": context["project_root"],
+        "source": {
+            "type": "local-payload",
+            "ref": "controlled-local-payload",
+            "artifact_sha256": None,
+            "payload_tree_sha256": "2" * 64,
+        },
+        "versions": {"from": "0.5.0", "target": fingerprint["kit_version"]},
+        "target_fingerprint": fingerprint,
+        "overall_status": "ready",
+        "last_completed_stage": "ready",
+        "write_state": "project-files-written",
+        "activation": {
+            "path": "manual-new-task",
+            "receipt_kind": "manual-task-start",
+            "receipt_id": "manual-receipt",
+            "source_task_id": source_task,
+            "active_task_id": active_task,
+            "handoff_idempotency_key": None,
+            "observed_manifest_sha256": context["manifest_sha256"],
+            "observed_activation_set_sha256": context["activation_set_sha256"],
+        },
+        "goal": {
+            "kind": "maintenance-only",
+            "custody": "none",
+            "continuation": "not-applicable",
+            "transfer_id": None,
+            "owner_task_id": None,
+            "custody_history": [],
+        },
+        "stages": {
+            "source-resolved": {
+                "state": "satisfied", "outcome": None, "reason_code": None,
+                "evidence": [evidence("source-attestation", "source-receipt", 0, source_task, "2" * 64)],
+            },
+            "planned": {
+                "state": "satisfied", "outcome": None, "reason_code": None,
+                "evidence": [evidence("plan-receipt", "plan-receipt", 1, source_task)],
+            },
+            "applied": {
+                "state": "satisfied", "outcome": None, "reason_code": None,
+                "evidence": [evidence("apply-receipt", "apply-receipt", 2, source_task)],
+            },
+            "upgraded": {
+                "state": "satisfied", "outcome": None, "reason_code": None,
+                "evidence": [evidence("doctor-receipt", "upgrade-doctor", 3, source_task)],
+            },
+            "activated": {
+                "state": "satisfied", "outcome": None, "reason_code": None,
+                "evidence": [evidence("manual-task-start", "manual-receipt", 4, active_task, context["activation_set_sha256"])],
+            },
+            "adapted": {
+                "state": "satisfied", "outcome": "unchanged-complete", "reason_code": None,
+                "evidence": [
+                    evidence("onboarding-state", ".vibe/onboarding.json", 5, active_task),
+                    evidence("adaptation-review", "adaptation-review", 6, active_task),
+                ],
+            },
+            "verified": {
+                "state": "satisfied", "outcome": None, "reason_code": None,
+                "evidence": [
+                    evidence("doctor-receipt", "final-doctor", 7, active_task),
+                    evidence("verify-receipt", "default-verify", 8, active_task),
+                ],
+            },
+            "re-evaluated": {
+                "state": "not-applicable", "outcome": "maintenance-only", "reason_code": None,
+                "evidence": [evidence("routing-record", "maintenance-only", 9, active_task)],
+            },
+            "ready": {"state": "satisfied", "outcome": None, "reason_code": None, "evidence": []},
+        },
+        "next_action": None,
+    }
+
+
+def canonical_takeover_invalid_cases():
+    """Return bounded canonical mutations for release-time production validation."""
+    def dependency(value: Dict[str, object]) -> None:
+        value["stages"]["planned"]["state"] = "not-started"
+        value["stages"]["planned"]["evidence"] = []
+
+    def action(value: Dict[str, object]) -> None:
+        value["next_action"] = {"code": "fix-configured-check", "detail": "Invalid ready action."}
+
+    def activation(value: Dict[str, object]) -> None:
+        value["activation"]["active_task_id"] = value["activation"]["source_task_id"]
+
+    def custody(value: Dict[str, object]) -> None:
+        value["goal"]["custody"] = "source-owned"
+
+    def false_ready(value: Dict[str, object]) -> None:
+        value["overall_status"] = "in-progress"
+
+    return {
+        "dependency": dependency,
+        "action": action,
+        "activation": activation,
+        "custody": custody,
+        "false-ready": false_ready,
+    }
+
+
 def validate_release(release_dir: Path, output_format: str = "text") -> int:
     release_dir = release_dir.resolve()
     manifest_path = release_dir / "release-manifest.json"
@@ -1893,8 +4725,11 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
     if not manifest_path.is_file() or not checksum_path.is_file():
         raise VibeError("release-manifest.json and SHA256SUMS are required")
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+        manifest = json.loads(
+            manifest_path.read_text(encoding="utf-8"),
+            object_pairs_hook=reject_duplicate_json_keys,
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as error:
         raise VibeError(f"release manifest is invalid: {error}") from error
     if not isinstance(manifest, dict):
         raise VibeError("release manifest must be a JSON object")
@@ -1992,6 +4827,11 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
     }
     if actual_payload_hashes != payload_hashes:
         errors.append("release ZIP payload does not match manifest payload_files")
+    actual_payload_tree_sha256 = payload_tree_sha256_from_hashes(
+        actual_payload_hashes
+    )
+    if manifest.get("payload_tree_sha256") != actual_payload_tree_sha256:
+        errors.append("release manifest payload-tree identity does not match payload")
     core_version = release_entries.get(".vibe/core/version", b"").decode("utf-8", errors="replace").strip()
     if core_version != version:
         errors.append("release ZIP core version does not match kit_version")
@@ -2001,18 +4841,23 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
         errors.append("release ZIP is missing protocol metadata")
     else:
         try:
-            loaded_protocol = json.loads(protocol_bytes.decode("utf-8"))
+            loaded_protocol = json.loads(
+                protocol_bytes.decode("utf-8"),
+                object_pairs_hook=reject_duplicate_json_keys,
+            )
             if isinstance(loaded_protocol, dict):
                 release_protocol_value = loaded_protocol
             else:
                 errors.append("release protocol metadata must be an object")
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             errors.append("release protocol metadata is invalid")
     for protocol_key in (
         "manifest_schema",
         "core_protocol",
         "feedback_protocol",
         "agent_install_protocol",
+        "takeover_contract_registry_sha256",
+        "predecessor_migrations",
         "adapters",
     ):
         if manifest.get(protocol_key) != release_protocol_value.get(protocol_key):
@@ -2021,6 +4866,44 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
             )
     if release_protocol_value.get("agent_install_protocol") != AGENT_INSTALL_PROTOCOL:
         errors.append("release Agent install protocol is unsupported")
+    if release_protocol_value.get("core_protocol") != CORE_PROTOCOL:
+        errors.append("release core protocol is unsupported")
+    if release_protocol_value.get("takeover_contract_registry_sha256") != (
+        TAKEOVER_CONTRACT_REGISTRY_SHA256
+    ):
+        errors.append("release takeover contract registry digest is unsupported")
+    release_migration_mirror = release_protocol_value.get("predecessor_migrations")
+    if (
+        not valid_predecessor_migration_mirror(release_migration_mirror)
+        or not valid_predecessor_migration_mirror(
+            manifest.get("predecessor_migrations")
+        )
+        or manifest.get("predecessor_migrations") != release_migration_mirror
+    ):
+        errors.append("release predecessor-migration registry mirror is unsupported")
+    packaged_cli = release_entries.get("bin/vibe")
+    try:
+        expected_cli = (source_root() / "bin/vibe").read_bytes()
+    except OSError:
+        expected_cli = b""
+    if packaged_cli != expected_cli:
+        errors.append("release compiled predecessor-migration registry authority is unsupported")
+    codex_protocol = (
+        release_protocol_value.get("adapters", {}).get("codex", {})
+        if isinstance(release_protocol_value.get("adapters"), dict)
+        else {}
+    )
+    if not isinstance(codex_protocol, dict) or (
+        codex_protocol.get("version") != CODEX_ADAPTER_PROTOCOL
+        or codex_protocol.get("core_protocol") != CORE_PROTOCOL
+        or codex_protocol.get("upgrade_activation")
+        != {
+            "same_task_reload": "conditional-unclaimed",
+            "automatic_successor_handoff": "conditional-unclaimed",
+            "manual_new_task": "supported",
+        }
+    ):
+        errors.append("release Codex adapter activation capability is unsupported")
     for required in (
         "bin/vibe",
         "AGENTS.md",
@@ -2034,30 +4917,25 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
 
     install_guide = release_entries.get("AGENT_INSTALL.md")
     if install_guide is not None:
-        try:
-            guide_text = install_guide.decode("utf-8")
-        except UnicodeDecodeError:
-            guide_text = ""
-        if not (
-            guide_text.startswith("# Agent installation contract")
-            and "agent-install.json" in guide_text
-            and "https://github.com/mintgao/vibe-kit" in guide_text
-        ):
+        if not validate_agent_install_guide_bytes(install_guide):
             errors.append("AGENT_INSTALL.md is malformed")
 
     install_contract_bytes = release_entries.get("agent-install.json")
     install_contract: Dict[str, object] = {}
     if install_contract_bytes is not None:
         try:
-            loaded_contract = json.loads(install_contract_bytes.decode("utf-8"))
+            loaded_contract = json.loads(
+                install_contract_bytes.decode("utf-8"),
+                object_pairs_hook=reject_duplicate_json_keys,
+            )
             if isinstance(loaded_contract, dict):
                 install_contract = loaded_contract
             else:
                 errors.append("agent-install.json must be an object")
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             errors.append("agent-install.json is malformed")
     if install_contract:
-        if install_contract.get("schema_version") != 1:
+        if install_contract.get("schema_version") != AGENT_INSTALL_SCHEMA:
             errors.append("agent install contract schema is unsupported")
         if install_contract.get("protocol_version") != AGENT_INSTALL_PROTOCOL or (
             install_contract.get("protocol_version")
@@ -2086,6 +4964,69 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
             errors.append("agent install contract release channel does not match release status")
         errors.extend(validate_agent_install_contract_shape(install_contract))
 
+        activation_contract = install_contract.get("activation")
+        declared_activation_paths = (
+            activation_contract.get("activation_paths")
+            if isinstance(activation_contract, dict)
+            else None
+        )
+        try:
+            actual_activation_paths, activation_hashes, actual_activation_digest = (
+                reference_activation_identity_from_entries(
+                    release_entries, install_contract, release_protocol_value
+                )
+            )
+        except VibeError:
+            actual_activation_paths = []
+            activation_hashes = {}
+            actual_activation_digest = ""
+            errors.append("release activation identity cannot be recomputed")
+        if declared_activation_paths != actual_activation_paths:
+            errors.append("agent install activation paths do not match release payload")
+        if not isinstance(activation_contract, dict) or (
+            activation_contract.get("activation_set_algorithm")
+            != ACTIVATION_SET_ALGORITHM
+            or
+            activation_contract.get("activation_set_sha256")
+            != actual_activation_digest
+        ):
+            errors.append("agent install activation-set identity does not match payload")
+        if manifest.get("activation_set_sha256") != actual_activation_digest:
+            errors.append("release manifest activation-set identity does not match payload")
+        if manifest.get("agent_install_schema") != AGENT_INSTALL_SCHEMA:
+            errors.append("release manifest Agent-install schema is unsupported")
+        if manifest.get("takeover_schema") != TAKEOVER_SCHEMA_VERSION:
+            errors.append("release manifest takeover schema is unsupported")
+        if manifest.get("maintenance_bridge_schema") != MAINTENANCE_BRIDGE_SCHEMA_VERSION:
+            errors.append("release manifest maintenance bridge schema is unsupported")
+
+        # Exercise the production structural validator against bounded canonical cases.
+        canonical_context = {
+            "project_root": "/canonical/vibe-project",
+            "manifest_sha256": "1" * 64,
+            "activation_set_sha256": actual_activation_digest,
+            "target_fingerprint": {
+                "kit_version": version,
+                "core_protocol": CORE_PROTOCOL,
+                "agent_install_schema": AGENT_INSTALL_SCHEMA,
+                "agent_install_protocol": AGENT_INSTALL_PROTOCOL,
+                "adapter_name": "codex",
+                "adapter_protocol": CODEX_ADAPTER_PROTOCOL,
+                "manifest_sha256": "1" * 64,
+                "activation_set_sha256": actual_activation_digest,
+            },
+        }
+        canonical_valid = canonical_takeover_fixture(canonical_context)
+        if validate_takeover_object(canonical_valid, canonical_context):
+            errors.append("production takeover validator rejects canonical valid result")
+        for case_name, mutation in canonical_takeover_invalid_cases().items():
+            candidate = copy.deepcopy(canonical_valid)
+            mutation(candidate)
+            if not validate_takeover_object(candidate, canonical_context):
+                errors.append(
+                    f"production takeover validator accepts canonical invalid case: {case_name}"
+                )
+
     plugin_manifest_bytes = plugin_entries.get(".codex-plugin/plugin.json")
     plugin_manifest: Dict[str, object] = {}
     if plugin_manifest_bytes is None:
@@ -2101,6 +5042,8 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
             errors.append(f"Plugin manifest is invalid: {error}")
     if plugin_manifest.get("name") != "vibe-kit" or plugin_manifest.get("version") != version:
         errors.append("Plugin name/version does not match release")
+    if plugin_manifest.get("payload_tree_sha256") != actual_payload_tree_sha256:
+        errors.append("Plugin payload-tree identity does not match release payload")
     for forbidden in ("mcpServers", "hooks", "apps"):
         if forbidden in plugin_manifest:
             errors.append(f"Plugin declares forbidden capability: {forbidden}")
@@ -2177,8 +5120,17 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
                 release_directory=str(release_dir),
                 kit_version=version,
                 payload_files=len(release_entries),
+                agent_install_schema=install_contract.get("schema_version"),
                 agent_install_protocol=release_protocol_value.get(
                     "agent_install_protocol"
+                ),
+                payload_tree_sha256=actual_payload_tree_sha256,
+                activation_set_sha256=(
+                    install_contract.get("activation", {}).get(
+                        "activation_set_sha256"
+                    )
+                    if isinstance(install_contract.get("activation"), dict)
+                    else None
                 ),
                 network_used=False,
             )
@@ -3278,6 +6230,12 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("target", nargs="?", default=".")
     add_format_argument(doctor_parser)
 
+    takeover_parser = subparsers.add_parser(
+        "validate-takeover",
+        description="Validate one host-owned takeover result from standard input.",
+    )
+    add_format_argument(takeover_parser)
+
     plan_parser = subparsers.add_parser(
         "plan", description="Preview init, adopt, or upgrade without writing files."
     )
@@ -3314,6 +6272,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Run only one configured check; repeat to select more than one.",
     )
+    add_format_argument(verify_parser)
 
     item_parser = subparsers.add_parser("work-item")
     item_parser.add_argument("slug")
@@ -3397,8 +6356,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return validate_release(Path(args.release_dir), args.output_format)
         if args.command == "doctor":
             return doctor(Path(args.target), args.output_format)
+        if args.command == "validate-takeover":
+            return validate_takeover(source_root(), args.output_format)
         if args.command == "verify":
-            return verify(Path(args.target), args.only)
+            return verify(Path(args.target), args.only, args.output_format)
         if args.command == "work-item":
             return work_item(Path(args.target), args.slug, args.size, args.title)
         if args.command == "feedback":

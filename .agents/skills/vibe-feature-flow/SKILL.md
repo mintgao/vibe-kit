@@ -8,6 +8,8 @@ description: Deliver a new feature or end-to-end behavior change from problem fr
 Use `.vibe/core/operating-model.md` to classify the work and apply
 `.vibe/core/technical-decision-readiness.md` before implementation.
 
+If this flow resumes an unfinished goal after a Vibe Kit upgrade, first require positive target-version activation, completed evidence-backed adaptation, and a passing default verification receipt under `AGENT_INSTALL.md`. Reclassify and rerun the readiness scan under the target rules before any further shared edit; an old-task apply receipt cannot release implementation.
+
 - For S work, confirm the behavior and scan for readiness triggers. Implement directly only when it remains clear, local, reversible, and low risk; otherwise reclassify it before editing.
 - For M/L work, create a work item with `./bin/vibe work-item <slug> --size <M|L>` if one does not exist.
 - Delegate to `vibe_pm` to establish goal, scope, non-goals, and testable acceptance criteria when shaping is needed.

@@ -5,6 +5,8 @@ description: Implement an already specified requirement, design, or technical pl
 
 # Implementation flow
 
+When an unfinished implementation request crosses a Vibe Kit upgrade boundary, resume only in the activated target-version task after adaptation and default verification. Re-evaluate the work item and technical-decision gate under the target rules before shared edits; do not rely on source-task self-report or an apply/doctor receipt as activation evidence.
+
 1. Read the governing brief, acceptance criteria, design notes, project rules, relevant architecture, and `.vibe/core/technical-decision-readiness.md`.
 2. Resolve contradictions before editing. Make reasonable local assumptions when they do not alter product scope, and record them.
 3. Before the first application/shared code edit—even when the user asks directly for implementation—preflight size, risks, open decisions, relevant architecture, readiness outcome, governing decision status, review evidence, blockers, and gate confirmation.

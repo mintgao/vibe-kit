@@ -34,3 +34,13 @@ Apply gates in proportion to the work size and risk.
 - Feedback remains local and non-blocking unless the user gives adjacent, unambiguous approval for the exact report, destination and review hash.
 
 Use `./bin/vibe verify` to run the configured project checks. The command complements task-specific validation; it does not replace it.
+
+## Post-upgrade takeover gate
+
+- A safe apply plus target doctor proves `upgraded`, never `activated` or `ready`.
+- Activation requires a content-bound live host receipt or a valid manual new-task receipt under `AGENT_INSTALL.md`; unknown capability fails closed.
+- The installed Agent-install guide/contract raw hashes, compiled registry digest, core declaration and independently recomputed activation v2 identity match before `validate-takeover` trusts structural rules.
+- The production takeover validator accepts the exact closed result and rejects invalid dependencies, reason/action pairs, receipt bindings, custody transitions and ready claims without echoing takeover values.
+- Only the activated task may adapt project context, run final default verification, re-evaluate target rules, resume the original goal, or announce completion.
+- A default structured verify receipt must cover every configured check. Failed, skipped, malformed, unknown, or partial coverage blocks readiness.
+- Unconditional “ready to continue development” language requires upgraded, activated, adapted, verified, re-evaluated/no-goal-applicable, and no blocker.

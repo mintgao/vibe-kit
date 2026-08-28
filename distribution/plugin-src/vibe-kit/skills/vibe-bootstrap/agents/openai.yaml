@@ -1,4 +1,4 @@
 interface:
   display_name: "Vibe Kit Bootstrap"
-  short_description: "Plan and install the bundled Vibe Kit into a repository"
-  default_prompt: "Adopt the bundled Vibe Kit in this repository and keep internal install commands out of the user flow."
+  short_description: "Install Vibe Kit with truthful activation handoff"
+  default_prompt: "Adopt the bundled Vibe Kit, verify its content identity, and use only the activation path the host can prove."

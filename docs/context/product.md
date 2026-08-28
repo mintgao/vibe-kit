@@ -20,11 +20,16 @@ Provide a reusable, lightweight development operating system for personal vibe-c
 - Mode-aware `vibe-feedback-flow` plus `feedback mode/close/draft/list/review/revise/check/submit/dismiss` for evidence-backed framework improvement. `ask` proactively presents new/material candidates once, while every GitHub submission to `mintgao/vibe-kit` remains exact-payload consent-bound and deduplicated.
 - Deterministic local release/Plugin packaging, SHA-256 manifest validation, expanded marketplace output, and artifact-based offline install checks.
 - Agent-first adoption from the canonical GitHub link through packaged human/machine contracts, structured install-critical CLI results, source provenance, and automatic onboarding readiness routing.
+- Post-upgrade takeover with one exact-version confirmation, separately evidenced upgraded/activated/adapted/verified/ready states, content-bound activation identity, original-goal custody, target-rule re-evaluation, and a one-action manual new-task fallback.
+- Structured doctor diagnostics with fixed readiness effects and full-matrix JSON verification receipts with bounded redacted output.
+- Framework-managed installed Agent-install contracts plus privacy-safe `validate-takeover` structural checking authenticated against the installed manifest, normalized activation identity and compiled registry.
+- A fail-closed compatibility path from the exact healthy official v0.5.0 source-checkout contract pair into 0.6.0 managed ownership, without broadening adoption for arbitrary untracked files.
 - Shallow stack and command detection for common Node.js, Python, Rust, Go, and Swift projects.
 
 ## Non-goals and boundaries
 
-- v0.5.0 is the latest GitHub Pre-release. Stable promotion, a public Plugin Directory entry, and automatic network updates remain out of scope.
+- v0.6.0 is the latest GitHub Pre-release. Stable promotion, a public Plugin Directory entry, and automatic network updates remain out of scope.
+- Current repository/Plugin activation is manual-fallback-only unless a running host supplies positive conformance receipts. Static prompts, controlled fixtures and tool presence do not establish live same-task reload or automatic successor handoff.
 - It does not collect telemetry or silently submit feedback. The central feedback repository is configured, but every outbound payload still requires adjacent, unambiguous approval bound to its report, repository and current hash.
 - The accepted distribution uses channel-neutral releases, repository-pinned installations, a bootstrap-only Codex Plugin, generated thin adapters, and a validated GitHub Release bundle.
 - It does not replace framework-specific project generators.
@@ -38,3 +43,4 @@ Provide a reusable, lightweight development operating system for personal vibe-c
 - Existing projects are preserved during adoption.
 - Framework-owned and project-owned files remain distinguishable.
 - Verification results must distinguish executed evidence from assumptions or skipped checks.
+- Upgrade completion language must distinguish installed files, active target rules, adapted context, configured-check coverage, and original-goal routability.

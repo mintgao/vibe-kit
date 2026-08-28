@@ -10,3 +10,4 @@ Record durable architectural choices here when the tradeoff matters beyond one w
 - [0006: Make feedback proactively ask without silent submission](0006-make-feedback-proactively-ask.md)
 - [0007: Make Agent behavior the primary adoption interface](0007-agent-first-adoption-contract.md)
 - [0008: Gate implementation on technical decision readiness](0008-technical-decision-readiness-gate.md)
+- [0009: Make post-upgrade takeover host-orchestrated and evidence-gated](0009-post-upgrade-takeover.md)
