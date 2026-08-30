@@ -1,7 +1,7 @@
 # Agent installation and takeover contract
 
 This document is the Codex-facing adoption and maintenance entry point for Vibe
-Kit 0.6.0. The machine-readable source of truth is `agent-install.json`. Keep
+Kit 0.7.0. The machine-readable source of truth is `agent-install.json`. Keep
 CLI commands, JSON receipts, hashes and archive details internal during a healthy
 flow; report them only when they establish evidence or explain a blocker.
 
@@ -16,8 +16,10 @@ missing, modified or malformed copy as broken. Both are activation-critical.
 - Recognize `https://github.com/mintgao/vibe-kit` as the only canonical
   repository by default. A fork, redirect or another repository requires an
   explicit source decision.
-- An exact canonical tag or Release URL selects that immutable version, including
-  a pre-release. A bare repository URL selects only the latest stable Release. If
+- An exact canonical tag or Release URL selects a specific published version,
+  including a pre-release. It does not by itself prove that the tag or Release is
+  platform-immutable. Trust transferred bytes only after SHA-256 and nested
+  release validation pass. A bare repository URL selects only the latest stable Release. If
   none exists, present one eligible pre-release and wait for one decision.
 - Never follow `main`, execute `curl | sh`, silently select a pre-release or use an
   archive whose published digest was not verified.
@@ -32,14 +34,14 @@ missing, modified or malformed copy as broken. Both are activation-critical.
 
 Before project writes, compute the versioned payload-tree SHA-256, validate the
 channel evidence in `agent-install.json`, and read its maintenance bridge schema
-1. The target payload's `bin/vibe`, not an older installed CLI, owns
-`plan upgrade`, `upgrade` and the first target-version doctor. Bridge schema 1
-supports manifest schema 1 installations from 0.2.x through 0.5.x and treats a
+2. The target payload's `bin/vibe`, not an older installed CLI, owns
+`plan upgrade`, `upgrade`, `recover-upgrade` and the first target-version doctor.
+Bridge schema 2 supports manifest schema 1 installations from 0.2.x through 0.6.x and treats a
 missing old `agent-install.json` as installed Agent protocol 0.
 
-If the acquisition Agent cannot interpret Agent-install schema 2/protocol 2, the
+If the acquisition Agent cannot interpret Agent-install schema 3/protocol 3, the
 bridge is unknown, the predecessor is outside the declared range, or source
-identity fails, stop before apply. Never coerce protocol 2 to protocol 1.
+identity fails, stop before apply. Never coerce protocol 3 to an older protocol.
 
 The bridge contains one closed compatibility migration for the exact official,
 healthy v0.5.0 source-checkout state where `AGENT_INSTALL.md` and
@@ -52,13 +54,19 @@ that complete set receives paired `update` plan entries and additive
 symlinked, raced or otherwise unhealthy predecessor remains a paired conflict;
 never delete, force-adopt or independently replace one member.
 
+Only the audited v0.2 fixture and exact official v0.3/v0.4 identities may receive
+a create-only canonical `.vibe/onboarding.json` with persisted `pending`. Existing
+valid onboarding is byte-preserved. Missing v0.5/v0.6 onboarding or malformed,
+wrong-type, unreadable, symlinked or raced state blocks before transaction,
+control or project writes; the bridge never fabricates `complete`.
+
 The compiled target registry is authoritative. The exact registry digest and
 mode are mirrored in this machine contract, core protocol and release manifest;
 editable predecessor `source` metadata is ignored for eligibility and can never
 act as a credential. Target-channel source and payload identity remain
 independently mandatory. Planning stays read-only, apply reauthenticates before
 mutation and before each member, and a race after migration writes begin keeps the
-existing `unknown-partial` recovery boundary.
+the transaction recovery boundary.
 
 ## Host-owned takeover lifecycle
 
@@ -66,7 +74,7 @@ The offline CLI may prove source, plan, filesystem apply, installed health,
 structured diagnostics and configured project-check execution. It must never
 claim runtime activation, goal custody, project adaptation, target-rule routing or
 overall readiness. Those facts belong to a host-side takeover result with
-`takeover_schema_version: 1`; validate its exact enums and dependencies from
+`takeover_schema_version: 2`; validate its exact enums and dependencies from
 `agent-install.json` and fail closed on missing, unknown or inconsistent state.
 
 The active task passes exactly one takeover JSON object on stdin to installed
@@ -137,7 +145,7 @@ Without a live receipt, stop the source task after upgrade/doctor with
 `overall_status=degraded`, `reason_code=manual-new-task-required`, and exactly one
 action: create a new Codex task in the same project. Say:
 
-> Vibe Kit 文件已升级到 0.6.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个 Codex 任务。
+> Vibe Kit 文件已升级到 0.7.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个 Codex 任务。
 
 Use a host-prefilled continuation when available. Otherwise include one copyable
 sentence containing the active objective. Do not require a CLI command, Skill name
@@ -193,13 +201,33 @@ completion.
 
 Source, bridge and safe-plan failures have no project writes. Managed conflicts
 write only incoming review candidates and preserve managed/application state.
-`unknown-partial` blocks at apply: inspect scoped Vibe Kit paths, run whichever
-installed doctor is runnable, and recover with Git or the same trusted payload;
-never activate, hand off, adapt, verify or blindly retry while consistency is
-unknown.
+One v0.7 upgrade is a recoverable transaction over changed framework-managed
+files, the complete merged `AGENTS.md`, manifest/version, and only an eligible
+create-only onboarding bridge. Its private state is integrity-checked but
+untrusted; same-OS-principal malicious tamper is outside the threat model.
+Final installation entries are published only with the capability-probed
+fd-relative lossless protocol: hard-link no-clobber for an absent leaf, atomic
+exchange for an existing leaf, or one adjacent prepared no-replace directory
+unit at a first missing managed parent. There is no ordinary-rename fallback;
+unsupported platform/filesystem primitives block before an installation write.
+`rolled-back` proves the predecessor snapshot was restored. `recovery-required`
+requires explicit offline `recover-upgrade`. `unknown-partial` requires inspection
+and forbids automatic overwrite. Ordinary upgrade, plan and doctor fail closed
+while active state exists; never activate, hand off, adapt, verify or blindly
+retry until recovery proves predecessor or target state.
 
 Every blocked/degraded response states the incomplete layer, write state and last
 proven stage, one concrete reason, and exactly one safe next action or material
-decision. Multi-file transaction, rollback and stronger mutation outcomes belong
-to the separate permission-safe atomic-upgrade work and are not changed by this
-contract.
+decision. CLI result schema 2 keeps invocation write state distinct from observed
+installation state.
+
+## Publication boundary
+
+The repository release Skill presents the exact v0.7.0 Pre-release plan and binds
+authorization. Offline `publication-plan` and `validate-publication` build and
+check canonical intents and receipts; they never gain GitHub credentials or
+network authority. The Agent/host performs compare-and-swap main advancement,
+exact annotated tag/Release/five-asset reconciliation, public read-back/download
+checks, then a separately authorized idempotent #1–#5 closeout. Divergent or extra
+remote state blocks. Delete, replace, force and stable/draft transitions require
+separate authorization.

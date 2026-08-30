@@ -2,11 +2,12 @@
 
 ## Product purpose
 
-Provide a reusable, lightweight development operating system for personal vibe-coding projects.
+Provide a project-pinned development system that lets coding Agents carry trusted adoption, evidence-backed project understanding, workflow routing, technical-decision readiness, implementation, and verification with the repository.
 
 ## Primary users
 
-- A developer using Codex to create or continue software projects.
+- Developers using Codex to create or continue software projects.
+- Vibe Kit maintainers validating its CLI, repository contracts, packaged releases, and bootstrap Plugin.
 
 ## Current capabilities
 

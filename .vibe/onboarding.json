@@ -3,8 +3,13 @@
   "status": "complete",
   "evidence": [
     ".vibe/project.yaml",
+    "README.md",
+    "bin/vibe",
+    "tests/test_cli.py",
+    "tests/test_workflow_contract.py",
     "docs/context/product.md",
-    "docs/context/architecture.md"
+    "docs/context/architecture.md",
+    "docs/work-items/20260828-v0-6-publication/verification.md"
   ],
-  "updated_at": "2026-08-27"
+  "updated_at": "2026-08-30"
 }

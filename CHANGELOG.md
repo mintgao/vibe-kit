@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.0 — 2026-08-31
+
+- Added a scoped recoverable upgrade transaction with durable preimages/staging,
+  an independent commit marker, verified rollback, active-state diagnostics and
+  explicit offline `recover-upgrade` handling. Final entries use probed hard-link
+  no-clobber, atomic exchange, or prepared adjacent directory-unit publication;
+  unsupported filesystems block without an ordinary-rename fallback.
+- Added a create-only `pending` onboarding bridge for only the compiled audited
+  v0.2 fixture and exact official v0.3/v0.4 identities; missing v0.5/v0.6 state
+  now blocks before writes and existing valid onboarding remains byte-identical.
+- Added CLI result/takeover schema 2, Agent-install schema/protocol 3,
+  maintenance bridge 2 and core/Codex protocol 5 with closed recovery outcomes.
+- Corrected source trust language: an exact tag/Release selects a version and
+  verified SHA-256 identifies bytes, but neither proves platform immutability.
+- Added the Agent/host-owned, dry-run-first `vibe-release` workflow with offline
+  canonical publication/closeout intents, exact five-asset reconciliation,
+  public download validation and idempotent issue #1–#5 closure receipts.
+- Added release-manifest schema 2 and a non-self-referential distribution graph
+  in which the publication intent is the sole outer five-asset closure.
+
 ## 0.6.0 — 2026-08-28
 
 - Added an evidence-gated post-upgrade takeover lifecycle that separates upgraded, activated, adapted, verified, re-evaluated, and ready states.

@@ -140,7 +140,7 @@ class FakeTakeoverHost:
         stages["re-evaluated"]["state"] = "not-applicable" if maintenance else "satisfied"
         stages["re-evaluated"]["outcome"] = "maintenance-only" if maintenance else "routable"
         return {
-            "takeover_schema_version": 1,
+            "takeover_schema_version": 2,
             "takeover_id": "takeover-id",
             "evidence_origin": "controlled-fixture",
             "completion_owner_task_id": active_task,
@@ -149,11 +149,22 @@ class FakeTakeoverHost:
                 "type": "local-payload", "ref": "controlled-local-payload",
                 "artifact_sha256": None, "payload_tree_sha256": "2" * 64,
             },
-            "versions": {"from": "0.5.0", "target": "0.6.0"},
+            "versions": {
+                "from": "0.5.0",
+                "target": self.context["target_fingerprint"]["kit_version"],
+            },
             "target_fingerprint": copy.deepcopy(self.context["target_fingerprint"]),
             "overall_status": "ready",
             "last_completed_stage": "ready",
             "write_state": "project-files-written",
+            "upgrade_transaction": {
+                "schema_version": 1,
+                "transaction_id": "controlled-upgrade-transaction",
+                "outcome": "committed",
+                "commit_marker": "valid",
+                "installation_state": "target",
+                "active_state_present": False,
+            },
             "activation": {
                 "path": path, "receipt_kind": receipt_kind, "receipt_id": "activation",
                 "source_task_id": source_task, "active_task_id": active_task,

@@ -1,7 +1,7 @@
 {
   "name": "vibe-kit",
-  "version": "0.6.0",
-  "payload_tree_sha256": "d6b034c46d4893f2f7afb6da5c8961668fcae5532d82d7b1a9f949fd5f1ae5a4",
+  "version": "0.7.0",
+  "payload_tree_sha256": "874675420e697ab9c16c35a4f2f558acc65b91dcc42464bd461cda2800116eb1",
   "description": "Install and maintain a repository-pinned Vibe Kit workflow from a bundled offline payload.",
   "author": {
     "name": "mintgao",
@@ -16,10 +16,10 @@
   "interface": {
     "displayName": "Vibe Kit",
     "shortDescription": "Let Codex adopt the Vibe Kit operating protocol.",
-    "longDescription": "Agent-first bootstrap and maintenance from a version-matched offline payload. Upgrades use content-bound receipts and truthfully stop at the manual new-task activation fallback unless the host supplies live conformance evidence.",
+    "longDescription": "Agent-first bootstrap and resilient maintenance from a version-matched offline payload. Upgrades are recoverable transactions; publication remains an explicit host-owned workflow.",
     "developerName": "mintgao",
     "category": "Productivity",
-    "capabilities": ["offline-bootstrap", "repository-pinned-workflow", "manual-new-task-activation"],
+    "capabilities": ["offline-bootstrap", "recoverable-upgrade", "repository-pinned-workflow", "manual-new-task-activation"],
     "defaultPrompt": "Adopt or maintain Vibe Kit for this repository, then let me continue in ordinary development language."
   }
 }

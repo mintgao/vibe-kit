@@ -8,7 +8,7 @@
 
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
 
-<p align="center">Latest published · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.6.0"><code>v0.6.0 Pre-release</code></a></p>
+<p align="center">Latest published · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.7.0"><code>v0.7.0 Pre-release</code></a></p>
 
 ## What Vibe Kit does
 
@@ -36,13 +36,13 @@ The user-visible flow has three steps.
 
 Open the project in Codex and send this request.
 
-> Adopt Vibe Kit from https://github.com/mintgao/vibe-kit/releases/tag/v0.6.0 into the current project. Use this exact trusted version, preserve existing application files and project documentation, complete the health check and evidence-backed project onboarding, then continue with this goal: [my development goal].
+> Adopt Vibe Kit from https://github.com/mintgao/vibe-kit/releases/tag/v0.7.0 into the current project. Use this exact trusted version, preserve existing application files and project documentation, complete the health check and evidence-backed project onboarding, then continue with this goal: [my development goal].
 
 ### Create a new project with Vibe Kit
 
 Describe the application, target directory, and preferred stack in the same request.
 
-> Create a Next.js expense-tracking app in `./my-app` with the official framework generator. Then adopt Vibe Kit from https://github.com/mintgao/vibe-kit/releases/tag/v0.6.0 into the generated project, verify the installation, establish project context, and continue implementing the first usable version.
+> Create a Next.js expense-tracking app in `./my-app` with the official framework generator. Then adopt Vibe Kit from https://github.com/mintgao/vibe-kit/releases/tag/v0.7.0 into the generated project, verify the installation, establish project context, and continue implementing the first usable version.
 
 The exact Release URL selects the current Pre-release explicitly. If you provide only the bare repository URL while no stable Release exists, Codex should ask once before selecting the Pre-release.
 
@@ -54,7 +54,7 @@ After adoption, requests look like normal development work.
 
 > Verify whether the current version is ready to release and show the evidence for each criterion.
 
-Codex should report the selected version and source, installation health, target-rule activation, project-understanding readiness, configured checks, and the next action. The 0.6.0 repository contract defines live reload and automatic successor receipts, but the current Codex/Plugin integration claims neither without positive host evidence. Its guaranteed fallback is one action: open a new Codex task in the same project. The source task can prefill or provide one copyable original-goal sentence; the activated task continues without another upgrade confirmation or internal command.
+Codex should report the selected version and source, installation health, target-rule activation, project-understanding readiness, configured checks, and the next action. The 0.7.0 repository contract defines live reload and automatic successor receipts, but the current Codex/Plugin integration claims neither without positive host evidence. Its guaranteed fallback is one action: open a new Codex task in the same project. The source task can prefill or provide one copyable original-goal sentence; the activated task continues without another upgrade confirmation or internal command.
 
 ## Appendix for professional developers and maintainers
 
@@ -86,9 +86,9 @@ These commands are Agent, maintainer, and troubleshooting interfaces. Ordinary u
 
 The default trust contract recognizes only `https://github.com/mintgao/vibe-kit`. Exact tag and Release URLs select a specific published version, whose Release metadata and SHA-256 are checked before installation. Moving refs such as `main`, unverified archives, silent repository changes, and `curl | sh` flows are rejected.
 
-The normative human and machine contracts are [AGENT_INSTALL.md](AGENT_INSTALL.md) and [agent-install.json](agent-install.json). The 0.6.0 Pre-release uses core/Codex protocol 4, Agent-install schema/protocol 2, takeover schema 1, maintenance bridge schema 1, CLI result schema 1, and feedback protocol 2. Published 0.5.0 remains unchanged. The CLI requires Python 3.9 or later and uses only the standard library.
+The normative human and machine contracts are [AGENT_INSTALL.md](AGENT_INSTALL.md) and [agent-install.json](agent-install.json). The 0.7.0 Pre-release uses core/Codex protocol 5, Agent-install schema/protocol 3, takeover schema 2, maintenance bridge schema 2, CLI result schema 2, release-manifest schema 2, transaction/commit schemas 1, and feedback protocol 2. Historical releases remain unchanged. The CLI requires Python 3.9 or later and uses only the standard library.
 
-In 0.6.0 both Agent-install contracts are installed framework-managed files, recorded in the project manifest and included in activation identity. `bin/vibe validate-takeover --format json` authenticates the installed contract/registry and checks the complete closed takeover structure from stdin without persisting or echoing it. A valid result is structural evidence only; it never authenticates a host receipt or claims readiness.
+In 0.7.0 both Agent-install contracts are installed framework-managed files, recorded in the project manifest and included in activation identity. `bin/vibe validate-takeover --format json` authenticates the installed contract/registry and checks the complete closed takeover structure from stdin without persisting or echoing it. A valid result is structural evidence only; it never authenticates a host receipt or claims readiness.
 
 ### Upgrades and conflicts
 
@@ -101,11 +101,24 @@ Use a newer trusted checkout, validated Release payload, or bundled Plugin paylo
 
 Upgrade compares recorded, local, and incoming hashes before replacing managed files. When both the project and incoming version changed the same managed file, Vibe Kit stops before changing managed files and writes review candidates under `.vibe/conflicts/<timestamp>/`.
 
-The 0.6.0 Pre-release has one narrow compatibility exception for an exact healthy
+The 0.7.0 Pre-release has one narrow compatibility exception for an exact healthy
 official v0.5.0 source checkout: its two previously untracked Agent-install
 contracts are authenticated as a complete set and then replaced and adopted as
 managed files. Partial, modified, mixed, symlinked, raced, or otherwise unhealthy
 sets remain conflicts; arbitrary untracked files receive no new adoption path.
+
+The v0.7 target also recognizes only the audited v0.2 fixture and exact official
+v0.3/v0.4 pre-onboarding identities for a create-only persisted `pending` bridge.
+Existing valid onboarding is byte-preserved; missing v0.5/v0.6 onboarding is state
+loss and blocks before writes. Upgrade is a recoverable transaction. A handled
+failure either proves rollback, asks for explicit `recover-upgrade`, or reports
+unclassifiable state without overwriting it.
+
+Final installation entries use capability-probed, fd-relative lossless
+publication: hard-link no-clobber for absent leaves, atomic exchange for existing
+leaves, and an adjacent prepared no-replace directory unit when the first managed
+parent is absent. Unsupported primitives block; ordinary rename/replace is not a
+fallback for final installation entries.
 
 After a consistent apply, the CLI still does not claim that the running Agent loaded the new rules. A host-provided reload/successor receipt may continue automatically; without one, the current repository and Plugin stop truthfully at the manual new-task fallback. Only the activated task may refresh onboarding, run final default verification, re-evaluate the unfinished goal under target rules, resume shared edits, or say development can continue.
 
@@ -116,10 +129,15 @@ The configured repository checks are dependency-free and scenario-driven.
 ```bash
 python3 -m unittest discover -s tests -v
 ./bin/vibe package --status prerelease
-./bin/vibe validate-release dist/vibe-kit-0.6.0
+./bin/vibe validate-release dist/vibe-kit-0.7.0
 ```
 
-Release validation checks archive safety, checksums, versions, Agent-contract/compiled-registry identity, activation v2 independent recomputation, bounded production-validator cases, and drift across the direct Release, Plugin payload, and expanded marketplace. See the [0.6.0 release notes](docs/releases/0.6.0.md), [post-upgrade takeover decision](docs/decisions/0009-post-upgrade-takeover.md), and [reproducible release decision](docs/decisions/0004-reproducible-release-contract.md).
+Maintainers use the repository `vibe-release` Skill plus offline
+`publication-plan`/`validate-publication` for the exact five-asset GitHub
+Pre-release. GitHub credentials and all remote writes remain in the Agent/host;
+exact selection and verified SHA-256 do not claim platform immutability.
+
+Release validation checks archive safety, checksums, versions, Agent-contract/compiled-registry identity, activation v2 independent recomputation, bounded production-validator cases, and drift across the direct Release, Plugin payload, and expanded marketplace. See the [0.7.0 release notes](docs/releases/0.7.0.md), [post-upgrade takeover decision](docs/decisions/0009-post-upgrade-takeover.md), and [reproducible release decision](docs/decisions/0004-reproducible-release-contract.md).
 
 Static contract tests confirm that the distributed instructions contain the required boundaries. Controlled Agent scenarios and independent QA are still required to observe real workflow behavior. Documentation string tests cannot replace this kind of behavioral evidence.
 
@@ -137,10 +155,10 @@ Security-sensitive candidates can remain local but cannot produce a public revie
 
 ### Current limitations
 
-- `v0.6.0` is the latest GitHub Pre-release. There is no stable Release, public Plugin Directory entry, automatic network updater, or publisher signature and provenance attestation.
+- `v0.7.0` is the latest GitHub Pre-release. There is no stable Release, public Plugin Directory entry, automatic network updater, or publisher signature and provenance attestation.
 - SHA-256 metadata verifies asset and manifest consistency. Publisher identity still depends on the GitHub account, commit, and tag.
 - The Codex adapter is the only currently verified Agent integration. The current repository and Plugin are manual-fallback-only for upgrade activation; live same-task reload, automatic successor handoff, real Linux, and live Plugin-host evidence remain unverified.
-- Install and upgrade are not whole-directory transactions. A failure after writes begin may require repository inspection, an installed health check, and scoped Git or trusted-payload recovery.
+- Install is not a whole-directory transaction. Upgrade has a scoped recoverable transaction over managed/tool-maintained state and the narrow eligible onboarding bridge; it does not cover business files or the whole Git worktree.
 - Technical-decision readiness is a fail-closed repository workflow contract carried by prompts, role separation, and Markdown evidence. The CLI distributes and hash-checks the contract, but it does not currently parse work-item readiness or mechanically prevent file writes.
 - Adoption performs shallow stack detection. Evidence-backed onboarding performs deeper project understanding after installation.
 

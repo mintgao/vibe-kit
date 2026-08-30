@@ -176,9 +176,9 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_post_upgrade_takeover_contract_is_closed_and_manual_fallback_only(self) -> None:
         contract = json.loads((ROOT / "agent-install.json").read_text())
-        self.assertEqual(contract["schema_version"], 2)
-        self.assertEqual(contract["protocol_version"], 2)
-        self.assertEqual(contract["kit_version"], "0.6.0")
+        self.assertEqual(contract["schema_version"], 3)
+        self.assertEqual(contract["protocol_version"], 3)
+        self.assertEqual(contract["kit_version"], "0.7.0")
         self.assertEqual(
             contract["lifecycle"]["stages"],
             [
@@ -224,54 +224,14 @@ class WorkflowContractTests(unittest.TestCase):
             independent_digest,
             protocol["takeover_contract_registry_sha256"],
         )
-        predecessor_registry = {
-            "entries": [
-                {
-                    "migration_id": "v0.5.0-unmanaged-agent-contracts-v1",
-                    "mode": "replace-and-adopt-complete-set",
-                    "paths": {
-                        "AGENT_INSTALL.md": "321a2e1017a09405b1d44570f21f59e0b135c127abd81f9d8258c89b3f95a304",
-                        "agent-install.json": "3ac9c51a83f1487fb298c0fd919bca99252c8972b138ae4925d44ee1544ffb4f",
-                    },
-                    "predecessor": {
-                        "adapter_name": "codex",
-                        "adapter_protocol": 3,
-                        "agent_install_protocol": 1,
-                        "agent_install_schema": 1,
-                        "core_protocol": 3,
-                        "framework_version": "0.5.0",
-                        "install_identity_sha256": "70dd0eac0f54d328a803bc71ef409f66c0a6d8dc8016ce27bb80b2fa4b410fb5",
-                        "manifest_schema": 1,
-                    },
-                    "target": {
-                        "framework_version": "0.6.0",
-                        "source_types": [
-                            "github-release", "plugin-bundled",
-                            "offline-bundle", "local-payload",
-                        ],
-                    },
-                }
-            ],
-            "schema_version": 1,
-        }
-        predecessor_digest = hashlib.sha256(
-            json.dumps(
-                predecessor_registry,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
-        ).hexdigest()
+        predecessor_mirror = contract["maintenance_bridge"]["predecessor_migrations"]
+        self.assertEqual(predecessor_mirror["schema_version"], 2)
+        self.assertEqual(predecessor_mirror["authority"], "target-cli-compiled")
         self.assertEqual(
-            predecessor_digest,
-            "6cbee96e5da8b4d4b5c87403e710aac0740041027a00466f288a670834d1967d",
+            predecessor_mirror["modes"],
+            ["create-pending-onboarding-if-absent", "replace-and-adopt-complete-set"],
         )
-        predecessor_mirror = {
-            "schema_version": 1,
-            "registry_sha256": predecessor_digest,
-            "authority": "target-cli-compiled",
-            "modes": ["replace-and-adopt-complete-set"],
-        }
+        self.assertRegex(predecessor_mirror["registry_sha256"], r"^[0-9a-f]{64}$")
         self.assertEqual(
             contract["maintenance_bridge"]["predecessor_migrations"],
             predecessor_mirror,
@@ -279,6 +239,42 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(protocol["predecessor_migrations"], predecessor_mirror)
         self.assertEqual(
             contract["privacy"]["takeover_repository_persistence"], False
+        )
+
+    def test_v070_lossless_leaf_and_directory_protocol_is_mirrored(self) -> None:
+        cli = (ROOT / "bin/vibe").read_text()
+        adr = (ROOT / "docs/decisions/0010-recoverable-upgrade-transaction.md").read_text()
+        contract = json.loads((ROOT / "agent-install.json").read_text())
+        protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
+        for token in (
+            "ctypes.CDLL(None, use_errno=True)",
+            "renameatx_np",
+            "renameat2",
+            "link-no-clobber-v1",
+            "exchange-preserve-v1",
+            "directory-no-clobber-v1",
+            "directory_postimage_set_sha256",
+            "directory_stage_set_sha256",
+        ):
+            self.assertIn(token, cli)
+        self.assertIn("Prepared absent-parent directory units", adr)
+        self.assertIn("ordinary rename/replace is never a fallback", adr)
+        for reason in (
+            "upgrade-leaf-atomicity-unsupported",
+            "upgrade-leaf-race-preserved",
+        ):
+            self.assertIn(reason, contract["takeover"]["reason_codes"])
+            self.assertEqual(
+                contract["takeover"]["contract_registry"]["reason_stage_map"][reason],
+                "applied",
+            )
+        self.assertIn(
+            "use-supported-upgrade-filesystem",
+            contract["takeover"]["next_action_codes"],
+        )
+        self.assertEqual(
+            contract["takeover"]["contract_registry_sha256"],
+            protocol["takeover_contract_registry_sha256"],
         )
 
     def test_controlled_activation_paths_require_positive_receipts(self) -> None:

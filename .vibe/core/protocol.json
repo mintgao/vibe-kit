@@ -1,20 +1,23 @@
 {
   "schema_version": 1,
   "manifest_schema": 1,
-  "core_protocol": 4,
+  "core_protocol": 5,
   "feedback_protocol": 2,
-  "agent_install_protocol": 2,
-  "takeover_contract_registry_sha256": "bf4ba347dce46132d475300893dcbc9e55dd60f6c84447638b5769d17ceb19be",
+  "agent_install_protocol": 3,
+  "takeover_contract_registry_sha256": "4ecfb5e8932122654c13dce8ea2e78c17b5beced35c6b2dfd669f68b5d708d7b",
   "predecessor_migrations": {
-    "schema_version": 1,
-    "registry_sha256": "6cbee96e5da8b4d4b5c87403e710aac0740041027a00466f288a670834d1967d",
+    "schema_version": 2,
+    "registry_sha256": "e1ea4a078d6d253343ebacc57593794a2a13014946d1c38b6f3b130e8e484d09",
     "authority": "target-cli-compiled",
-    "modes": ["replace-and-adopt-complete-set"]
+    "modes": [
+      "create-pending-onboarding-if-absent",
+      "replace-and-adopt-complete-set"
+    ]
   },
   "adapters": {
     "codex": {
-      "version": 4,
-      "core_protocol": 4,
+      "version": 5,
+      "core_protocol": 5,
       "capability_level": "native-subagents-manual-upgrade-activation",
       "upgrade_activation": {
         "same_task_reload": "conditional-unclaimed",
@@ -22,5 +25,16 @@
         "manual_new_task": "supported"
       }
     }
-  }
+  },
+  "cli_result_schema": 2,
+  "agent_install_schema": 3,
+  "takeover_schema": 2,
+  "maintenance_bridge_schema": 2,
+  "compatibility_migration_registry_schema": 2,
+  "release_manifest_schema": 2,
+  "transaction_journal_schema": 1,
+  "transaction_commit_schema": 1,
+  "publication_intent_schema": 1,
+  "publication_receipt_schema": 1,
+  "issue_closeout_intent_schema": 1
 }

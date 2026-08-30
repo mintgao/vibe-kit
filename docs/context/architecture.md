@@ -30,7 +30,7 @@ Vibe Kit is a dependency-free Python CLI plus distributable Codex instructions, 
 
 The install path validates caller-supplied source provenance and computes the release payload-tree identity before project writes, discovers managed source files, preflights collisions, copies managed files atomically, merges only the marked `AGENTS.md` block, creates missing project-owned context/readiness, and finally records `.vibe/manifest.json` plus `.vibe/version`. The manifest additively carries the target fingerprint, exact activation paths/hashes and target activation-set digest so installed doctor and host receipts can bind activation to actual content.
 
-The upgrade path compares the recorded, local, and incoming hashes before writing. If both local and incoming content changed, it writes incoming candidates under `.vibe/conflicts/<timestamp>/` and returns without changing managed files.
+The upgrade path compares the recorded, local, and incoming hashes before writing. If both local and incoming content changed, it writes incoming candidates under `.vibe/conflicts/<timestamp>/` and returns without changing managed files. For a v0.7 transaction, final existing-parent leaves use capability-probed hard-link no-clobber or atomic exchange through the platform libc adapter; a first missing managed parent is instead published as one prepared adjacent directory unit with no-replace rename. Ordinary rename/replace/unlink is not a fallback for a final installation entry, and recovery retains exact displaced objects or trees until predecessor or target state is proved.
 
 The sole exception is an exact 0.5.0-to-0.6.0 authenticated-predecessor migration
 for the two official Agent-install contracts that exist outside the v0.5.0 managed

@@ -10,6 +10,7 @@ Each generated folder contains a brief and verification record. Add design or im
 
 ## Active and recent
 
+- [Vibe Kit v0.7.0 — resilient upgrades and first-class prerelease publication](20260831-v0-7-resilient-upgrades-publication/brief.md)
 - [Publish Vibe Kit v0.6.0 GitHub prerelease](20260828-v0-6-publication/brief.md)
 - [Post-upgrade automatic takeover](20260828-post-upgrade-automatic-takeover/brief.md)
 - [Publish Vibe Kit v0.5.0 GitHub prerelease](20260827-v0-5-publication/brief.md)

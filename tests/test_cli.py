@@ -1,4 +1,6 @@
 import contextlib
+import ctypes
+import errno
 import json
 import hashlib
 import importlib.machinery
@@ -296,7 +298,7 @@ class VibeCliTests(unittest.TestCase):
             )
             self.assertEqual(planned.returncode, 0, planned.stderr)
             plan_receipt = json.loads(planned.stdout)
-            self.assertEqual(plan_receipt["schema_version"], 1)
+            self.assertEqual(plan_receipt["schema_version"], 2)
             self.assertEqual(plan_receipt["status"], "safe")
             self.assertFalse(plan_receipt["files_changed"])
             self.assertEqual(plan_receipt["source"]["artifact_sha256"], digest)
@@ -521,12 +523,12 @@ class VibeCliTests(unittest.TestCase):
                 "--source-type",
                 "local-payload",
                 "--source-ref",
-                "0.6.0",
+                KIT_VERSION,
             )
             self.assertEqual(planned.returncode, 0, planned.stderr)
             self.assertEqual(file_snapshot(project), before)
             plan_receipt = json.loads(planned.stdout)
-            self.assertEqual(plan_receipt["schema_version"], 1)
+            self.assertEqual(plan_receipt["schema_version"], 2)
             self.assertEqual(plan_receipt["status"], "safe")
             migration_entries = {
                 item["path"]: item
@@ -547,7 +549,9 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(migration[0]["paths"], expected_paths)
             self.assertEqual(
                 migration[0]["registry_sha256"],
-                "6cbee96e5da8b4d4b5c87403e710aac0740041027a00466f288a670834d1967d",
+                json.loads((ROOT / ".vibe/core/protocol.json").read_text())[
+                    "predecessor_migrations"
+                ]["registry_sha256"],
             )
 
             upgraded = run_cli(
@@ -559,11 +563,11 @@ class VibeCliTests(unittest.TestCase):
                 "--source-type",
                 "local-payload",
                 "--source-ref",
-                "0.6.0",
+                KIT_VERSION,
             )
             self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
             receipt = json.loads(upgraded.stdout)
-            self.assertEqual(receipt["schema_version"], 1)
+            self.assertEqual(receipt["schema_version"], 2)
             self.assertEqual(receipt["status"], "success")
             self.assertEqual(receipt["write_state"], "project-files-written")
             self.assertEqual(receipt["compatibility_migrations"][0]["phase"], "applied")
@@ -608,16 +612,16 @@ class VibeCliTests(unittest.TestCase):
             {"type": "github-release", "ref": "official-looking", "extra": 7},
         )
         channel_arguments = (
-            ("local-payload", ("--source-ref", "0.6.0")),
+            ("local-payload", ("--source-ref", KIT_VERSION)),
             (
                 "github-release",
-                ("--source-ref", "v0.6.0", "--artifact-sha256", "a" * 64),
+                ("--source-ref", f"v{KIT_VERSION}", "--artifact-sha256", "a" * 64),
             ),
             (
                 "offline-bundle",
-                ("--source-ref", "v0.6.0", "--artifact-sha256", "b" * 64),
+                ("--source-ref", f"v{KIT_VERSION}", "--artifact-sha256", "b" * 64),
             ),
-            ("plugin-bundled", ("--source-ref", "v0.6.0")),
+            ("plugin-bundled", ("--source-ref", f"v{KIT_VERSION}")),
         )
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
@@ -809,9 +813,20 @@ class VibeCliTests(unittest.TestCase):
                     )
                     self.assertEqual(result.returncode, 2, result.stderr)
                     receipt = json.loads(result.stdout)
-                    self.assertTrue(
-                        migration_paths <= set(receipt["recovery"]["paths"]), receipt
-                    )
+                    if relative == ".vibe":
+                        self.assertEqual(
+                            receipt["next_action"]["code"],
+                            "inspect-upgrade-transaction",
+                        )
+                        self.assertEqual(
+                            receipt["recovery"]["paths"],
+                            [".vibe/local/upgrade-transactions/active"],
+                        )
+                    else:
+                        self.assertTrue(
+                            migration_paths <= set(receipt["recovery"]["paths"]),
+                            receipt,
+                        )
 
             module = load_cli_module()
             pre_race = official_v050_source_fixture(base / "pre-race")
@@ -822,36 +837,36 @@ class VibeCliTests(unittest.TestCase):
                 side_effect=("eligible", "conflict"),
             ), contextlib.redirect_stdout(stdout):
                 code = module.upgrade(
-                    pre_race, "json", "local-payload", "0.6.0", None
+                    pre_race, "json", "local-payload", KIT_VERSION, None
                 )
             self.assertEqual(code, 2)
             pre_receipt = json.loads(stdout.getvalue())
             self.assertEqual(pre_receipt["write_state"], "conflict-evidence-written")
-            self.assertNotIn("compatibility_migrations", pre_receipt)
+            self.assertEqual(pre_receipt["compatibility_migrations"], [])
             self.assertTrue(migration_paths <= set(pre_receipt["conflicts"]))
 
             post_race = official_v050_source_fixture(base / "post-race")
-            original_atomic_copy = module.atomic_copy
+            original_write = module.mutate_leaf_forward
 
-            def mutate_second_member(source: Path, destination: Path) -> None:
-                original_atomic_copy(source, destination)
-                if destination.name == "AGENT_INSTALL.md":
+            def mutate_second_member(
+                project, adapter, item, temporary
+            ) -> None:
+                original_write(project, adapter, item, temporary)
+                if item["path"] == "AGENT_INSTALL.md":
                     (post_race / "agent-install.json").write_text("race\n")
 
             stdout = io.StringIO()
             with mock.patch.object(
-                module, "atomic_copy", side_effect=mutate_second_member
+                module, "mutate_leaf_forward", new=mutate_second_member
             ), contextlib.redirect_stdout(stdout):
                 code = module.upgrade(
-                    post_race, "json", "local-payload", "0.6.0", None
+                    post_race, "json", "local-payload", KIT_VERSION, None
                 )
             self.assertEqual(code, 2)
             post_receipt = json.loads(stdout.getvalue())
             self.assertEqual(post_receipt["write_state"], "unknown-partial")
-            self.assertEqual(
-                post_receipt["compatibility_migrations"][0]["phase"],
-                "unknown-partial",
-            )
+            self.assertEqual(post_receipt["compatibility_migrations"], [])
+            self.assertEqual(post_receipt["transaction"]["outcome"], "unknown-partial")
 
     def test_adopt_receipt_reports_preserved_complete_onboarding(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -941,14 +956,14 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(validated_json.returncode, 0, validated_json.stderr)
             validation_receipt = json.loads(validated_json.stdout)
             self.assertEqual(validation_receipt["status"], "valid")
-            self.assertEqual(validation_receipt["agent_install_protocol"], 2)
+            self.assertEqual(validation_receipt["agent_install_protocol"], 3)
             release_metadata = json.loads((first / "release-manifest.json").read_text())
-            self.assertEqual(release_metadata["core_protocol"], 4)
+            self.assertEqual(release_metadata["core_protocol"], 5)
             self.assertEqual(release_metadata["feedback_protocol"], 2)
-            self.assertEqual(release_metadata["agent_install_schema"], 2)
-            self.assertEqual(release_metadata["agent_install_protocol"], 2)
-            self.assertEqual(release_metadata["takeover_schema"], 1)
-            self.assertEqual(release_metadata["maintenance_bridge_schema"], 1)
+            self.assertEqual(release_metadata["agent_install_schema"], 3)
+            self.assertEqual(release_metadata["agent_install_protocol"], 3)
+            self.assertEqual(release_metadata["takeover_schema"], 2)
+            self.assertEqual(release_metadata["maintenance_bridge_schema"], 2)
             self.assertEqual(
                 release_metadata["predecessor_migrations"],
                 json.loads((ROOT / ".vibe/core/protocol.json").read_text())[
@@ -963,7 +978,7 @@ class VibeCliTests(unittest.TestCase):
             )
             self.assertRegex(release_metadata["payload_tree_sha256"], r"^[0-9a-f]{64}$")
             self.assertRegex(release_metadata["activation_set_sha256"], r"^[0-9a-f]{64}$")
-            self.assertEqual(release_metadata["adapters"]["codex"]["version"], 4)
+            self.assertEqual(release_metadata["adapters"]["codex"]["version"], 5)
 
             release_unpack = base / "release-unpacked"
             with zipfile.ZipFile(first / KIT_ARCHIVE) as archive:
@@ -978,8 +993,8 @@ class VibeCliTests(unittest.TestCase):
                 (release_root / ".codex/agents/vibe-tech-lead.toml").is_file()
             )
             install_contract = json.loads((release_root / "agent-install.json").read_text())
-            self.assertEqual(install_contract["schema_version"], 2)
-            self.assertEqual(install_contract["protocol_version"], 2)
+            self.assertEqual(install_contract["schema_version"], 3)
+            self.assertEqual(install_contract["protocol_version"], 3)
             self.assertEqual(install_contract["kit_version"], KIT_VERSION)
             self.assertEqual(
                 install_contract["activation"]["current_repository_capability"],
@@ -1746,8 +1761,8 @@ class VibeCliTests(unittest.TestCase):
             )
             self.assertRegex(receipt["manifest_sha256"], r"^[0-9a-f]{64}$")
             self.assertEqual(receipt["target_fingerprint"]["kit_version"], KIT_VERSION)
-            self.assertEqual(receipt["target_fingerprint"]["core_protocol"], 4)
-            self.assertEqual(receipt["target_fingerprint"]["agent_install_schema"], 2)
+            self.assertEqual(receipt["target_fingerprint"]["core_protocol"], 5)
+            self.assertEqual(receipt["target_fingerprint"]["agent_install_schema"], 3)
             self.assertEqual(receipt["target_fingerprint"]["manifest_sha256"], receipt["manifest_sha256"])
 
             quality = target / ".vibe/core/quality-gates.md"
@@ -1904,7 +1919,7 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stderr)
             self.assertEqual(result.stderr, "")
             receipt = json.loads(result.stdout)
-            self.assertEqual(receipt["schema_version"], 1)
+            self.assertEqual(receipt["schema_version"], 2)
             self.assertEqual(receipt["status"], "failed")
             self.assertEqual(
                 [check["name"] for check in receipt["checks"]],
@@ -2628,6 +2643,1366 @@ class VibeCliTests(unittest.TestCase):
             checked_retry = run_cli(target / "bin/vibe", *submit_args, env=env)
             self.assertEqual(checked_retry.returncode, 1)
             self.assertEqual(count_path.read_text(), "2")
+
+    def test_v070_official_v030_bridge_is_exact_create_only_and_preserves_onboarding(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            project = base / "official-v030"
+            archive = subprocess.run(
+                ["git", "archive", "--format=tar", "v0.3.0"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+            ).stdout
+            project.mkdir()
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+                bundle.extractall(project)
+            before = file_snapshot(project)
+
+            planned = run_cli(
+                CLI, "plan", "upgrade", str(project), "--format", "json",
+                "--source-type", "local-payload", "--source-ref", KIT_VERSION,
+            )
+            self.assertEqual(planned.returncode, 0, planned.stderr)
+            self.assertEqual(file_snapshot(project), before)
+            plan_receipt = json.loads(planned.stdout)
+            self.assertEqual(plan_receipt["schema_version"], 2)
+            self.assertEqual(plan_receipt["onboarding_bridge"]["state"], "planned")
+            self.assertEqual(
+                plan_receipt["onboarding_bridge"]["family"],
+                "official-v0.3.0-pre-onboarding-v1",
+            )
+
+            upgraded = run_cli(
+                CLI, "upgrade", str(project), "--format", "json",
+                "--source-type", "local-payload", "--source-ref", KIT_VERSION,
+            )
+            self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
+            receipt = json.loads(upgraded.stdout)
+            self.assertEqual(receipt["transaction"]["outcome"], "committed")
+            self.assertEqual(receipt["onboarding_bridge"]["state"], "applied")
+            self.assertEqual(
+                (project / ".vibe/onboarding.json").read_bytes(),
+                b'{"schema_version":1,"status":"pending"}\n',
+            )
+            doctor = run_cli(
+                project / "bin/vibe", "doctor", str(project), "--format", "json"
+            )
+            self.assertEqual(doctor.returncode, 0, doctor.stdout + doctor.stderr)
+
+    def test_v070_upgrade_write_failure_rolls_back_and_committed_cleanup_recovers(self) -> None:
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            rolled_back_target = base / "rolled-back"
+            self.assertEqual(run_cli(CLI, "init", str(rolled_back_target)).returncode, 0)
+            before = file_snapshot(rolled_back_target)
+            original_write = module.mutate_leaf_forward
+            writes = 0
+
+            def fail_second_write(project, adapter, item, temporary):
+                nonlocal writes
+                writes += 1
+                if writes == 2:
+                    raise PermissionError("controlled write failure")
+                return original_write(project, adapter, item, temporary)
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module, "mutate_leaf_forward", new=fail_second_write
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    rolled_back_target, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(receipt["write_state"], "rolled-back")
+            self.assertEqual(receipt["installation_state"], "predecessor")
+            self.assertEqual(file_snapshot(rolled_back_target), before)
+
+            committed_target = base / "committed"
+            self.assertEqual(run_cli(CLI, "init", str(committed_target)).returncode, 0)
+            original_remove = module.remove_transaction_control
+            attempts = 0
+
+            def fail_first_cleanup(target):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    raise PermissionError("controlled cleanup failure")
+                return original_remove(target)
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module, "remove_transaction_control", side_effect=fail_first_cleanup
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    committed_target, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(receipt["installation_state"], "target")
+            self.assertEqual(receipt["transaction"]["outcome"], "committed")
+            self.assertTrue(
+                (committed_target / ".vibe/local/upgrade-transactions/active").is_dir()
+            )
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                recovery_code = module.recover_upgrade(committed_target, "json")
+            self.assertEqual(recovery_code, 0)
+            recovery = json.loads(output.getvalue())
+            self.assertEqual(recovery["transaction"]["outcome"], "committed")
+            self.assertEqual(recovery["installation_state"], "target")
+            self.assertFalse(
+                (committed_target / ".vibe/local/upgrade-transactions/active").exists()
+            )
+
+    def test_v070_transaction_control_symlink_blocks_without_any_write(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            target = base / "project"
+            external = base / "external-control"
+            self.assertEqual(run_cli(CLI, "init", str(target)).returncode, 0)
+            external.mkdir()
+            control = target / ".vibe/local/upgrade-transactions"
+            control.parent.mkdir(parents=True, exist_ok=True)
+            if control.exists():
+                control.rmdir()
+            control.symlink_to(external, target_is_directory=True)
+            before = file_snapshot(target)
+
+            commands = [
+                run_cli(
+                    CLI, "plan", "upgrade", str(target), "--format", "json",
+                    "--source-type", "local-payload", "--source-ref", KIT_VERSION,
+                ),
+                run_cli(
+                    CLI, "upgrade", str(target), "--format", "json",
+                    "--source-type", "local-payload", "--source-ref", KIT_VERSION,
+                ),
+                run_cli(
+                    target / "bin/vibe", "recover-upgrade", str(target),
+                    "--format", "json",
+                ),
+                run_cli(
+                    target / "bin/vibe", "doctor", str(target), "--format", "json"
+                ),
+            ]
+            self.assertEqual([item.returncode for item in commands], [2, 2, 2, 1])
+            for command in commands:
+                receipt = json.loads(command.stdout)
+                self.assertEqual(receipt["write_state"], "none")
+                self.assertFalse(receipt["writes_performed"])
+                self.assertEqual(receipt["installation_state"], "unknown")
+                self.assertEqual(
+                    receipt["next_action"]["code"], "inspect-upgrade-transaction"
+                )
+            self.assertEqual(file_snapshot(target), before)
+            self.assertEqual(list(external.iterdir()), [])
+            self.assertTrue(control.is_symlink())
+
+    def test_v070_publication_plan_and_validation_are_closed_and_offline(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            source = base / "source"
+            cli = copy_source(source)
+            subprocess.run(
+                ["git", "init", "-b", "main"], cwd=source, check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Release Test"],
+                cwd=source, check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "release@example.invalid"],
+                cwd=source, check=True,
+            )
+            subprocess.run(["git", "add", "-A"], cwd=source, check=True)
+            subprocess.run(
+                ["git", "commit", "-m", "v0.7 publication fixture"],
+                cwd=source, check=True, capture_output=True,
+            )
+            commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=source, check=True,
+                text=True, capture_output=True,
+            ).stdout.strip()
+            candidate = base / "candidate"
+            built = run_cli(
+                cli, "package", "--status", "prerelease", "--output", str(candidate)
+            )
+            self.assertEqual(built.returncode, 0, built.stderr)
+            distribution_sha = hashlib.sha256(
+                (candidate / DISTRIBUTION_ARCHIVE).read_bytes()
+            ).hexdigest()
+            body_sha = hashlib.sha256(
+                (source / "docs/releases/0.7.0.md").read_bytes()
+            ).hexdigest()
+            allowed_operations = [
+                "fast-forward-main",
+                "create-or-confirm-annotated-tag",
+                "create-or-confirm-prerelease",
+                "upload-or-confirm-five-assets",
+                "read-back-publication",
+                "download-and-verify-public-assets",
+                "conditionally-comment-and-close-issues-1-through-5",
+            ]
+            publish_operations = allowed_operations[:-1]
+            request = {
+                "schema_version": 1,
+                "kind": "vibe-kit-publication",
+                "repository": {
+                    "owner": "mintgao",
+                    "name": "vibe-kit",
+                    "canonical_url": "https://github.com/mintgao/vibe-kit",
+                },
+                "version": "0.7.0",
+                "source_commit": commit,
+                "main": {
+                    "branch": "main",
+                    "expected_old_oid": "a" * 40,
+                    "target_oid": commit,
+                    "policy": "fast-forward-cas-only",
+                },
+                "tag": {
+                    "name": "v0.7.0",
+                    "object_type": "tag",
+                    "expected_tag_object_oid": "b" * 40,
+                    "target_commit": commit,
+                    "tagger_name": "Release Test",
+                    "tagger_email": "release@example.invalid",
+                    "tagger_timestamp": "2026-08-31T12:00:00Z",
+                    "tagger_timezone": "+0800",
+                    "message_sha256": "c" * 64,
+                },
+                "release": {
+                    "title": "Vibe Kit v0.7.0",
+                    "body_sha256": body_sha,
+                    "body_source_path": "docs/releases/0.7.0.md",
+                    "draft": False,
+                    "prerelease": True,
+                    "generated_notes": False,
+                    "platform_immutability_required": False,
+                },
+                "assets": [],
+                "asset_set_sha256": "0" * 64,
+                "local_gates": {
+                    "source_clean": True,
+                    "source_commit_verified": True,
+                    "qa_passed": True,
+                    "package_a_sha256": distribution_sha,
+                    "package_b_sha256": distribution_sha,
+                    "byte_identical": True,
+                    "validate_release_passed": True,
+                },
+                "remote_snapshot": {
+                    "observed_at": "2026-08-31T12:01:00Z",
+                    "main_oid": "a" * 40,
+                    "tag_state": "absent",
+                    "tag_oid": None,
+                    "release_state": "absent",
+                    "release_id": None,
+                    "asset_set": [],
+                },
+                "operations": [
+                    {
+                        "sequence": index,
+                        "operation_id": f"publish-{index}",
+                        "kind": kind,
+                        "natural_key": f"mintgao/vibe-kit:{kind}",
+                        "expected_precondition": {
+                            "kind": "exact-remote-snapshot",
+                            "identity_sha256": hashlib.sha256(kind.encode()).hexdigest(),
+                        },
+                        "max_write_attempts": 2,
+                    }
+                    for index, kind in enumerate(publish_operations)
+                ],
+                "authorization_scope": {
+                    "repository": "mintgao/vibe-kit",
+                    "version": "0.7.0",
+                    "release_kind": "prerelease",
+                    "allowed_operations": allowed_operations,
+                    "destructive_operations_allowed": False,
+                },
+                "issue_closeout_policy": {
+                    "issues": [1, 2, 3, 4, 5],
+                    "requires_public_verification": True,
+                    "requires_separate_closeout_intent": True,
+                    "requires_separate_closeout_authorization": True,
+                },
+                "recovery_policy": {
+                    "read_back_before_retry": True,
+                    "delete": False,
+                    "replace": False,
+                    "force": False,
+                },
+            }
+            request_path = base / "request.json"
+            request_path.write_text(json.dumps(request, indent=2) + "\n")
+            candidate_before = file_snapshot(candidate)
+            planned = run_cli(
+                cli, "publication-plan", "--phase", "publish",
+                "--request", str(request_path), "--candidate", str(candidate),
+                "--format", "json",
+            )
+            self.assertEqual(planned.returncode, 0, planned.stdout + planned.stderr)
+            self.assertEqual(file_snapshot(candidate), candidate_before)
+            plan = json.loads(planned.stdout)
+            self.assertEqual(plan["status"], "safe")
+            self.assertFalse(plan["network_used"])
+            intent = plan["intent"]
+            intent_path = base / "intent.json"
+            intent_path.write_text(json.dumps(intent, indent=2) + "\n")
+
+            assets = [
+                {
+                    **item,
+                    "id": index + 1,
+                    "url": f"https://github.com/mintgao/vibe-kit/releases/download/v0.7.0/{item['name']}",
+                    "write_state": "confirmed-complete",
+                    "read_back": True,
+                }
+                for index, item in enumerate(intent["assets"])
+            ]
+            receipt = {
+                "schema_version": 1,
+                "kind": "vibe-kit-publication-receipt",
+                "intent_sha256": plan["intent_sha256"],
+                "authorization_id": "authorization-v070",
+                "host_operation_id": "host-operation-v070",
+                "repository": "mintgao/vibe-kit",
+                "remote_write_state": "confirmed-complete",
+                "verification_state": "passed",
+                "main": {
+                    "branch": "main", "expected_old_oid": "a" * 40,
+                    "target_oid": commit, "observed_oid": commit,
+                    "write_state": "confirmed-complete", "read_back": True,
+                },
+                "tag": {
+                    "name": "v0.7.0", "expected_tag_object_oid": "b" * 40,
+                    "observed_ref_oid": "b" * 40, "peeled_commit": commit,
+                    "write_state": "confirmed-complete", "read_back": True,
+                },
+                "release": {
+                    "id": 70,
+                    "url": "https://github.com/mintgao/vibe-kit/releases/tag/v0.7.0",
+                    "tag": "v0.7.0", "title": "Vibe Kit v0.7.0",
+                    "body_sha256": body_sha, "draft": False, "prerelease": True,
+                    "immutable": "unknown", "write_state": "confirmed-complete",
+                    "read_back": True,
+                },
+                "assets": assets,
+                "operations": [
+                    {
+                        "sequence": item["sequence"],
+                        "operation_id": item["operation_id"],
+                        "kind": item["kind"],
+                        "natural_key": item["natural_key"],
+                        "write_attempts": 1,
+                        "initial_response": "definite-success",
+                        "read_back_result": "match",
+                        "outcome": (
+                            "uploaded" if item["kind"] == "upload-or-confirm-five-assets"
+                            else "created"
+                        ),
+                        "remote_object_id": f"remote-{item['sequence']}",
+                        "error": None,
+                    }
+                    for item in intent["operations"]
+                ],
+                "downloads": [
+                    {
+                        "name": item["name"], "size": item["size"],
+                        "sha256": item["sha256"], "matched": True,
+                    }
+                    for item in intent["assets"]
+                ],
+                "validate_release": {"status": "valid", "receipt_sha256": "d" * 64},
+                "smokes": [
+                    {"name": "direct-init-doctor", "status": "passed", "evidence_sha256": "e" * 64},
+                    {"name": "plugin-bundled", "status": "passed", "evidence_sha256": "f" * 64},
+                ],
+                "limitations": ["Host authenticity is retained as live public evidence."],
+                "issue_closeout": None,
+                "error": None,
+            }
+            receipt_path = base / "receipt.json"
+            receipt_path.write_text(json.dumps(receipt, indent=2) + "\n")
+            validated = run_cli(
+                cli, "validate-publication", "--intent", str(intent_path),
+                "--receipt", str(receipt_path), "--candidate", str(candidate),
+                "--format", "json",
+            )
+            self.assertEqual(validated.returncode, 0, validated.stdout + validated.stderr)
+            validation = json.loads(validated.stdout)
+            self.assertEqual(validation["status"], "valid")
+            self.assertFalse(validation["network_used"])
+            self.assertFalse(validation["host_evidence_authenticated"])
+
+            duplicate_asset = json.loads(json.dumps(receipt))
+            duplicate_asset["assets"].append(dict(duplicate_asset["assets"][0]))
+            receipt_path.write_text(json.dumps(duplicate_asset, indent=2) + "\n")
+            rejected_asset_duplicate = run_cli(
+                cli, "validate-publication", "--intent", str(intent_path),
+                "--receipt", str(receipt_path), "--candidate", str(candidate),
+                "--format", "json",
+            )
+            self.assertEqual(rejected_asset_duplicate.returncode, 1)
+            self.assertEqual(
+                json.loads(rejected_asset_duplicate.stdout)["status"], "invalid"
+            )
+
+            duplicate_download = json.loads(json.dumps(receipt))
+            duplicate_download["downloads"].append(
+                dict(duplicate_download["downloads"][0])
+            )
+            receipt_path.write_text(json.dumps(duplicate_download, indent=2) + "\n")
+            rejected_download_duplicate = run_cli(
+                cli, "validate-publication", "--intent", str(intent_path),
+                "--receipt", str(receipt_path), "--candidate", str(candidate),
+                "--format", "json",
+            )
+            self.assertEqual(rejected_download_duplicate.returncode, 1)
+            self.assertEqual(
+                json.loads(rejected_download_duplicate.stdout)["status"], "invalid"
+            )
+
+            receipt["downloads"][0]["matched"] = False
+            receipt_path.write_text(json.dumps(receipt, indent=2) + "\n")
+            rejected = run_cli(
+                cli, "validate-publication", "--intent", str(intent_path),
+                "--receipt", str(receipt_path), "--candidate", str(candidate),
+                "--format", "json",
+            )
+            self.assertEqual(rejected.returncode, 1)
+            self.assertEqual(json.loads(rejected.stdout)["status"], "invalid")
+
+    def test_v070_interrupted_prepare_recovers_and_tampered_stage_stays_fail_closed(self) -> None:
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            interrupted = base / "interrupted"
+            self.assertEqual(run_cli(CLI, "init", str(interrupted)).returncode, 0)
+            before = file_snapshot(interrupted)
+            with module.ProjectRootFD(interrupted) as project:
+                change = module.upgrade_change(
+                    project,
+                    0,
+                    ".vibe/version",
+                    (KIT_VERSION + "\n").encode(),
+                    0o644,
+                )
+            original_private_bytes = module.write_private_bytes
+
+            def interrupt_stage(project, relative, content):
+                if "/stage/" in relative:
+                    raise KeyboardInterrupt("controlled interruption")
+                return original_private_bytes(project, relative, content)
+
+            with mock.patch.object(
+                module, "write_private_bytes", side_effect=interrupt_stage
+            ):
+                with self.assertRaises(KeyboardInterrupt):
+                    module.prepare_transaction_state(
+                        interrupted, KIT_VERSION, KIT_VERSION, [change]
+                    )
+            kind, shape = module.active_transaction_state(interrupted)
+            self.assertEqual(kind, "unprepared")
+            self.assertIsNotNone(shape["transaction_id"])
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = module.recover_upgrade(interrupted, "json")
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output.getvalue())["installation_state"], "predecessor")
+            self.assertEqual(file_snapshot(interrupted), before)
+
+            diverged = base / "diverged-unprepared"
+            self.assertEqual(run_cli(CLI, "init", str(diverged)).returncode, 0)
+            with module.ProjectRootFD(diverged) as project:
+                change = module.upgrade_change(
+                    project, 0, ".vibe/version", (KIT_VERSION + "\n").encode(), 0o644
+                )
+            with mock.patch.object(
+                module, "write_private_bytes", side_effect=interrupt_stage
+            ):
+                with self.assertRaises(KeyboardInterrupt):
+                    module.prepare_transaction_state(
+                        diverged, KIT_VERSION, KIT_VERSION, [change]
+                    )
+            active_diverged = diverged / ".vibe/local/upgrade-transactions/active"
+            evidence_before = file_snapshot(active_diverged)
+            (diverged / ".vibe/version").write_text("external-divergence\n")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = module.recover_upgrade(diverged, "json")
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(receipt["status"], "blocked")
+            self.assertEqual(receipt["write_state"], "none")
+            self.assertFalse(receipt["writes_performed"])
+            self.assertEqual(receipt["installation_state"], "unknown")
+            self.assertEqual(receipt["transaction"]["outcome"], "unknown-partial")
+            self.assertEqual(receipt["transaction"]["failed_path"], ".vibe/version")
+            self.assertEqual(
+                receipt["next_action"]["code"], "inspect-upgrade-transaction"
+            )
+            self.assertEqual(file_snapshot(active_diverged), evidence_before)
+            self.assertEqual(
+                (diverged / ".vibe/version").read_text(), "external-divergence\n"
+            )
+
+            tampered = base / "tampered"
+            self.assertEqual(run_cli(CLI, "init", str(tampered)).returncode, 0)
+            with module.ProjectRootFD(tampered) as project:
+                change = module.upgrade_change(
+                    project,
+                    0,
+                    ".vibe/version",
+                    (KIT_VERSION + "\n").encode(),
+                    0o644,
+                )
+            module.prepare_transaction_state(
+                tampered, KIT_VERSION, KIT_VERSION, [change]
+            )
+            active = tampered / ".vibe/local/upgrade-transactions/active"
+            (active / "stage/0000").write_bytes(b"tampered\n")
+            target_before_recovery = (tampered / ".vibe/version").read_bytes()
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = module.recover_upgrade(tampered, "json")
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(receipt["transaction"]["outcome"], "unknown-partial")
+            self.assertEqual(receipt["write_state"], "none")
+            self.assertEqual(
+                (tampered / ".vibe/version").read_bytes(), target_before_recovery
+            )
+            self.assertTrue(active.is_dir())
+
+    def test_v070_commit_marker_is_irreversible_and_target_cas_rechecks_leaf(self) -> None:
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            committed = base / "commit-event-failure"
+            self.assertEqual(run_cli(CLI, "init", str(committed)).returncode, 0)
+            original_append = module.append_transaction_event
+
+            def fail_commit_event(project, transaction_id, phase, previous):
+                if phase == "commit-complete":
+                    raise PermissionError("controlled commit event failure")
+                return original_append(project, transaction_id, phase, previous)
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module, "append_transaction_event", side_effect=fail_commit_event
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    committed, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(receipt["installation_state"], "target")
+            self.assertEqual(receipt["transaction"]["outcome"], "committed")
+            self.assertEqual(
+                receipt["summary"],
+                "Target upgrade committed; transaction cleanup remains and must be finalized with recover-upgrade.",
+            )
+            active = committed / ".vibe/local/upgrade-transactions/active"
+            self.assertTrue((active / "commit.json").is_file())
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                recovery_code = module.recover_upgrade(committed, "json")
+            self.assertEqual(recovery_code, 0)
+            recovery = json.loads(output.getvalue())
+            self.assertEqual(recovery["installation_state"], "target")
+            self.assertEqual(recovery["transaction"]["outcome"], "committed")
+            self.assertFalse(active.exists())
+
+            raced = base / "cas-race"
+            self.assertEqual(run_cli(CLI, "init", str(raced)).returncode, 0)
+            original_exchange = module.LeafAtomicityAdapter.exchange
+            injected = False
+            external_manifest = b'{"external":"writer"}\n'
+
+            def race_manifest(instance, source_parent, source, destination_parent, destination):
+                nonlocal injected
+                if destination == "manifest.json" and not injected:
+                    injected = True
+                    (raced / ".vibe/manifest.json").write_bytes(external_manifest)
+                return original_exchange(
+                    instance, source_parent, source, destination_parent, destination
+                )
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module.LeafAtomicityAdapter, "exchange", new=race_manifest
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    raced, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertTrue(injected)
+            self.assertEqual(receipt["transaction"]["outcome"], "unknown-partial")
+            self.assertEqual(receipt["installation_state"], "unknown")
+            self.assertEqual(
+                receipt["next_action"]["code"], "inspect-upgrade-transaction"
+            )
+            self.assertEqual((raced / ".vibe/manifest.json").read_bytes(), external_manifest)
+            self.assertFalse(
+                (raced / ".vibe/local/upgrade-transactions/active/commit.json").exists()
+            )
+
+    def test_v070_final_leaf_rename_window_races_are_losslessly_preserved(self) -> None:
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+
+            onboarding_target = base / "onboarding-race"
+            archive = subprocess.run(
+                ["git", "archive", "--format=tar", "v0.3.0"],
+                cwd=ROOT, check=True, capture_output=True,
+            ).stdout
+            onboarding_target.mkdir()
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+                bundle.extractall(onboarding_target)
+            external_onboarding = b'{"schema_version":1,"status":"complete","evidence":["external"]}\n'
+            original_link = module.ProjectRootFD.link_no_clobber
+            linked = False
+
+            def link_race(instance, source, destination):
+                nonlocal linked
+                if destination == ".vibe/onboarding.json" and not linked:
+                    linked = True
+                    (onboarding_target / ".vibe/onboarding.json").write_bytes(
+                        external_onboarding
+                    )
+                return original_link(instance, source, destination)
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module.ProjectRootFD, "link_no_clobber", new=link_race
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    onboarding_target, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertTrue(linked, output.getvalue())
+            self.assertEqual(receipt["error"]["code"], "upgrade_leaf_race_preserved")
+            self.assertEqual(receipt["transaction"]["outcome"], "unknown-partial")
+            self.assertEqual(receipt["write_state"], "unknown-partial")
+            self.assertEqual(
+                receipt["next_action"]["code"], "inspect-upgrade-transaction"
+            )
+            self.assertEqual(
+                (onboarding_target / ".vibe/onboarding.json").read_bytes(),
+                external_onboarding,
+            )
+            self.assertFalse(
+                (onboarding_target / ".vibe/local/upgrade-transactions/active/commit.json").exists()
+            )
+
+            manifest_target = base / "manifest-race"
+            self.assertEqual(run_cli(CLI, "init", str(manifest_target)).returncode, 0)
+            external_manifest = b'{"external":"rename-window"}\n'
+            original_exchange = module.LeafAtomicityAdapter.exchange
+            exchanged = False
+
+            def exchange_race(instance, source_parent, source, destination_parent, destination):
+                nonlocal exchanged
+                if destination == "manifest.json" and not exchanged:
+                    exchanged = True
+                    (manifest_target / ".vibe/manifest.json").write_bytes(
+                        external_manifest
+                    )
+                return original_exchange(
+                    instance, source_parent, source, destination_parent, destination
+                )
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module.LeafAtomicityAdapter, "exchange", new=exchange_race
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    manifest_target, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertTrue(exchanged)
+            self.assertEqual(receipt["error"]["code"], "upgrade_leaf_race_preserved")
+            self.assertEqual(receipt["installation_state"], "unknown")
+            self.assertEqual(receipt["transaction"]["failure_kind"], "external-leaf-race-preserved")
+            self.assertEqual(
+                (manifest_target / ".vibe/manifest.json").read_bytes(),
+                external_manifest,
+            )
+
+            rollback_target = base / "onboarding-rollback-race"
+            rollback_target.mkdir()
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+                bundle.extractall(rollback_target)
+            original_mutate = module.mutate_leaf_forward
+            original_no_replace = module.LeafAtomicityAdapter.no_replace
+            rollback_raced = False
+            rollback_external = b'{"schema_version":1,"status":"complete","evidence":["rollback-race"]}\n'
+
+            def fail_after_onboarding(project, adapter, item, temporary):
+                if item["path"] == ".vibe/manifest.json":
+                    raise PermissionError("force absent-leaf rollback")
+                return original_mutate(project, adapter, item, temporary)
+
+            def race_absent_rollback(instance, source_parent, source, destination_parent, destination):
+                nonlocal rollback_raced
+                if source == "onboarding.json" and not rollback_raced:
+                    rollback_raced = True
+                    (rollback_target / ".vibe/onboarding.json").write_bytes(
+                        rollback_external
+                    )
+                return original_no_replace(
+                    instance, source_parent, source, destination_parent, destination
+                )
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module, "mutate_leaf_forward", new=fail_after_onboarding
+            ), mock.patch.object(
+                module.LeafAtomicityAdapter, "no_replace", new=race_absent_rollback
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    rollback_target, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertTrue(rollback_raced)
+            self.assertEqual(receipt["error"]["code"], "upgrade_leaf_race_preserved")
+            self.assertEqual(receipt["transaction"]["outcome"], "unknown-partial")
+            self.assertEqual(
+                (rollback_target / ".vibe/onboarding.json").read_bytes(),
+                rollback_external,
+            )
+
+    def test_v070_absent_parent_directory_unit_is_prepared_and_no_clobber(self) -> None:
+        module = load_cli_module()
+
+        def official_v060_project(path: Path) -> None:
+            archive = subprocess.run(
+                ["git", "archive", "--format=tar", "v0.6.0"],
+                cwd=ROOT, check=True, capture_output=True,
+            ).stdout
+            path.mkdir()
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+                bundle.extractall(path)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            committed = base / "directory-unit-committed"
+            official_v060_project(committed)
+            original_remove = module.remove_transaction_control
+            attempts = 0
+
+            def retain_committed_control(target):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    raise PermissionError("retain exact committed journal")
+                return original_remove(target)
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module, "remove_transaction_control", new=retain_committed_control
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    committed, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(receipt["transaction"]["outcome"], "committed")
+            active = committed / ".vibe/local/upgrade-transactions/active"
+            intent = json.loads((active / "intent.json").read_text())
+            prepared = json.loads((active / "prepared.json").read_text())
+            capabilities = json.loads((active / "capabilities.json").read_text())
+            commit = json.loads((active / "commit.json").read_text())
+            self.assertEqual(len(intent["directory_units"]), 1)
+            unit = intent["directory_units"][0]
+            self.assertEqual(unit["final_root"], ".agents/skills/vibe-release")
+            self.assertEqual(unit["protocol"], "directory-no-clobber-v1")
+            self.assertEqual(unit["directories"][0]["mode"], 0o755)
+            self.assertEqual(set(unit["parent_object"]), {"device", "inode"})
+            self.assertEqual(
+                prepared["directory_postimage_set_sha256"],
+                intent["directory_postimage_set_sha256"],
+            )
+            self.assertEqual(
+                commit["directory_postimage_set_sha256"],
+                intent["directory_postimage_set_sha256"],
+            )
+            self.assertEqual(
+                capabilities["probe_set_sha256"],
+                hashlib.sha256(
+                    json.dumps(
+                        {
+                            "leaf_capability_probes": intent["leaf_capability_probes"],
+                            "directory_capability_probes": intent["directory_capability_probes"],
+                        },
+                        sort_keys=True, separators=(",", ":"),
+                    ).encode()
+                ).hexdigest(),
+            )
+            self.assertTrue(
+                (committed / ".agents/skills/vibe-release/SKILL.md").is_file()
+            )
+            prepared_bytes = (active / "prepared.json").read_bytes()
+            invalid_prepared = dict(prepared)
+            invalid_prepared["directory_postimage_set_sha256"] = "0" * 64
+            (active / "prepared.json").write_text(
+                json.dumps(invalid_prepared, sort_keys=True, separators=(",", ":"))
+                + "\n"
+            )
+            invalid_kind, _ = module.active_transaction_state(committed)
+            self.assertEqual(invalid_kind, "invalid")
+            (active / "prepared.json").write_bytes(prepared_bytes)
+            valid_kind, _ = module.active_transaction_state(committed)
+            self.assertEqual(valid_kind, "committed")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                recovery_code = module.recover_upgrade(committed, "json")
+            self.assertEqual(recovery_code, 0)
+            self.assertFalse(active.exists())
+
+            raced = base / "directory-unit-race"
+            official_v060_project(raced)
+            original_no_replace = module.LeafAtomicityAdapter.no_replace
+            injected = False
+
+            def directory_race(instance, source_parent, source, destination_parent, destination):
+                nonlocal injected
+                if destination == "vibe-release" and not injected:
+                    injected = True
+                    external = raced / ".agents/skills/vibe-release"
+                    external.mkdir()
+                    (external / "external.txt").write_text("third-party\n")
+                return original_no_replace(
+                    instance, source_parent, source, destination_parent, destination
+                )
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module.LeafAtomicityAdapter, "no_replace", new=directory_race
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    raced, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertTrue(injected)
+            self.assertEqual(
+                receipt["error"]["code"], "upgrade_directory_race_preserved"
+            )
+            self.assertEqual(receipt["transaction"]["outcome"], "unknown-partial")
+            self.assertEqual(
+                receipt["transaction"]["failure_kind"],
+                "external-directory-race-preserved",
+            )
+            self.assertEqual(receipt["write_state"], "unknown-partial")
+            self.assertTrue(receipt["writes_performed"])
+            self.assertEqual(receipt["installation_state"], "unknown")
+            self.assertEqual(
+                receipt["transaction"]["failed_path"],
+                ".agents/skills/vibe-release",
+            )
+            self.assertEqual(
+                receipt["next_action"]["code"], "inspect-upgrade-transaction"
+            )
+            self.assertEqual(
+                (raced / ".agents/skills/vibe-release/external.txt").read_text(),
+                "third-party\n",
+            )
+            self.assertFalse(
+                (raced / ".vibe/local/upgrade-transactions/active/commit.json").exists()
+            )
+
+            for winner_kind in ("file", "symlink"):
+                raced_entry = base / f"directory-unit-{winner_kind}-race"
+                official_v060_project(raced_entry)
+                injected = False
+
+                def entry_race(
+                    instance, source_parent, source, destination_parent,
+                    destination,
+                ):
+                    nonlocal injected
+                    if destination == "vibe-release" and not injected:
+                        injected = True
+                        winner = raced_entry / ".agents/skills/vibe-release"
+                        if winner_kind == "file":
+                            winner.write_bytes(b"third-party-file\n")
+                        else:
+                            winner.symlink_to("third-party-symlink-target")
+                    return original_no_replace(
+                        instance, source_parent, source,
+                        destination_parent, destination,
+                    )
+
+                output = io.StringIO()
+                with mock.patch.object(
+                    module.LeafAtomicityAdapter,
+                    "no_replace",
+                    new=entry_race,
+                ), contextlib.redirect_stdout(output):
+                    code = module.upgrade(
+                        raced_entry, "json", "local-payload", KIT_VERSION, None
+                    )
+                self.assertEqual(code, 2, output.getvalue())
+                receipt = json.loads(output.getvalue())
+                self.assertTrue(injected)
+                self.assertEqual(receipt["status"], "error")
+                self.assertEqual(receipt["write_state"], "unknown-partial")
+                self.assertTrue(receipt["writes_performed"])
+                self.assertEqual(receipt["installation_state"], "unknown")
+                self.assertEqual(
+                    receipt["error"]["code"],
+                    "upgrade_directory_race_preserved",
+                )
+                self.assertEqual(
+                    receipt["transaction"]["outcome"], "unknown-partial"
+                )
+                self.assertEqual(receipt["transaction"]["phase"], "invalid")
+                self.assertEqual(
+                    receipt["transaction"]["failed_path"],
+                    ".agents/skills/vibe-release",
+                )
+                self.assertEqual(
+                    receipt["transaction"]["failure_kind"],
+                    "external-directory-race-preserved",
+                )
+                self.assertEqual(
+                    receipt["next_action"]["code"],
+                    "inspect-upgrade-transaction",
+                )
+                active = (
+                    raced_entry
+                    / ".vibe/local/upgrade-transactions/active"
+                )
+                self.assertTrue(active.is_dir())
+                evidence = file_snapshot(active)
+                winner = raced_entry / ".agents/skills/vibe-release"
+                if winner_kind == "file":
+                    self.assertEqual(winner.read_bytes(), b"third-party-file\n")
+                else:
+                    self.assertTrue(winner.is_symlink())
+                    self.assertEqual(
+                        os.readlink(winner), "third-party-symlink-target"
+                    )
+
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    recovery_code = module.recover_upgrade(raced_entry, "json")
+                self.assertEqual(recovery_code, 2)
+                recovery = json.loads(output.getvalue())
+                self.assertEqual(recovery["status"], "blocked")
+                self.assertEqual(recovery["write_state"], "none")
+                self.assertFalse(recovery["writes_performed"])
+                self.assertEqual(recovery["installation_state"], "unknown")
+                self.assertEqual(
+                    recovery["error"]["code"],
+                    "upgrade_directory_race_preserved",
+                )
+                self.assertEqual(
+                    recovery["transaction"]["failed_path"],
+                    ".agents/skills/vibe-release",
+                )
+                self.assertEqual(
+                    recovery["transaction"]["failure_kind"],
+                    "external-directory-race-preserved",
+                )
+                self.assertEqual(file_snapshot(active), evidence)
+
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    doctor_code = module.doctor(raced_entry, "json")
+                self.assertEqual(doctor_code, 1)
+                doctor = json.loads(output.getvalue())
+                self.assertEqual(doctor["status"], "broken")
+                self.assertEqual(doctor["write_state"], "none")
+                self.assertFalse(doctor["writes_performed"])
+                self.assertIn(
+                    "upgrade-transaction-active",
+                    [item["code"] for item in doctor["diagnostics"]],
+                )
+                if winner_kind == "file":
+                    self.assertEqual(winner.read_bytes(), b"third-party-file\n")
+                else:
+                    self.assertEqual(
+                        os.readlink(winner), "third-party-symlink-target"
+                    )
+
+    def test_v070_leaf_atomicity_adapter_real_and_missing_symbol_paths(self) -> None:
+        module = load_cli_module()
+        adapter = module.leaf_atomicity_api_preflight()
+        self.assertIn(adapter.system, ("Darwin", "Linux"))
+
+        class MissingLibrary:
+            pass
+
+        with self.assertRaises(module.VibeError) as caught:
+            module.LeafAtomicityAdapter(system=adapter.system, library=MissingLibrary())
+        self.assertEqual(caught.exception.code, "upgrade_leaf_atomicity_unsupported")
+
+        symbol = "renameatx_np" if adapter.system == "Darwin" else "renameat2"
+
+        class UnsupportedFunction:
+            def __call__(self, *args):
+                ctypes.set_errno(errno.ENOSYS)
+                return -1
+
+        class UnsupportedLibrary:
+            pass
+
+        library = UnsupportedLibrary()
+        setattr(library, symbol, UnsupportedFunction())
+        unsupported = module.LeafAtomicityAdapter(
+            system=adapter.system, library=library
+        )
+        with self.assertRaises(OSError) as syscall:
+            unsupported.exchange(1, "a", 1, "b")
+        mapped = module.atomicity_os_error(syscall.exception)
+        self.assertIsInstance(mapped, module.VibeError)
+        self.assertEqual(mapped.code, "upgrade_leaf_atomicity_unsupported")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "project"
+            self.assertEqual(run_cli(CLI, "init", str(target)).returncode, 0)
+            before = file_snapshot(target)
+            output = io.StringIO()
+            with mock.patch.object(
+                module, "transaction_platform_supported", return_value=False
+            ), contextlib.redirect_stdout(output):
+                plan_code = module.plan(
+                    "upgrade", target, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(plan_code, 2)
+            plan_receipt = json.loads(output.getvalue())
+            self.assertEqual(plan_receipt["status"], "blocked")
+            self.assertEqual(
+                plan_receipt["error"]["code"],
+                "upgrade_leaf_atomicity_unsupported",
+            )
+            self.assertEqual(
+                plan_receipt["next_action"]["code"],
+                "use-supported-upgrade-filesystem",
+            )
+            self.assertEqual(file_snapshot(target), before)
+            output = io.StringIO()
+            with mock.patch.object(
+                module, "transaction_platform_supported", return_value=False
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    target, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(receipt["status"], "blocked")
+            self.assertEqual(
+                receipt["error"]["code"], "upgrade_leaf_atomicity_unsupported"
+            )
+            self.assertEqual(
+                receipt["next_action"]["code"],
+                "use-supported-upgrade-filesystem",
+            )
+            self.assertEqual(receipt["write_state"], "none")
+            self.assertFalse(receipt["writes_performed"])
+            self.assertEqual(file_snapshot(target), before)
+
+            output = io.StringIO()
+            with mock.patch.object(
+                module,
+                "leaf_capability_probe",
+                side_effect=module.VibeError(
+                    "mock filesystem rejected required flags",
+                    "upgrade_leaf_atomicity_unsupported",
+                ),
+            ), contextlib.redirect_stdout(output):
+                code = module.upgrade(
+                    target, "json", "local-payload", KIT_VERSION, None
+                )
+            self.assertEqual(code, 2)
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(
+                receipt["error"]["code"], "upgrade_leaf_atomicity_unsupported"
+            )
+            self.assertEqual(receipt["write_state"], "transaction-control-written")
+            self.assertTrue(receipt["writes_performed"])
+            self.assertEqual(receipt["installation_state"], "predecessor")
+            self.assertFalse(
+                (target / ".vibe/local/upgrade-transactions/active").exists()
+            )
+            self.assertEqual(file_snapshot(target), before)
+
+    def test_v070_prepared_directory_crash_and_partial_cleanup_resume(self) -> None:
+        module = load_cli_module()
+
+        def official_v060_project(path: Path) -> None:
+            archive = subprocess.run(
+                ["git", "archive", "--format=tar", "v0.6.0"],
+                cwd=ROOT, check=True, capture_output=True,
+            ).stdout
+            path.mkdir()
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+                bundle.extractall(path)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            interrupted = base / "before-directory-publication"
+            official_v060_project(interrupted)
+            before = file_snapshot(interrupted)
+
+            def interrupt_directory(*args, **kwargs):
+                raise KeyboardInterrupt("after prepared before directory publication")
+
+            with mock.patch.object(
+                module, "publish_directory_unit", side_effect=interrupt_directory
+            ):
+                with self.assertRaises(KeyboardInterrupt):
+                    module.upgrade(
+                        interrupted, "json", "local-payload", KIT_VERSION, None
+                    )
+            kind, _ = module.active_transaction_state(interrupted)
+            self.assertEqual(kind, "prepared")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = module.recover_upgrade(interrupted, "json")
+            self.assertEqual(code, 0, output.getvalue())
+            self.assertEqual(file_snapshot(interrupted), before)
+
+            partial = base / "partial-directory-cleanup"
+            official_v060_project(partial)
+            before = file_snapshot(partial)
+            original_mutate = module.mutate_leaf_forward
+            original_remove_tree = module.ProjectRootFD.remove_tree
+            cleanup_interrupted = False
+
+            def fail_after_directory(project, adapter, item, temporary):
+                if item["path"] == ".vibe/manifest.json":
+                    raise PermissionError("force rollback after directory publication")
+                return original_mutate(project, adapter, item, temporary)
+
+            def interrupt_private_cleanup(
+                instance, relative, expected_parent=None
+            ):
+                nonlocal cleanup_interrupted
+                if module.DIRECTORY_STAGE_PREFIX in relative and not cleanup_interrupted:
+                    cleanup_interrupted = True
+                    private_skill = partial / relative / "SKILL.md"
+                    self.assertTrue(private_skill.is_file())
+                    private_skill.unlink()
+                    raise KeyboardInterrupt("partial prepared-tree cleanup")
+                return original_remove_tree(instance, relative, expected_parent)
+
+            with mock.patch.object(
+                module, "mutate_leaf_forward", new=fail_after_directory
+            ), mock.patch.object(
+                module.ProjectRootFD, "remove_tree", new=interrupt_private_cleanup
+            ):
+                with self.assertRaises(KeyboardInterrupt):
+                    module.upgrade(
+                        partial, "json", "local-payload", KIT_VERSION, None
+                    )
+            self.assertTrue(cleanup_interrupted)
+            cleanup_markers = list(
+                (partial / ".vibe/local/upgrade-transactions/active/directory-cleanup").glob("*.json")
+            )
+            self.assertEqual(len(cleanup_markers), 1)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = module.recover_upgrade(partial, "json")
+            self.assertEqual(code, 0, output.getvalue())
+            self.assertEqual(file_snapshot(partial), before)
+
+            reauthenticated = base / "parent-reauthentication"
+            (reauthenticated / "managed/.vibe-stage").mkdir(parents=True)
+            (reauthenticated / "managed/.vibe-stage/prepared.txt").write_text(
+                "prepared\n"
+            )
+            with module.ProjectRootFD(reauthenticated) as project:
+                parent_object = project.directory_object("managed")
+                (reauthenticated / "managed").rename(
+                    reauthenticated / "detached-managed"
+                )
+                (reauthenticated / "managed/.vibe-stage").mkdir(parents=True)
+                external = reauthenticated / "managed/.vibe-stage/external.txt"
+                external.write_text("external\n")
+                with self.assertRaises(module.VibeError) as caught:
+                    project.remove_tree("managed/.vibe-stage", parent_object)
+            self.assertEqual(
+                caught.exception.code, "upgrade_directory_race_preserved"
+            )
+            self.assertEqual(external.read_text(), "external\n")
+            self.assertEqual(
+                (
+                    reauthenticated
+                    / "detached-managed/.vibe-stage/prepared.txt"
+                ).read_text(),
+                "prepared\n",
+            )
+
+    def test_v070_closeout_intent_is_exact_monotonic_and_separately_authorized(self) -> None:
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            parent_sha = "1" * 64
+            closeout_id = hashlib.sha256(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "repository": "mintgao/vibe-kit",
+                        "version": "0.7.0",
+                        "parent_publication_intent_sha256": parent_sha,
+                        "issues": [1, 2, 3, 4, 5],
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
+            observations = [
+                ("open", "absent", None),
+                ("open", "exact", 102),
+                ("closed", "exact", 103),
+                ("open", "absent", None),
+                ("closed", "exact", 105),
+            ]
+            issues = []
+            snapshot_items = []
+            for number, (state, marker_state, comment_id) in enumerate(
+                observations, start=1
+            ):
+                marker = f"<!-- vibe-kit:v0.7.0:issue-{number}:{closeout_id} -->"
+                body = f"{marker}\nVerified evidence for issue #{number}.\n"
+                body_sha = hashlib.sha256(body.encode()).hexdigest()
+                issues.append({
+                    "issue_number": number,
+                    "comment_body": body,
+                    "observed_state": state,
+                    "observed_matching_comment_id": comment_id,
+                    "criterion_evidence_sha256": str(number) * 64,
+                })
+                snapshot_items.append({
+                    "issue_number": number,
+                    "state": state,
+                    "marker_state": marker_state,
+                    "matching_comment_id": comment_id,
+                    "matching_comment_body_sha256": (
+                        body_sha if marker_state == "exact" else None
+                    ),
+                })
+            operations = []
+            for number, snapshot_item in enumerate(snapshot_items, start=1):
+                snapshot_sha = hashlib.sha256(
+                    json.dumps(
+                        snapshot_item, sort_keys=True, separators=(",", ":")
+                    ).encode()
+                ).hexdigest()
+                for offset, kind in enumerate(
+                    ("create-exact-evidence-comment", "close-issue")
+                ):
+                    comment = offset == 0
+                    operations.append({
+                        "sequence": 2 * (number - 1) + offset,
+                        "operation_id": f"issue-{number}-{'comment' if comment else 'close'}",
+                        "issue_number": number,
+                        "kind": kind,
+                        "natural_key": (
+                            f"issue:{number}:marker:{closeout_id}"
+                            if comment else f"issue:{number}:state:closed"
+                        ),
+                        "expected_precondition": {
+                            "kind": "issue-closeout-monotonic-resume",
+                            "initial_snapshot_sha256": snapshot_sha,
+                            "allowed_observations": (
+                                ["open-absent", "open-exact", "closed-exact"]
+                                if comment else ["open-exact", "closed-exact"]
+                            ),
+                        },
+                        "max_write_attempts": 2,
+                    })
+            scope = {
+                "repository": "mintgao/vibe-kit",
+                "issues": [1, 2, 3, 4, 5],
+                "allowed_operations": [
+                    "create-exact-evidence-comment", "close-issue"
+                ],
+                "destructive_operations_allowed": False,
+                "requires_separate_closeout_authorization": True,
+            }
+            request = {
+                "parent_publication_intent_sha256": parent_sha,
+                "publication_receipt_sha256": "2" * 64,
+                "verification_receipt_sha256": "3" * 64,
+                "repository": {
+                    "owner": "mintgao",
+                    "name": "vibe-kit",
+                    "canonical_url": "https://github.com/mintgao/vibe-kit",
+                },
+                "issues": issues,
+                "remote_snapshot": {
+                    "observed_at": "2026-08-31T13:00:00Z",
+                    "issues": snapshot_items,
+                },
+                "operations": operations,
+                "authorization_scope": scope,
+            }
+            request_path = base / "closeout-request.json"
+            request_path.write_text(json.dumps(request, indent=2) + "\n")
+            planned = run_cli(
+                CLI, "publication-plan", "--phase", "issue-closeout",
+                "--request", str(request_path), "--format", "json",
+            )
+            self.assertEqual(planned.returncode, 0, planned.stdout + planned.stderr)
+            result = json.loads(planned.stdout)
+            self.assertEqual(result["status"], "safe")
+            intent = result["intent"]
+            self.assertEqual(intent["closeout_id"], closeout_id)
+            self.assertEqual(intent["operations"], operations)
+            self.assertEqual(intent["authorization_scope"], scope)
+            self.assertEqual(len(result["comment_bodies"]), 5)
+
+            authorization = {
+                "closeout_authorization_id": "closeout-authorization-v070",
+                "repository": "mintgao/vibe-kit",
+                "issues": [1, 2, 3, 4, 5],
+                "allowed_operations": [
+                    "create-exact-evidence-comment", "close-issue"
+                ],
+                "closeout_intent_sha256": result["intent_sha256"],
+                "destructive_operations_allowed": False,
+            }
+            self.assertEqual(
+                module.validate_closeout_authorization(authorization, intent), []
+            )
+            divergent_authorization = dict(authorization)
+            divergent_authorization["issues"] = [1, 2, 3, 4]
+            self.assertTrue(
+                module.validate_closeout_authorization(
+                    divergent_authorization, intent
+                )
+            )
+
+            request["remote_snapshot"]["issues"][0].update({
+                "state": "closed",
+                "marker_state": "absent",
+            })
+            request["issues"][0]["observed_state"] = "closed"
+            request_path.write_text(json.dumps(request, indent=2) + "\n")
+            rejected = run_cli(
+                CLI, "publication-plan", "--phase", "issue-closeout",
+                "--request", str(request_path), "--format", "json",
+            )
+            self.assertEqual(rejected.returncode, 2)
+            rejected_result = json.loads(rejected.stdout)
+            self.assertEqual(rejected_result["status"], "blocked")
+            self.assertIsNone(rejected_result["intent_sha256"])
 
 
 if __name__ == "__main__":
