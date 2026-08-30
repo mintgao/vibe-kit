@@ -9,7 +9,10 @@
     "tests/test_workflow_contract.py",
     "docs/context/product.md",
     "docs/context/architecture.md",
-    "docs/work-items/20260828-v0-6-publication/verification.md"
+    "docs/work-items/20260831-v0-7-resilient-upgrades-publication/verification.md",
+    "docs/releases/0.7.0.md",
+    "docs/decisions/0010-recoverable-upgrade-transaction.md",
+    "docs/decisions/0011-exact-source-and-publication-boundary.md"
   ],
-  "updated_at": "2026-08-30"
+  "updated_at": "2026-08-31"
 }

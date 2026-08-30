@@ -10,7 +10,9 @@ Vibe Kit is a dependency-free Python CLI plus distributable Codex instructions, 
 - `AGENT_INSTALL.md` and `agent-install.json`: release-packaged and framework-managed installed Codex contracts for trusted source selection, the pre-execution maintenance bridge, takeover stages, host capability negotiation, activation/goal custody, the compiled structural registry, and handoff.
 - `AGENTS.md`: a marked managed block that checks onboarding and technical-decision readiness and routes ordinary Codex requests while preserving repository-specific instructions outside the block.
 - `.codex/agents/vibe-*.toml`: six project-scoped specialist definitions, including a read-only Tech Lead used for separate decision-author and technical-review passes.
-- `.agents/skills/vibe-*/SKILL.md`: seven task-scoped workflows discovered from the repository, including the local-first feedback close loop.
+- `.agents/skills/vibe-*/SKILL.md`: eight task-scoped workflows discovered from
+  the repository, including the local-first feedback close loop and the exact
+  v0.7.0 publication/closeout workflow.
 - `.vibe/core/`: versioned operating model, technical-decision readiness contract, quality gates, protocol metadata, feedback policy, and work-item templates.
 - `distribution/plugin-src/vibe-kit/`: bootstrap-only Plugin source; packaging adds the canonical payload instead of maintaining a second runtime copy.
 - `.vibe/project.yaml`, `.vibe/project-rules.md`, `.vibe/onboarding.json`, and `docs/`: project-owned state that upgrades do not overwrite.
@@ -32,9 +34,10 @@ The install path validates caller-supplied source provenance and computes the re
 
 The upgrade path compares the recorded, local, and incoming hashes before writing. If both local and incoming content changed, it writes incoming candidates under `.vibe/conflicts/<timestamp>/` and returns without changing managed files. For a v0.7 transaction, final existing-parent leaves use capability-probed hard-link no-clobber or atomic exchange through the platform libc adapter; a first missing managed parent is instead published as one prepared adjacent directory unit with no-replace rename. Ordinary rename/replace/unlink is not a fallback for a final installation entry, and recovery retains exact displaced objects or trees until predecessor or target state is proved.
 
-The sole exception is an exact 0.5.0-to-0.6.0 authenticated-predecessor migration
-for the two official Agent-install contracts that exist outside the v0.5.0 managed
-manifest. A compiled closed registry authenticates the complete file pair,
+The sole untracked-contract exception is an exact official v0.5.0
+authenticated-predecessor migration for the two Agent-install contracts that
+exist outside the v0.5.0 managed manifest. A compiled closed registry
+authenticates the complete file pair,
 normalized predecessor installation, every recorded managed hash and the managed
 AGENTS block with component-wise symlink-free path checks. Plan exposes paired
 `update` entries; apply independently reauthenticates the full set and each member.
@@ -86,4 +89,4 @@ The release manifest also mirrors the compiled predecessor-migration registry
 digest, authority and only supported mode. Validation requires exact equality with
 the Agent-install/core mirrors and the packaged compiled CLI authority.
 
-The Plugin exposes only `vibe-bootstrap` and `vibe-maintain`; project runtime Skills appear only after installation. Its wrapper verifies the bundled version and payload-tree identity before target-CLI execution, but it provides no reload/task-creation API. The installed repository remains the runtime source of truth. v0.6.0 is the latest GitHub Pre-release. See ADRs 0002, 0004, 0005, 0006, 0007, 0008 and 0009.
+The Plugin exposes only `vibe-bootstrap` and `vibe-maintain`; project runtime Skills appear only after installation. Its wrapper verifies the bundled version and payload-tree identity before target-CLI execution, but it provides no reload/task-creation API. The installed repository remains the runtime source of truth. v0.7.0 is the latest GitHub Pre-release. See ADRs 0002, 0004, 0005, 0006, 0007, 0008, 0009, 0010 and 0011.
