@@ -1,68 +1,125 @@
 # Verification: Vibe Kit v0.7.0 — resilient upgrades and first-class prerelease publication
 
 - QA date: 2026-08-31
-- Status: **local candidate verified; final commit and public release pending**
-- Current verdict: **PASS for implementation/local release gates**
-- Release target: `mintgao/vibe-kit`, annotated `v0.7.0`, one non-draft GitHub Pre-release
-- Evidence boundary: independent read-only QA has accepted the frozen working-tree implementation. Exact clean-commit build, live publication intent/receipt, public downloads and issue closeout remain separate pending gates.
+- Status: **verified**
+- Final verdict: **PASS — public v0.7.0 Pre-release verified and issues #1-#5 closed**
+- Release URL: https://github.com/mintgao/vibe-kit/releases/tag/v0.7.0
+- Release commit: `440f360524b44099b2d0d8c9a9688b91f7de6880`
+- Annotated tag object: `55fb231d841f85d4fb7834e9d3fc878b337a615e`
+- Evidence boundary: independent QA verified the exact clean release commit, public
+  tag/Release/assets, unauthenticated downloads, controlled install/upgrade
+  fixtures, and the separately authorized issue closeout. No platform-enforced
+  immutability, live Linux certification, Stable promotion, public Plugin Directory
+  publication, same-task reload or automatic successor claim is made.
 
 ## Acceptance evidence
 
 | Criterion | Independent evidence | Result |
 |---|---|---|
-| AC-1 — Supported onboarding bridge | Exact audited v0.2 fixture and official v0.3/v0.4 predecessors create only canonical schema-1 `pending`, upgrade successfully and reach healthy target doctor. Missing v0.5/v0.6 onboarding blocks before control or project writes. | Pass |
-| AC-2 — Onboarding preservation | Existing onboarding is byte-preserved. Malformed, wrong-type, raced file/symlink/directory state fails closed. Absent-path publication uses a retained hard-link identity and no-clobber semantics; rollback restores absence without check-then-unlink. | Pass |
-| AC-3 — Handled failure consistency | Every one of 24 official-v0.3 changed leaves and seven official-v0.6 existing-parent leaves was faulted immediately after mutation; each exact rollback restored the predecessor. Directory-unit post-publication fault also rolled back. Results contain no traceback and preserve truthful write/installation state. | Pass |
-| AC-4 — Interrupted recovery | Prepared evidence, durable commit marker, explicit `recover-upgrade`, symlink/tamper/unknown-member negatives, cleanup crashes and repeated recovery passed. Final-root file/symlink/directory winners, post-publication tree addition and rollback-detach recreation preserve third-party objects and return truthful unknown-partial with active evidence. | Pass |
-| AC-5 — Regression boundary | Managed conflict, predecessor authentication, AGENTS merge, source/channel, stale-path, symlink/race and project-preservation regressions pass in text/JSON. Existing-parent leaves use hard-link/no-clobber or atomic exchange; absent-parent changes use adjacent prepared directory units and no-replace publication. | Pass |
-| AC-6 — Precise trust contract | Normative/user-facing contracts distinguish exact selection, digest verification, mutable GitHub refs/assets and platform-enforced immutability without changing accepted source shapes. Contract searches/tests reject stronger claims. | Pass |
-| AC-7 — Trust regression/public metadata | Offline terminology regression passes. Live GitHub v0.7.0 metadata and final public evidence are not yet available. | Partial — publication pending |
-| AC-8 — Reviewable publication dry run | The repository contains the documented `vibe-release` Agent entry point plus closed offline publication-plan/request/intent schemas and exact five-asset contract. Final intent is deferred until the real release commit, tag identity and remote snapshot are frozen. | Partial — final intent pending |
-| AC-9 — Consent-bound publication | Closed authorization, lease, read-before-write/read-back and retry rules are implemented and locally validated. No remote mutation has occurred. | Partial — live execution pending |
-| AC-10 — Public artifact verification | Local direct/Plugin smoke, nested validation and temporary clean A/B candidates pass. Public re-download, GitHub parity and public smoke remain pending. | Partial — public assets pending |
-| AC-11 — Offline/privacy boundary | Actual `/usr/bin/python3` 3.9.6 passes all 57 tests. Packaging, validation, install and upgrade use standard-library/offline paths; artifact/intent privacy negatives pass. | Pass |
-| AC-12 — Readiness closure | The L-work author/reviewer/orchestrator/RD/QA chain is recorded. Three implementation discoveries reopened only the affected boundary before edits: closeout child schema, final-leaf atomicity and missing-parent directory units. Distinct review and fresh gate confirmation preceded each resume. | Pass |
-| AC-13 — Exact candidate quality | Frozen working tree passes focused 12/12, full 57/57 on Python 3.14 and 57/57 on actual Python 3.9.6, default verify, healthy source doctor, JSON/diff/bytecode checks, direct/Plugin smoke and byte-identical temporary clean A/B builds with dual valid release validation. A real repository clean commit has not yet been frozen. | Partial — real clean commit pending |
-| AC-14 — Public release and closure | No tag, Release, asset upload, public receipt, issue evidence comment or issue close has been executed. | Pending |
+| AC-1 — Supported onboarding bridge | Exact audited v0.2 and official v0.3/v0.4 predecessors create only canonical schema-1 `pending`; public v0.3 safely upgraded to a healthy target. Missing v0.5/v0.6 onboarding blocks before control/project writes, while valid onboarding is preserved. | Pass |
+| AC-2 — Onboarding preservation | Existing onboarding remains byte-identical. Malformed, conflicting, wrong-type and raced states fail closed; rollback removes a create-only bridge without leaving false success evidence. | Pass |
+| AC-3 — Handled failure consistency | Faults after all 24 official-v0.3 and seven official-v0.6 visible leaf mutations, plus directory publication failure, restored the exact scoped predecessor without traceback or false success/healthy claims. | Pass |
+| AC-4 — Interrupted recovery | Prepared/commit/cleanup interruption, rollback failure, tamper, symlink, unknown path and third-party divergence cases passed. Deterministic recovery preserves evidence and reports `unknown-partial` when safe classification is impossible. | Pass |
+| AC-5 — Regression boundary | Managed conflict, predecessor authentication, AGENTS merge, source/channel, stale-path, symlink/race and project-preservation regressions pass in text/JSON and the full 57-test suite. | Pass |
+| AC-6 — Precise trust contract | Normative and user-facing contracts distinguish exact selection, SHA-256 verification, mutable GitHub refs/assets and platform-enforced immutability without changing accepted source shapes. | Pass |
+| AC-7 — Trust regression/public metadata | Contract tests reject stronger claims. GitHub's live Release API reports `immutable=false`; both publication/final receipts record that value and the limitation states that hashes do not create platform immutability. | Pass |
+| AC-8 — Reviewable publication dry run | The offline no-write/no-network intent `1914fe1761cae16224a94e6f96c9dd71ecff9f2a4179848295ece1cef418a175` binds the exact commit, tag object, body, five assets, remote snapshot, six operations, authorization and recovery rules. | Pass |
+| AC-9 — Consent-bound publication | Two-layer authorization, bounded ordered execution, lease/read-before-write/read-back and retry rules were honored. The original publication receipt `e18b2cd723afa6199cb0cefcd74817c3b431cf29cdd736ce6f988ed2c2b61064` validates with confirmed-complete writes and passed verification. | Pass |
+| AC-10 — Public artifact verification | All five unauthenticated public downloads are byte-identical to the candidate; outer hashes, 47/47 nested checksums and Python 3.9 `validate-release` pass. Direct/Plugin and public v0.3/v0.5/v0.6 smokes end healthy. | Pass |
+| AC-11 — Offline/privacy boundary | Actual `/usr/bin/python3` 3.9.6 passes all 57 tests. Local package/validation/install/upgrade remain standard-library/offline; artifacts, receipts and comments contain no credential, environment, raw-host or conversation data. | Pass |
+| AC-12 — Readiness closure | The L-work author/reviewer/orchestrator/RD/QA chain is recorded. Closeout schemas, final-leaf atomicity and absent-parent directory units each paused work, amended the ADR, received distinct review and required a fresh implementation-ready confirmation before resume. | Pass |
+| AC-13 — Exact candidate quality | Clean commit `440f360...` passes focused 12/12, full 57/57 on Python 3.14 and actual Python 3.9.6, default verify, healthy doctor, JSON/diff/bytecode checks and two byte-identical clean builds with dual valid release validation. | Pass |
+| AC-14 — Public release and closure | Annotated tag `55fb231d...` peels to `440f360...`; Release `379394868` is one exact non-draft Pre-release with five assets. The canonical closeout posted exact marker-bound evidence, closed #1-#5 and produced final receipt `a6f9f9959442e00120f12e696a91c5df4a10d37ba147381067bfc475ba11098b`, independently matched to live API state. | Pass |
 
-## Automated checks
+## Automated and public checks
 
 | Check | Independent result | Notes |
 |---|---|---|
-| Exact focused QA | Pass, 12/12 | Replays leaf and directory races, rollback/recovery, onboarding and result truthfulness. |
-| Full suite, Python 3.14.6 | Pass, 57/57 in 37.608s | Independent QA run. |
-| Full suite, `/usr/bin/python3` 3.9.6 | Pass, 57/57 in 34.594s | Required runtime evidence. |
+| Exact focused QA | Pass, 12/12 | Leaf/directory races, rollback/recovery, onboarding and result truthfulness. |
+| Full suite, Python 3.14.6 | Pass, 57/57 | Exact clean release commit. |
+| Full suite, `/usr/bin/python3` 3.9.6 | Pass, 57/57 | Required runtime evidence. |
 | Default `vibe verify` | Pass, 57 tests | Lint/typecheck/build are not configured and are reported as not applicable. |
-| Source `vibe doctor` | Healthy, read-only | Activation `07613a6a22db6bb6454ba55dbaf12681b54e5024eff6d526f99ee45d2d2fe992`; payload `874675420e697ab9c16c35a4f2f558acc65b91dcc42464bd461cda2800116eb1`; manifest `1be5c64c834cdc5d3cefcc89e7afb1e0995308958021891471f443d3a1db830c`. These working-tree identities must be recomputed after the evidence commit. |
-| Bytecode and diff check | Pass | `py_compile` and `git diff --check`. |
-| Temporary clean A/B builds | Pass | Byte-identical, exact five publication assets, dual `validate-release` valid. Temporary commit identity is not reused as public evidence. |
-| Direct and Plugin smoke | Pass | Healthy installs from locally built candidate. |
+| Exact-commit `vibe doctor` | Healthy, read-only | Activation `07613a6a22db6bb6454ba55dbaf12681b54e5024eff6d526f99ee45d2d2fe992`; payload `874675420e697ab9c16c35a4f2f558acc65b91dcc42464bd461cda2800116eb1`. |
+| Bytecode, JSON and diff checks | Pass | Python compilation, repository JSON parsing and `git diff --check`. |
+| Clean A/B prerelease builds | Pass | Byte-identical five-asset outputs; both `validate-release` calls valid. |
+| Public distribution validation | Pass | Five public/local `cmp` checks, outer SHA-256, 47/47 nested checksums and Python 3.9 validation. |
+| Public direct/Plugin smoke | Pass | Fresh direct init/doctor and downloaded Plugin-bundled plan/init/doctor. |
+| Public predecessor smoke | Pass | Official v0.3, v0.5 and v0.6 upgrades reach healthy v0.7 doctor under the accepted onboarding rules. |
 
-## Independent manual/fault scenarios
+## Public Git and GitHub state
 
-- v0.2/v0.3/v0.4 exact onboarding bridge followed by healthy target doctor.
-- v0.5/v0.6 missing onboarding pre-write block; existing onboarding byte preservation.
-- Post-mutation `PermissionError` at every v0.3 and v0.6 existing-parent leaf.
-- Absent onboarding link publication race and existing manifest atomic-exchange race.
-- Official-v0.6 absent-parent release-skill directory unit, including no-write plan, hidden-stage construction, commit/recovery and exact target modes/content.
-- Final-root ordinary file, dangling symlink and external directory winners.
-- Post-publication third-party tree addition and rollback-detach concurrent recreation.
-- Hidden-stage member write failure with exact cleanup and predecessor snapshot equality.
-- Real libc adapter plus missing-symbol and errno failure mappings.
+| Item | Public value |
+|---|---|
+| Release | ID `379394868`; `Vibe Kit v0.7.0`; public, non-draft, Pre-release; `immutable=false` |
+| Release URL | `https://github.com/mintgao/vibe-kit/releases/tag/v0.7.0` |
+| Published at | `2026-08-30T20:33:37Z` |
+| Tag ref | `refs/tags/v0.7.0` -> annotated object `55fb231d841f85d4fb7834e9d3fc878b337a615e` |
+| Peeled tag | `440f360524b44099b2d0d8c9a9688b91f7de6880` |
+| Tagger time | `2026-08-30T20:27:56Z` |
+| Public main before this evidence update | `440f360524b44099b2d0d8c9a9688b91f7de6880` |
 
-## Pending final-release gates
+The annotated tag is unsigned. Its exact object identity and verified public
+asset hashes establish the recorded selection/content identity but are not an
+external signature, provenance attestation or platform immutability guarantee.
 
-1. Freeze one reviewed real repository commit containing this evidence and no unrelated files.
-2. Re-run independent QA from that exact clean commit, including two byte-identical builds and dual `validate-release`.
-3. Freeze release-note bytes and annotated-tag identity; obtain the live read-only remote snapshot.
-4. Generate and authorize the exact offline publication intent, execute only its allowlisted operations, then read back and publicly download/hash all five assets.
-5. Validate the sanitized publication receipt and public install/upgrade smoke.
-6. Generate a separately authorized issue-closeout intent, post marker-bound evidence and close exactly issues #1–#5.
+## Publication assets and digests
+
+| Asset | Bytes | SHA-256 |
+|---|---:|---|
+| `SHA256SUMS` | 6,112 | `f9c8f7e226a296a0dc8dc05bc77443d689ab1b4326439b052e24dd08853c4042` |
+| `release-manifest.json` | 12,144 | `e71abe8b1611a806332849d189cd18b5c08249d104a2fbbae07c6a0e628b1c5b` |
+| `vibe-kit-0.7.0.zip` | 148,972 | `1999a2c32f452371f398e8c7065fd77b93a51c9333853f4e11fdb3a80bb44390` |
+| `vibe-kit-distribution-0.7.0.zip` | 461,899 | `ac308a251cc1844f859f0dc6bc2b318dc6b1e379e71501b6b88f89b2f8467cdb` |
+| `vibe-kit-plugin-0.7.0.zip` | 155,914 | `1975e4714fda651c65740eabd1a54465ddcb486cbab8b02aaa9850d4f96dd831` |
+
+The exact sorted asset-set identity is
+`48725c411085ba4d5dcdbfd7208f61c59ccc3cbae39940fbe3077717c30034e5`.
+All five public downloads match the candidate byte-for-byte. The public manifest
+retains clean source commit `440f360...`, payload
+`874675420e697ab9c16c35a4f2f558acc65b91dcc42464bd461cda2800116eb1`
+and activation
+`07613a6a22db6bb6454ba55dbaf12681b54e5024eff6d526f99ee45d2d2fe992`.
+
+## Issue closeout evidence
+
+Closeout ID:
+`3426e8ff30eba84a97e4795e1b97d1bf613425acaebc1b26915611bb78c9183b`.
+The canonical closeout intent SHA-256 is
+`52f78a811ec57670322fd73021adeccd8efb1b3fc05bc01b81720442cbffd949`;
+authorization is `v070-closeout-20260831-001`. Each issue was read before its
+comment, the exact comment was read back before close, and the final closed state
+was read back. Independent QA found exactly one matching marker/body per issue.
+
+| Issue | Exact comment ID | Final state |
+|---:|---:|---|
+| #1 | `5471177534` | Closed |
+| #2 | `5471182498` | Closed |
+| #3 | `5471191865` | Closed |
+| #4 | `5471197316` | Closed |
+| #5 | `5471203962` | Closed |
+
+The final receipt preserves the validated pre-closeout publication receipt and
+replaces only `issue_closeout: null` with the exact ADR 0011
+`confirmed-complete` object. Its SHA-256 is
+`a6f9f9959442e00120f12e696a91c5df4a10d37ba147381067bfc475ba11098b`.
 
 ## Recovery and limitations
 
-- No release/tag/asset/issue write has occurred at this stage. On an uncertain future remote response, read back the natural-key object before any retry; never force, delete, replace or rewrite.
-- macOS and actual Python 3.9.6 are executed evidence. The libc adapter includes Linux `renameat2` and mocked unsupported/error coverage, but this local QA run is not Linux certification.
-- Same-task reload and automatic successor remain unsupported without independent live host receipts; the release is Pre-release, not Stable or public Plugin Directory promotion.
-- Transaction evidence is integrity-checked but untrusted against a malicious same-OS-principal process that deliberately targets random intent-bound private names.
-- Independent QA changed no repository file; this record was persisted by the orchestrator from QA's read-only evidence before the real release commit.
+- Any uncertain future Git/GitHub action must be read back by natural key before
+  retry. Never force-move the tag, delete/replace the Release or edit/delete/reopen
+  issue evidence without a new explicit destructive decision.
+- GitHub reports `immutable=false`; the release is exact and hash-verified, not
+  platform-enforced immutable.
+- macOS and actual Python 3.9.6 are executed evidence. Linux libc adapters have
+  unit/errno coverage but no live Linux certification.
+- Same-task reload and automatic successor remain unsupported without independent
+  live host receipts; activation remains the documented manual-new-task fallback.
+- The release is Pre-release, not Stable, and is not promoted to a public Plugin
+  Directory.
+- Transaction evidence is integrity-checked but does not defend against a
+  malicious same-OS-principal process deliberately targeting random private names.
+
+## Files changed by final evidence closeout
+
+- `docs/work-items/20260831-v0-7-resilient-upgrades-publication/brief.md`
+- `docs/work-items/20260831-v0-7-resilient-upgrades-publication/verification.md`
