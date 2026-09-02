@@ -67,15 +67,17 @@ AGENT_COMMAND_STATUSES = {
     "publication-plan": ("safe", "blocked", "error"),
     "validate-publication": ("valid", "invalid", "error"),
 }
-CORE_PROTOCOL = 5
-CODEX_ADAPTER_PROTOCOL = 5
+CORE_PROTOCOL = 6
+CODEX_ADAPTER_PROTOCOL = 6
 TAKEOVER_SCHEMA_VERSION = 2
 MAINTENANCE_BRIDGE_SCHEMA_VERSION = 2
 COMPATIBILITY_MIGRATION_REGISTRY_SCHEMA = 2
 TRANSACTION_JOURNAL_SCHEMA = 1
 TRANSACTION_COMMIT_SCHEMA = 1
-PUBLICATION_INTENT_SCHEMA = 1
-PUBLICATION_RECEIPT_SCHEMA = 1
+PUBLICATION_INTENT_SCHEMA = 2
+PUBLICATION_RECEIPT_SCHEMA = 2
+HISTORICAL_PUBLICATION_INTENT_SCHEMA = 1
+HISTORICAL_PUBLICATION_RECEIPT_SCHEMA = 1
 ISSUE_CLOSEOUT_INTENT_SCHEMA = 1
 TRANSACTION_ACTIVE_PATH = Path(".vibe/local/upgrade-transactions/active")
 TRANSACTION_ROOT_PATH = TRANSACTION_ACTIVE_PATH.parent
@@ -191,7 +193,7 @@ PREDECESSOR_MIGRATION_REGISTRY = {
                 "manifest_schema": 1,
             },
             "target": {
-                "framework_version": "0.7.0",
+                "framework_version": "0.8.0",
                 "source_types": list(SOURCE_TYPES),
             },
         },
@@ -206,7 +208,7 @@ PREDECESSOR_MIGRATION_REGISTRY_SHA256 = hashlib.sha256(
     ).encode("utf-8")
 ).hexdigest()
 EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256 = (
-    "e1ea4a078d6d253343ebacc57593794a2a13014946d1c38b6f3b130e8e484d09"
+    "ef53ba7a30cb20d1d5eba6c77428e7dbb5b59b4201feb822ef5db9453b931978"
 )
 if PREDECESSOR_MIGRATION_REGISTRY_SHA256 != (
     EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256
@@ -1141,8 +1143,8 @@ def predecessor_migration_evidence(phase: str) -> Dict[str, object]:
 
 
 def validate_target_predecessor_migration_contract(root: Path) -> None:
-    if framework_version(root) != "0.7.0":
-        raise VibeError("predecessor migration is supported only by target 0.7.0")
+    if framework_version(root) != "0.8.0":
+        raise VibeError("predecessor migration is supported only by target 0.8.0")
     contract = load_agent_install_contract(root)
     try:
         protocol = load_json_object_strict(root / ".vibe/core/protocol.json")
@@ -5241,7 +5243,7 @@ def upgrade_plan(
             )],
             "<transaction-active>", version, [], bridge,
         )
-    if version == "0.7.0":
+    if version == "0.8.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -5698,7 +5700,7 @@ def upgrade(
             None, "inspect-upgrade-transaction" if active_kind == "invalid" else "recover-upgrade",
             output_format,
         )
-    if version == "0.7.0":
+    if version == "0.8.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -7596,9 +7598,9 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
     expected_bridge = {
         "schema_version": MAINTENANCE_BRIDGE_SCHEMA_VERSION,
         "supported_installed_manifest_schemas": [1],
-        "supported_installed_agent_protocols": [0, 1],
+        "supported_installed_agent_protocols": [0, 1, 2, 3],
         "minimum_installed_kit_version": "0.2.0",
-        "maximum_installed_kit_version_exclusive": "0.7.0",
+        "maximum_installed_kit_version_exclusive": "0.8.0",
         "target_agent_install_schema": AGENT_INSTALL_SCHEMA,
         "target_agent_install_protocol": AGENT_INSTALL_PROTOCOL,
         "target_cli_result_schema": AGENT_RESULT_SCHEMA,
@@ -9335,7 +9337,7 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
     return 0
 
 
-PUBLICATION_ALLOWED_OPERATIONS = (
+HISTORICAL_PUBLICATION_ALLOWED_OPERATIONS = (
     "fast-forward-main",
     "create-or-confirm-annotated-tag",
     "create-or-confirm-prerelease",
@@ -9344,6 +9346,41 @@ PUBLICATION_ALLOWED_OPERATIONS = (
     "download-and-verify-public-assets",
     "conditionally-comment-and-close-issues-1-through-5",
 )
+V080_PUBLICATION_PROFILE = "vibe-kit-v0.8.0-prerelease"
+V080_PUBLICATION_ALLOWED_OPERATIONS = (
+    "fast-forward-main",
+    "create-or-confirm-annotated-tag",
+    "create-or-confirm-prerelease",
+    "upload-or-confirm-five-assets",
+    "read-back-publication",
+    "download-and-verify-public-assets",
+)
+PUBLICATION_ALLOWED_OPERATIONS = HISTORICAL_PUBLICATION_ALLOWED_OPERATIONS
+V070_PUBLISHED_INTENT_SHA256 = (
+    "1914fe1761cae16224a94e6f96c9dd71ecff9f2a4179848295ece1cef418a175"
+)
+V080_PUBLIC_SMOKES = (
+    "public-direct-init-doctor",
+    "public-plugin-bundled-plan-init-doctor",
+    "public-upgrade-v0.3-to-v0.8",
+    "public-upgrade-v0.5-to-v0.8",
+    "public-upgrade-v0.6-to-v0.8",
+    "public-upgrade-v0.7-to-v0.8",
+)
+V080_PREPUBLICATION_STATES = {
+    "AC-1": "passed",
+    "AC-2": "tooling-pass-live-pending",
+    "AC-3": "passed",
+    "AC-4": "not-runnable-before-publication",
+    "AC-5": "tooling-pass-live-pending",
+    "AC-6": "tooling-pass-live-pending",
+    "AC-7": "tooling-pass-live-pending",
+    "AC-8": "tooling-pass-live-pending",
+    "AC-9": "not-runnable-before-publication",
+    "AC-10": "passed",
+    "AC-11": "tooling-pass-live-pending",
+    "AC-12": "not-runnable-before-publication",
+}
 REMOTE_WRITE_STATES = ("none", "confirmed-partial", "confirmed-complete", "uncertain")
 VERIFICATION_STATES = ("not-run", "passed", "failed", "uncertain")
 
@@ -9372,7 +9409,7 @@ def publication_assets(release_dir: Path, version: str) -> List[Dict[str, object
     return sorted(assets, key=lambda item: str(item["name"]).encode("utf-8"))
 
 
-def validate_publication_intent(value: object) -> List[str]:
+def validate_publication_intent_v1(value: object) -> List[str]:
     errors: List[str] = []
     top = (
         "schema_version", "kind", "repository", "version", "source_commit",
@@ -9385,7 +9422,7 @@ def validate_publication_intent(value: object) -> List[str]:
     intent = value
     if not isinstance(intent, dict):
         return errors
-    if intent.get("schema_version") != PUBLICATION_INTENT_SCHEMA or intent.get("kind") != "vibe-kit-publication":
+    if intent.get("schema_version") != HISTORICAL_PUBLICATION_INTENT_SCHEMA or intent.get("kind") != "vibe-kit-publication":
         errors.append("publication intent schema/kind is unsupported")
     repository = intent.get("repository")
     if not exact_keys(repository, ("owner", "name", "canonical_url")) or repository != {
@@ -9600,6 +9637,10 @@ def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object]
     for key in fields[:3]:
         if re.fullmatch(r"[0-9a-f]{64}", str(request.get(key, ""))) is None:
             raise VibeError("issue closeout receipt binding is invalid")
+    if request.get("parent_publication_intent_sha256") != V070_PUBLISHED_INTENT_SHA256:
+        raise VibeError(
+            "issue closeout parent must equal the exact published v0.7.0 publication intent"
+        )
     if request.get("repository") != {"owner": "mintgao", "name": "vibe-kit", "canonical_url": "https://github.com/mintgao/vibe-kit"}:
         raise VibeError("issue closeout repository identity is invalid")
     inputs = request.get("issues")
@@ -9766,8 +9807,843 @@ def validate_closeout_authorization(
     return errors
 
 
+def publication_repository() -> Dict[str, str]:
+    return {
+        "owner": "mintgao",
+        "name": "vibe-kit",
+        "canonical_url": "https://github.com/mintgao/vibe-kit",
+    }
+
+
+def valid_publication_error(value: object) -> bool:
+    return exact_keys(value, ("code", "message", "next_action")) and all(
+        isinstance(value.get(key), str) and bool(value.get(key)) and len(value[key]) <= 512
+        for key in ("code", "message", "next_action")
+    )
+
+
+def valid_sha256(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def valid_oid(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+
+
+def valid_positive_int(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, int) and value > 0
+
+
+def validate_canonical_command(value: object) -> List[str]:
+    fields = (
+        "sequence", "command_id", "argv", "exit_code", "status", "result",
+        "result_sha256",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["canonical command fields are unknown or incomplete"]
+    errors: List[str] = []
+    if (
+        isinstance(value.get("sequence"), bool)
+        or not isinstance(value.get("sequence"), int)
+        or value["sequence"] < 0
+        or not isinstance(value.get("command_id"), str)
+        or not value["command_id"]
+        or len(value["command_id"]) > 128
+        or not isinstance(value.get("argv"), list)
+        or not value["argv"]
+        or any(not isinstance(arg, str) or not arg or len(arg) > 512 for arg in value["argv"])
+        or any(arg.startswith("/") for arg in value["argv"])
+        or value.get("status") not in ("passed", "failed", "blocked", "error")
+    ):
+        errors.append("canonical command identity is invalid")
+    result = value.get("result")
+    if not exact_keys(result, ("status", "passed_count", "failed_count", "skipped_count")):
+        errors.append("canonical command result shape is invalid")
+    elif (
+        result.get("status") not in ("passed", "failed", "blocked", "error")
+        or any(
+            isinstance(result.get(key), bool)
+            or not isinstance(result.get(key), int)
+            or result[key] < 0
+            for key in ("passed_count", "failed_count", "skipped_count")
+        )
+        or value.get("result_sha256") != canonical_json_sha256(result)
+    ):
+        errors.append("canonical command result is invalid")
+    exit_code = value.get("exit_code")
+    if exit_code is not None and (isinstance(exit_code, bool) or not isinstance(exit_code, int)):
+        errors.append("canonical command exit code is invalid")
+    if value.get("status") == "passed" and (
+        exit_code != 0
+        or not isinstance(result, dict)
+        or result.get("status") != "passed"
+        or result.get("failed_count") != 0
+    ):
+        errors.append("passed canonical command does not contain passing evidence")
+    if value.get("status") in ("failed", "passed") and exit_code is None:
+        errors.append("started canonical command requires an exit code")
+    if value.get("status") in ("blocked", "error") and exit_code is not None:
+        errors.append("pre-start blocked/error command requires a null exit code")
+    return errors
+
+
+def valid_receipt_header(
+    value: Dict[str, object], kind: str, source_commit: str, source_tree_oid: str
+) -> bool:
+    return (
+        value.get("schema_version") == 1
+        and value.get("kind") == kind
+        and value.get("repository") == "mintgao/vibe-kit"
+        and value.get("version") == "0.8.0"
+        and value.get("profile") == V080_PUBLICATION_PROFILE
+        and value.get("source_commit") == source_commit
+        and value.get("source_tree_oid") == source_tree_oid
+    )
+
+
+def validate_receipt_times(value: Dict[str, object]) -> bool:
+    if not is_iso8601(value.get("started_at")) or not is_iso8601(value.get("finished_at")):
+        return False
+    try:
+        started = dt.datetime.fromisoformat(str(value["started_at"]).replace("Z", "+00:00"))
+        finished = dt.datetime.fromisoformat(str(value["finished_at"]).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return finished >= started
+
+
+def validate_python_identity(value: object) -> bool:
+    return exact_keys(
+        value,
+        ("implementation", "major", "minor", "patch", "platform", "executable_name"),
+    ) and (
+        value.get("implementation") == "CPython"
+        and value.get("major") == 3
+        and value.get("minor") == 9
+        and not isinstance(value.get("patch"), bool)
+        and isinstance(value.get("patch"), int)
+        and value["patch"] >= 0
+        and isinstance(value.get("platform"), str)
+        and bool(value["platform"])
+        and len(value["platform"]) <= 256
+        and isinstance(value.get("executable_name"), str)
+        and bool(value["executable_name"])
+        and len(value["executable_name"]) <= 128
+    )
+
+
+def validate_v080_qa_receipt(
+    value: object, source_commit: str, source_tree_oid: str
+) -> List[str]:
+    fields = (
+        "schema_version", "kind", "execution_id", "executor_role", "started_at",
+        "finished_at", "repository", "version", "profile", "source_commit",
+        "source_tree_oid", "asset_set_sha256", "commands", "criterion_mapping",
+        "status", "error",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["prepublication QA receipt fields are unknown or incomplete"]
+    errors: List[str] = []
+    if not valid_receipt_header(value, "vibe-kit-v0.8-prepublication-qa", source_commit, source_tree_oid):
+        errors.append("prepublication QA receipt identity is invalid")
+    if value.get("executor_role") != "independent-qa" or not validate_receipt_times(value):
+        errors.append("prepublication QA execution evidence is invalid")
+    commands = value.get("commands")
+    if not isinstance(commands, list) or not commands:
+        errors.append("prepublication QA commands are missing")
+        commands = []
+    for index, command in enumerate(commands):
+        command_errors = validate_canonical_command(command)
+        if command_errors or command.get("sequence") != index:
+            errors.append("prepublication QA command is invalid")
+    criteria = value.get("criterion_mapping")
+    required_post = {
+        "AC-1": "none", "AC-2": "offline-publication-validation",
+        "AC-3": "none", "AC-4": "public-download", "AC-5": "live-read-back",
+        "AC-6": "offline-publication-validation", "AC-7": "live-read-back",
+        "AC-8": "live-read-back", "AC-9": "public-smoke", "AC-10": "none",
+        "AC-11": "live-read-back", "AC-12": "final-claim-gate",
+    }
+    if not isinstance(criteria, list) or len(criteria) != 12:
+        errors.append("prepublication QA criterion mapping is incomplete")
+    else:
+        for index, item in enumerate(criteria, start=1):
+            criterion = f"AC-{index}"
+            if not exact_keys(
+                item,
+                ("criterion_id", "state", "evidence_command_sequences", "postpublication_requirement"),
+            ):
+                errors.append("prepublication QA criterion fields are invalid")
+                continue
+            sequences = item.get("evidence_command_sequences")
+            if (
+                item.get("criterion_id") != criterion
+                or item.get("state") != V080_PREPUBLICATION_STATES[criterion]
+                or item.get("postpublication_requirement") != required_post[criterion]
+                or not isinstance(sequences, list)
+                or any(isinstance(seq, bool) or not isinstance(seq, int) for seq in sequences)
+                or sequences != sorted(set(sequences))
+                or any(seq < 0 or seq >= len(commands) for seq in sequences)
+                or (not sequences and item.get("state") != "not-runnable-before-publication")
+            ):
+                errors.append(f"prepublication QA mapping is invalid for {criterion}")
+    if value.get("status") != "passed" or value.get("error") is not None:
+        errors.append("prepublication QA receipt did not pass")
+    if any(command.get("status") != "passed" for command in commands if isinstance(command, dict)):
+        errors.append("prepublication QA receipt contains a non-passing command")
+    return errors
+
+
+def validate_v080_configured_receipt(
+    value: object, source_commit: str, source_tree_oid: str
+) -> List[str]:
+    fields = (
+        "schema_version", "kind", "execution_id", "executor_role", "started_at",
+        "finished_at", "repository", "version", "profile", "source_commit",
+        "source_tree_oid", "commands", "checks", "status", "error",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["configured-check receipt fields are unknown or incomplete"]
+    errors: List[str] = []
+    if not valid_receipt_header(value, "vibe-kit-v0.8-configured-checks", source_commit, source_tree_oid):
+        errors.append("configured-check receipt identity is invalid")
+    if not isinstance(value.get("executor_role"), str) or not value.get("executor_role") or not validate_receipt_times(value):
+        errors.append("configured-check execution evidence is invalid")
+    commands = value.get("commands")
+    if not isinstance(commands, list) or len(commands) != 1:
+        errors.append("configured-check receipt requires one command")
+    else:
+        errors.extend(validate_canonical_command(commands[0]))
+        if commands[0].get("sequence") != 0 or commands[0].get("argv") != [
+            "./bin/vibe", "verify", ".", "--format", "json"
+        ]:
+            errors.append("configured-check command is not canonical")
+    checks = value.get("checks")
+    if not isinstance(checks, list) or [item.get("name") for item in checks if isinstance(item, dict)] != list(VERIFY_ORDER):
+        errors.append("configured-check items are not the exact ordered matrix")
+        checks = []
+    for item in checks:
+        if not exact_keys(item, ("name", "configured", "status", "exit_code", "result_sha256")):
+            errors.append("configured-check item fields are invalid")
+            continue
+        configured = item.get("configured")
+        status = item.get("status")
+        exit_code = item.get("exit_code")
+        result_sha = item.get("result_sha256")
+        if not isinstance(configured, bool) or status not in (
+            "passed", "failed", "not-configured", "blocked", "error"
+        ):
+            errors.append("configured-check item value is invalid")
+        elif not configured and (status != "not-configured" or exit_code is not None or result_sha is not None):
+            errors.append("unconfigured check nullability is invalid")
+        elif configured and status == "passed" and (exit_code != 0 or not valid_sha256(result_sha)):
+            errors.append("passing configured check evidence is invalid")
+        elif configured and status in ("failed", "error") and (
+            isinstance(exit_code, bool) or not isinstance(exit_code, int) or not valid_sha256(result_sha)
+        ):
+            errors.append("started configured check evidence is invalid")
+        elif configured and status == "blocked" and (exit_code is not None or result_sha is not None):
+            errors.append("blocked configured check nullability is invalid")
+    if value.get("status") != "passed" or value.get("error") is not None or any(
+        item.get("status") not in ("passed", "not-configured") for item in checks
+    ):
+        errors.append("configured-check receipt did not pass")
+    return errors
+
+
+def validate_v080_python_receipt(
+    value: object, source_commit: str, source_tree_oid: str
+) -> List[str]:
+    fields = (
+        "schema_version", "kind", "execution_id", "executor_role", "started_at",
+        "finished_at", "repository", "version", "profile", "source_commit",
+        "source_tree_oid", "interpreter", "commands", "status", "error",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["Python 3.9 receipt fields are unknown or incomplete"]
+    errors: List[str] = []
+    if not valid_receipt_header(value, "vibe-kit-v0.8-python-3.9", source_commit, source_tree_oid):
+        errors.append("Python 3.9 receipt identity is invalid")
+    if not validate_python_identity(value.get("interpreter")) or not validate_receipt_times(value):
+        errors.append("Python 3.9 execution evidence is invalid")
+    command_ids = [
+        "python39-default-verify", "python39-publication-focused-tests",
+        "python39-package-a", "python39-validate-release-a", "python39-package-b",
+        "python39-validate-release-b",
+    ]
+    commands = value.get("commands")
+    if not isinstance(commands, list) or [item.get("command_id") for item in commands if isinstance(item, dict)] != command_ids:
+        errors.append("Python 3.9 command set is invalid")
+        commands = []
+    for index, command in enumerate(commands):
+        if validate_canonical_command(command) or command.get("sequence") != index or command.get("status") != "passed":
+            errors.append("Python 3.9 command evidence is invalid")
+    if value.get("status") != "passed" or value.get("error") is not None:
+        errors.append("Python 3.9 receipt did not pass")
+    return errors
+
+
+def validate_v080_build_receipt(
+    value: object, source_commit: str, source_tree_oid: str, build_id: str
+) -> List[str]:
+    fields = (
+        "schema_version", "kind", "execution_id", "executor_role", "started_at",
+        "finished_at", "repository", "version", "profile", "source_commit",
+        "source_tree_oid", "build_id", "checkout_id", "output_id", "source_clean",
+        "interpreter", "package_command", "assets", "asset_set_sha256",
+        "validate_release_command", "validate_release_result_sha256", "status", "error",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return [f"clean-build {build_id} receipt fields are unknown or incomplete"]
+    errors: List[str] = []
+    if not valid_receipt_header(value, "vibe-kit-v0.8-clean-build", source_commit, source_tree_oid):
+        errors.append(f"clean-build {build_id} identity is invalid")
+    if (
+        value.get("executor_role") != "release-build-host"
+        or value.get("build_id") != build_id
+        or value.get("source_clean") is not True
+        or not validate_receipt_times(value)
+        or not validate_python_identity(value.get("interpreter"))
+        or any(
+            not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256
+            for key in ("execution_id", "checkout_id", "output_id")
+        )
+    ):
+        errors.append(f"clean-build {build_id} execution evidence is invalid")
+    for field in ("package_command", "validate_release_command"):
+        command = value.get(field)
+        if validate_canonical_command(command) or not isinstance(command, dict) or command.get("status") != "passed":
+            errors.append(f"clean-build {build_id} {field} is invalid")
+    assets = value.get("assets")
+    expected_names_roles = {
+        "SHA256SUMS": "checksum",
+        "release-manifest.json": "manifest",
+        "vibe-kit-0.8.0.zip": "direct",
+        "vibe-kit-distribution-0.8.0.zip": "distribution",
+        "vibe-kit-plugin-0.8.0.zip": "plugin",
+    }
+    if (
+        not isinstance(assets, list)
+        or len(assets) != 5
+        or assets != sorted(assets, key=lambda item: str(item.get("name", "")).encode("utf-8") if isinstance(item, dict) else b"")
+    ):
+        errors.append(f"clean-build {build_id} asset set is invalid")
+    else:
+        for item in assets:
+            if (
+                not exact_keys(item, ("name", "role", "size", "sha256"))
+                or expected_names_roles.get(item.get("name")) != item.get("role")
+                or isinstance(item.get("size"), bool)
+                or not isinstance(item.get("size"), int)
+                or item["size"] < 0
+                or not valid_sha256(item.get("sha256"))
+            ):
+                errors.append(f"clean-build {build_id} asset identity is invalid")
+        if value.get("asset_set_sha256") != canonical_json_sha256(assets):
+            errors.append(f"clean-build {build_id} asset-set digest is invalid")
+    if not valid_sha256(value.get("validate_release_result_sha256")):
+        errors.append(f"clean-build {build_id} validation digest is invalid")
+    if value.get("status") != "passed" or value.get("error") is not None:
+        errors.append(f"clean-build {build_id} did not pass")
+    return errors
+
+
+def validate_v080_release_gate_bundle(
+    value: object, source_commit: str
+) -> Tuple[List[str], Optional[str], Optional[List[Dict[str, object]]]]:
+    fields = (
+        "schema_version", "kind", "repository", "version", "profile",
+        "source_commit", "source_tree_oid", "generated_at", "qa",
+        "configured_checks", "python_3_9", "builds", "receipt_sha256s",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["release-gate bundle fields are unknown or incomplete"], None, None
+    errors: List[str] = []
+    tree = value.get("source_tree_oid")
+    if (
+        value.get("schema_version") != 1
+        or value.get("kind") != "vibe-kit-v0.8-release-gate-evidence"
+        or value.get("repository") != "mintgao/vibe-kit"
+        or value.get("version") != "0.8.0"
+        or value.get("profile") != V080_PUBLICATION_PROFILE
+        or value.get("source_commit") != source_commit
+        or not valid_oid(tree)
+        or not is_iso8601(value.get("generated_at"))
+    ):
+        errors.append("release-gate bundle identity is invalid")
+    if not isinstance(tree, str):
+        tree = ""
+    qa = value.get("qa")
+    configured = value.get("configured_checks")
+    python_receipt = value.get("python_3_9")
+    builds = value.get("builds")
+    errors.extend(validate_v080_qa_receipt(qa, source_commit, tree))
+    errors.extend(validate_v080_configured_receipt(configured, source_commit, tree))
+    errors.extend(validate_v080_python_receipt(python_receipt, source_commit, tree))
+    if not isinstance(builds, list) or len(builds) != 2:
+        errors.append("release-gate bundle requires builds A and B")
+        builds = []
+    else:
+        errors.extend(validate_v080_build_receipt(builds[0], source_commit, tree, "A"))
+        errors.extend(validate_v080_build_receipt(builds[1], source_commit, tree, "B"))
+        if all(isinstance(item, dict) for item in builds):
+            if any(
+                builds[0].get(field) == builds[1].get(field)
+                for field in ("execution_id", "checkout_id", "output_id")
+            ):
+                errors.append("clean builds A and B do not have distinct execution identities")
+            if builds[0].get("assets") != builds[1].get("assets") or builds[0].get("asset_set_sha256") != builds[1].get("asset_set_sha256"):
+                errors.append("clean builds A and B are not byte-identical")
+    digest_map = value.get("receipt_sha256s")
+    if not exact_keys(digest_map, ("qa", "configured_checks", "python_3_9", "build_a", "build_b")):
+        errors.append("release-gate receipt digest map is invalid")
+    else:
+        children = {
+            "qa": qa,
+            "configured_checks": configured,
+            "python_3_9": python_receipt,
+            "build_a": builds[0] if len(builds) == 2 else None,
+            "build_b": builds[1] if len(builds) == 2 else None,
+        }
+        for key, child in children.items():
+            if digest_map.get(key) != canonical_json_sha256(child):
+                errors.append(f"release-gate child digest is invalid: {key}")
+    assets = builds[0].get("assets") if len(builds) == 2 and isinstance(builds[0], dict) else None
+    return errors, tree or None, assets if isinstance(assets, list) else None
+
+
+def validate_v080_authorization(value: object, intent: Dict[str, object]) -> List[str]:
+    fields = (
+        "authorization_id", "repository", "version", "release_kind",
+        "allowed_operations", "publication_intent_sha256", "host_operation_id",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["publication authorization fields are unknown or incomplete"]
+    errors: List[str] = []
+    if any(
+        not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256
+        for key in ("authorization_id", "host_operation_id")
+    ):
+        errors.append("publication authorization identity is invalid")
+    expected = {
+        "repository": "mintgao/vibe-kit",
+        "version": "0.8.0",
+        "release_kind": "prerelease",
+        "allowed_operations": list(V080_PUBLICATION_ALLOWED_OPERATIONS),
+        "publication_intent_sha256": canonical_json_sha256(intent),
+    }
+    if any(value.get(key) != expected[key] for key in expected):
+        errors.append("publication authorization does not bind the exact intent and scope")
+    return errors
+
+
+def validate_v080_postpublication_acceptance(
+    value: object,
+    intent: Dict[str, object],
+    authorization: Dict[str, object],
+    source_tree_oid: str,
+) -> List[str]:
+    fields = (
+        "schema_version", "kind", "execution_id", "executor_role", "started_at",
+        "finished_at", "repository", "version", "profile", "source_commit",
+        "source_tree_oid", "publication_intent_sha256", "authorization_id",
+        "host_operation_id", "validate_publication_result_sha256", "criteria",
+        "status", "error",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["postpublication acceptance fields are unknown or incomplete"]
+    errors: List[str] = []
+    if (
+        not valid_receipt_header(
+            value, "vibe-kit-v0.8-postpublication-acceptance",
+            str(intent.get("source_commit", "")), source_tree_oid,
+        )
+        or value.get("executor_role") != "independent-qa"
+        or not validate_receipt_times(value)
+        or value.get("publication_intent_sha256") != canonical_json_sha256(intent)
+        or value.get("authorization_id") != authorization.get("authorization_id")
+        or value.get("host_operation_id") != authorization.get("host_operation_id")
+        or not valid_sha256(value.get("validate_publication_result_sha256"))
+    ):
+        errors.append("postpublication acceptance identity is invalid")
+    criteria = value.get("criteria")
+    allowed_kinds = {
+        "local-gate-receipt", "publication-receipt", "live-read-back",
+        "public-download", "public-smoke", "validate-publication",
+    }
+    if not isinstance(criteria, list) or len(criteria) != 12:
+        errors.append("postpublication acceptance criteria are incomplete")
+        criteria = []
+    for index, item in enumerate(criteria, start=1):
+        if not exact_keys(item, ("criterion_id", "state", "evidence_refs")) or (
+            item.get("criterion_id") != f"AC-{index}"
+            or item.get("state") not in ("passed", "failed", "blocked")
+            or not isinstance(item.get("evidence_refs"), list)
+            or not item.get("evidence_refs")
+        ):
+            errors.append(f"postpublication acceptance criterion AC-{index} is invalid")
+            continue
+        for reference in item["evidence_refs"]:
+            if (
+                not exact_keys(reference, ("kind", "sha256"))
+                or reference.get("kind") not in allowed_kinds
+                or not valid_sha256(reference.get("sha256"))
+            ):
+                errors.append(f"postpublication acceptance evidence for AC-{index} is invalid")
+    if value.get("status") == "passed":
+        if value.get("error") is not None or any(item.get("state") != "passed" for item in criteria):
+            errors.append("passed postpublication acceptance does not contain twelve passes")
+    elif value.get("status") not in ("failed", "blocked") or not valid_publication_error(value.get("error")):
+        errors.append("non-passing postpublication acceptance lacks one next action")
+    return errors
+
+
+def v080_operation_initial_observation(
+    snapshot: Dict[str, object], kind: str
+) -> object:
+    if kind == "fast-forward-main":
+        return snapshot.get("main")
+    if kind == "create-or-confirm-annotated-tag":
+        return snapshot.get("tag")
+    if kind == "create-or-confirm-prerelease":
+        return snapshot.get("release")
+    if kind == "upload-or-confirm-five-assets":
+        return snapshot.get("assets")
+    return snapshot
+
+
+def v080_operation_identity(
+    kind: str, natural_key: str, snapshot_sha: str, initial: object
+) -> Dict[str, object]:
+    return {
+        "schema_version": 2,
+        "profile": V080_PUBLICATION_PROFILE,
+        "operation_kind": kind,
+        "natural_key": natural_key,
+        "remote_snapshot_sha256": snapshot_sha,
+        "initial_observation": initial,
+    }
+
+
+def validate_v080_remote_snapshot(
+    snapshot: object, intent: Dict[str, object]
+) -> List[str]:
+    fields = ("observed_at", "main", "tag", "release", "asset_list_complete", "assets")
+    if not exact_keys(snapshot, fields) or not isinstance(snapshot, dict):
+        return ["schema-2 remote snapshot fields are unknown or incomplete"]
+    errors: List[str] = []
+    main = snapshot.get("main")
+    intent_main = intent.get("main") if isinstance(intent.get("main"), dict) else {}
+    if (
+        not is_iso8601(snapshot.get("observed_at"))
+        or not exact_keys(main, ("branch", "observed_oid"))
+        or main.get("branch") != "main"
+        or not valid_oid(main.get("observed_oid"))
+        or main.get("observed_oid") not in (intent_main.get("expected_old_oid"), intent_main.get("target_oid"))
+    ):
+        errors.append("schema-2 remote main snapshot is invalid")
+    tag = snapshot.get("tag")
+    tag_fields = (
+        "state", "ref_oid", "object_type", "tag_object_oid", "peeled_commit",
+        "tagger_name", "tagger_email", "tagger_timestamp", "tagger_timezone",
+        "message_sha256",
+    )
+    intent_tag = intent.get("tag") if isinstance(intent.get("tag"), dict) else {}
+    if not exact_keys(tag, tag_fields) or tag.get("state") not in ("absent", "present"):
+        errors.append("schema-2 remote tag snapshot is invalid")
+    elif tag.get("state") == "absent":
+        if any(tag.get(key) is not None for key in tag_fields[1:]):
+            errors.append("absent schema-2 tag snapshot has non-null identity")
+    elif (
+        not valid_oid(tag.get("ref_oid"))
+        or tag.get("object_type") != "tag"
+        or not valid_oid(tag.get("tag_object_oid"))
+        or tag.get("ref_oid") != intent_tag.get("expected_tag_object_oid")
+        or tag.get("tag_object_oid") != intent_tag.get("expected_tag_object_oid")
+        or tag.get("peeled_commit") != intent.get("source_commit")
+        or any(tag.get(key) != intent_tag.get(key) for key in (
+            "tagger_name", "tagger_email", "tagger_timestamp", "tagger_timezone", "message_sha256"
+        ))
+    ):
+        errors.append("present schema-2 tag snapshot diverges from the intent")
+    release = snapshot.get("release")
+    release_fields = (
+        "state", "id", "url", "tag", "title", "body_sha256", "draft",
+        "prerelease", "immutable",
+    )
+    intent_release = intent.get("release") if isinstance(intent.get("release"), dict) else {}
+    if not exact_keys(release, release_fields) or release.get("state") not in ("absent", "present"):
+        errors.append("schema-2 remote Release snapshot is invalid")
+    elif release.get("state") == "absent":
+        if any(release.get(key) is not None for key in release_fields[1:]):
+            errors.append("absent schema-2 Release snapshot has non-null identity")
+    elif (
+        not valid_positive_int(release.get("id"))
+        or release.get("url") != "https://github.com/mintgao/vibe-kit/releases/tag/v0.8.0"
+        or release.get("tag") != "v0.8.0"
+        or release.get("title") != intent_release.get("title")
+        or release.get("body_sha256") != intent_release.get("body_sha256")
+        or release.get("draft") is not False
+        or release.get("prerelease") is not True
+        or release.get("immutable") not in (True, False, "unknown")
+    ):
+        errors.append("present schema-2 Release snapshot diverges from the intent")
+    assets = snapshot.get("assets")
+    intended_assets = intent.get("assets") if isinstance(intent.get("assets"), list) else []
+    intended = {item.get("name"): item for item in intended_assets if isinstance(item, dict)}
+    if snapshot.get("asset_list_complete") is not True or not isinstance(assets, list):
+        errors.append("schema-2 remote asset pagination is incomplete")
+        assets = []
+    elif assets != sorted(
+        assets,
+        key=lambda item: (
+            str(item.get("name", "")).encode("utf-8"),
+            item.get("id", 0) if isinstance(item, dict) else 0,
+        ),
+    ):
+        errors.append("schema-2 remote assets are not in canonical order")
+    seen_names = []
+    for item in assets:
+        if not exact_keys(item, ("id", "name", "size", "sha256", "download_url")):
+            errors.append("schema-2 remote asset fields are invalid")
+            continue
+        seen_names.append(item.get("name"))
+        expected = intended.get(item.get("name"))
+        if (
+            not valid_positive_int(item.get("id"))
+            or not isinstance(item.get("name"), str)
+            or not archive_name_is_safe(item["name"])
+            or isinstance(item.get("size"), bool)
+            or not isinstance(item.get("size"), int)
+            or item["size"] < 0
+            or not valid_sha256(item.get("sha256"))
+            or item.get("download_url") != (
+                f"https://github.com/mintgao/vibe-kit/releases/download/v0.8.0/{item.get('name')}"
+            )
+            or expected is None
+            or item.get("size") != expected.get("size")
+            or item.get("sha256") != expected.get("sha256")
+        ):
+            errors.append("schema-2 remote asset is unsafe, extra, or divergent")
+    if len(seen_names) != len(set(seen_names)):
+        errors.append("schema-2 remote assets contain duplicate names")
+    if isinstance(release, dict) and release.get("state") == "absent" and assets:
+        errors.append("absent schema-2 Release must have no assets")
+    return errors
+
+
+def validate_v080_intent(value: object) -> List[str]:
+    fields = (
+        "schema_version", "kind", "profile", "repository", "version",
+        "source_commit", "main", "tag", "release", "assets", "asset_set_sha256",
+        "local_gates", "remote_snapshot", "remote_snapshot_sha256", "operations",
+        "authorization_scope", "issue_closeout_policy", "recovery_policy",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["schema-2 publication intent fields are unknown or incomplete"]
+    intent = value
+    errors: List[str] = []
+    if (
+        intent.get("schema_version") != 2
+        or intent.get("kind") != "vibe-kit-publication"
+        or intent.get("profile") != V080_PUBLICATION_PROFILE
+        or intent.get("repository") != publication_repository()
+        or intent.get("version") != "0.8.0"
+        or not valid_oid(intent.get("source_commit"))
+    ):
+        errors.append("schema-2 publication profile identity is invalid")
+    main = intent.get("main")
+    if (
+        not exact_keys(main, ("branch", "expected_old_oid", "target_oid", "policy"))
+        or main.get("branch") != "main"
+        or not valid_oid(main.get("expected_old_oid"))
+        or main.get("target_oid") != intent.get("source_commit")
+        or main.get("policy") != "fast-forward-cas-only"
+    ):
+        errors.append("schema-2 publication main identity is invalid")
+    tag = intent.get("tag")
+    tag_fields = (
+        "name", "object_type", "expected_tag_object_oid", "target_commit",
+        "tagger_name", "tagger_email", "tagger_timestamp", "tagger_timezone",
+        "message_sha256",
+    )
+    if (
+        not exact_keys(tag, tag_fields)
+        or tag.get("name") != "v0.8.0"
+        or tag.get("object_type") != "tag"
+        or not valid_oid(tag.get("expected_tag_object_oid"))
+        or tag.get("target_commit") != intent.get("source_commit")
+        or not isinstance(tag.get("tagger_name"), str)
+        or not tag.get("tagger_name")
+        or not isinstance(tag.get("tagger_email"), str)
+        or not tag.get("tagger_email")
+        or not is_iso8601(tag.get("tagger_timestamp"))
+        or re.fullmatch(r"[+-][0-9]{4}", str(tag.get("tagger_timezone", ""))) is None
+        or not valid_sha256(tag.get("message_sha256"))
+    ):
+        errors.append("schema-2 annotated-tag identity is invalid")
+    release = intent.get("release")
+    expected_release = {
+        "title": "Vibe Kit v0.8.0",
+        "body_sha256": release.get("body_sha256") if isinstance(release, dict) else None,
+        "body_source_path": "docs/releases/0.8.0.md",
+        "draft": False,
+        "prerelease": True,
+        "generated_notes": False,
+        "platform_immutability_required": False,
+    }
+    if release != expected_release or not valid_sha256(expected_release["body_sha256"]):
+        errors.append("schema-2 Release identity/state is invalid")
+    assets = intent.get("assets")
+    expected_names_roles = {
+        "SHA256SUMS": "checksum", "release-manifest.json": "manifest",
+        "vibe-kit-0.8.0.zip": "direct",
+        "vibe-kit-distribution-0.8.0.zip": "distribution",
+        "vibe-kit-plugin-0.8.0.zip": "plugin",
+    }
+    if not isinstance(assets, list) or len(assets) != 5 or assets != sorted(
+        assets, key=lambda item: str(item.get("name", "")).encode("utf-8") if isinstance(item, dict) else b""
+    ):
+        errors.append("schema-2 publication assets are not the exact sorted five-asset set")
+        assets = []
+    else:
+        for item in assets:
+            if (
+                not exact_keys(item, ("name", "role", "size", "sha256"))
+                or expected_names_roles.get(item.get("name")) != item.get("role")
+                or isinstance(item.get("size"), bool)
+                or not isinstance(item.get("size"), int)
+                or item["size"] < 0
+                or not valid_sha256(item.get("sha256"))
+            ):
+                errors.append("schema-2 publication asset identity is invalid")
+        if intent.get("asset_set_sha256") != canonical_json_sha256(assets):
+            errors.append("schema-2 publication asset-set digest is invalid")
+    gates = intent.get("local_gates")
+    if not exact_keys(gates, ("release_gate_evidence_sha256",)) or not valid_sha256(gates.get("release_gate_evidence_sha256")):
+        errors.append("schema-2 local gate binding is invalid")
+    snapshot = intent.get("remote_snapshot")
+    errors.extend(validate_v080_remote_snapshot(snapshot, intent))
+    snapshot_sha = intent.get("remote_snapshot_sha256")
+    if not valid_sha256(snapshot_sha) or snapshot_sha != canonical_json_sha256(snapshot):
+        errors.append("schema-2 remote snapshot digest is invalid")
+    operations = intent.get("operations")
+    if not isinstance(operations, list) or len(operations) != 6:
+        errors.append("schema-2 publication operation graph is invalid")
+        operations = []
+    for index, operation in enumerate(operations):
+        fields = (
+            "sequence", "operation_id", "kind", "natural_key",
+            "expected_precondition", "max_write_attempts", "asset_operations",
+        )
+        kind = V080_PUBLICATION_ALLOWED_OPERATIONS[index]
+        if not exact_keys(operation, fields):
+            errors.append("schema-2 publication operation fields are invalid")
+            continue
+        natural_key = operation.get("natural_key")
+        expected_attempts = 0 if index >= 4 else 2
+        if (
+            operation.get("sequence") != index
+            or operation.get("kind") != kind
+            or not isinstance(operation.get("operation_id"), str)
+            or not operation.get("operation_id")
+            or not isinstance(natural_key, str)
+            or not natural_key
+            or operation.get("max_write_attempts") != expected_attempts
+        ):
+            errors.append("schema-2 publication operation ordering/policy is invalid")
+        precondition = operation.get("expected_precondition")
+        initial = v080_operation_initial_observation(snapshot if isinstance(snapshot, dict) else {}, kind)
+        identity = v080_operation_identity(kind, str(natural_key), str(snapshot_sha), initial)
+        if (
+            not exact_keys(precondition, ("kind", "remote_snapshot_sha256", "identity_sha256"))
+            or precondition.get("kind") != "exact-remote-snapshot"
+            or precondition.get("remote_snapshot_sha256") != snapshot_sha
+            or precondition.get("identity_sha256") != canonical_json_sha256(identity)
+        ):
+            errors.append("schema-2 publication operation precondition is invalid")
+        children = operation.get("asset_operations")
+        if index != 3 and children != []:
+            errors.append("asset operations exist outside the upload operation")
+        if index == 3:
+            if not isinstance(children, list) or len(children) != 5:
+                errors.append("upload operation does not contain five asset operations")
+                continue
+            observed_assets = snapshot.get("assets", []) if isinstance(snapshot, dict) else []
+            observed_by_name = {
+                item.get("name"): item for item in observed_assets if isinstance(item, dict)
+            }
+            for child_index, (child, asset) in enumerate(zip(children, assets)):
+                child_fields = (
+                    "sequence", "operation_id", "natural_key", "name", "role", "size",
+                    "sha256", "expected_precondition", "max_write_attempts",
+                )
+                child_natural_key = f"mintgao/vibe-kit:release:v0.8.0:asset:{asset.get('name')}"
+                if not exact_keys(child, child_fields) or any(
+                    child.get(key) != asset.get(key) for key in ("name", "role", "size", "sha256")
+                ) or (
+                    child.get("sequence") != child_index
+                    or child.get("operation_id") != f"asset-{child_index}"
+                    or child.get("natural_key") != child_natural_key
+                    or child.get("max_write_attempts") != 2
+                ):
+                    errors.append("schema-2 asset operation identity is invalid")
+                    continue
+                initial_asset = observed_by_name.get(asset.get("name"), {
+                    "state": "absent", "id": None, "size": None,
+                    "sha256": None, "download_url": None,
+                })
+                child_identity = {
+                    "schema_version": 2,
+                    "profile": V080_PUBLICATION_PROFILE,
+                    "parent_operation_id": operation.get("operation_id"),
+                    "natural_key": child_natural_key,
+                    "remote_snapshot_sha256": snapshot_sha,
+                    "asset": asset,
+                    "initial_observation": initial_asset,
+                }
+                child_pre = child.get("expected_precondition")
+                if (
+                    not exact_keys(child_pre, ("kind", "remote_snapshot_sha256", "identity_sha256"))
+                    or child_pre.get("kind") != "exact-asset-snapshot"
+                    or child_pre.get("remote_snapshot_sha256") != snapshot_sha
+                    or child_pre.get("identity_sha256") != canonical_json_sha256(child_identity)
+                ):
+                    errors.append("schema-2 asset operation precondition is invalid")
+    expected_scope = {
+        "repository": "mintgao/vibe-kit", "version": "0.8.0",
+        "release_kind": "prerelease",
+        "allowed_operations": list(V080_PUBLICATION_ALLOWED_OPERATIONS),
+        "destructive_operations_allowed": False,
+    }
+    if intent.get("authorization_scope") != expected_scope:
+        errors.append("schema-2 publication authorization scope is invalid")
+    if intent.get("issue_closeout_policy") != {
+        "mode": "none", "issues": [], "allowed_operations": []
+    }:
+        errors.append("schema-2 publication must forbid Issue closeout")
+    if intent.get("recovery_policy") != {
+        "read_back_before_retry": True, "delete": False, "replace": False, "force": False
+    }:
+        errors.append("schema-2 publication recovery policy is invalid")
+    return errors
+
+
+def validate_publication_intent(value: object) -> List[str]:
+    if isinstance(value, dict) and value.get("schema_version") == 1:
+        return validate_publication_intent_v1(value)
+    if isinstance(value, dict) and value.get("schema_version") == 2:
+        return validate_v080_intent(value)
+    return ["publication intent schema/profile is unsupported"]
+
+
 def publication_plan(
-    phase: str, request_path: Path, candidate: Optional[Path], output_format: str
+    phase: str,
+    request_path: Path,
+    candidate: Optional[Path],
+    comparison_candidate: Optional[Path],
+    release_gate_evidence: Optional[Path],
+    output_format: str,
 ) -> int:
     request = load_json_object_strict(request_path)
     if phase == "publish":
@@ -9781,8 +10657,12 @@ def publication_plan(
         request["assets"] = assets
         request["asset_set_sha256"] = canonical_json_sha256(assets)
         errors = validate_publication_intent(request)
-        if manifest.get("kit_version") != "0.7.0" or manifest.get("status") != "prerelease":
-            errors.append("publication candidate must be the exact v0.7.0 prerelease")
+        schema = request.get("schema_version")
+        expected_version = "0.7.0" if schema == 1 else "0.8.0"
+        if manifest.get("kit_version") != expected_version or manifest.get("status") != "prerelease":
+            errors.append(
+                f"publication candidate must be the exact {expected_version} prerelease"
+            )
         source = manifest.get("source")
         if (
             not isinstance(source, dict)
@@ -9791,7 +10671,7 @@ def publication_plan(
         ):
             errors.append("publication source commit does not match the clean candidate")
         body = request.get("release")
-        body_path = source_root() / "docs/releases/0.7.0.md"
+        body_path = source_root() / f"docs/releases/{expected_version}.md"
         if (
             not isinstance(body, dict)
             or not body_path.is_file()
@@ -9804,6 +10684,62 @@ def publication_plan(
             candidate_status = validate_release(release_dir, "json")
         if candidate_status != 0:
             errors.append("publication candidate does not pass validate-release")
+        if schema == 2:
+            if comparison_candidate is None:
+                errors.append("schema-2 publication planning requires --comparison-candidate")
+            if release_gate_evidence is None:
+                errors.append("schema-2 publication planning requires --release-gate-evidence")
+            gate_bundle: object = {}
+            if release_gate_evidence is not None:
+                try:
+                    gate_bundle = load_json_object_strict(release_gate_evidence)
+                except VibeError as error:
+                    errors.append(str(error))
+            gate_errors, source_tree_oid, gate_assets = validate_v080_release_gate_bundle(
+                gate_bundle, str(request.get("source_commit", ""))
+            )
+            errors.extend(gate_errors)
+            gates = request.get("local_gates")
+            if not isinstance(gates, dict) or gates.get(
+                "release_gate_evidence_sha256"
+            ) != canonical_json_sha256(gate_bundle):
+                errors.append("schema-2 intent does not bind the complete release-gate bundle")
+            if gate_assets is not None and gate_assets != assets:
+                errors.append("canonical candidate differs from release-gate build assets")
+            if comparison_candidate is not None:
+                comparison_dir = comparison_candidate.resolve()
+                try:
+                    comparison_manifest = load_json_object_strict(
+                        comparison_dir / "release-manifest.json"
+                    )
+                    comparison_assets = publication_assets(comparison_dir, "0.8.0")
+                except VibeError as error:
+                    comparison_manifest, comparison_assets = {}, []
+                    errors.append(str(error))
+                if (
+                    comparison_manifest.get("kit_version") != "0.8.0"
+                    or comparison_manifest.get("status") != "prerelease"
+                    or not isinstance(comparison_manifest.get("source"), dict)
+                    or comparison_manifest.get("source", {}).get("tree_state") != "clean"
+                    or comparison_manifest.get("source", {}).get("ref") != request.get("source_commit")
+                ):
+                    errors.append("comparison candidate is not the same clean v0.8.0 source")
+                if comparison_assets != assets:
+                    errors.append("canonical and comparison candidates are not byte-identical")
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    comparison_status = validate_release(comparison_dir, "json")
+                if comparison_status != 0:
+                    errors.append("comparison candidate does not pass validate-release")
+                if isinstance(gate_bundle, dict) and isinstance(gate_bundle.get("builds"), list) and len(gate_bundle["builds"]) == 2:
+                    if gate_bundle["builds"][1].get("assets") != comparison_assets:
+                        errors.append("comparison candidate differs from release-gate build B assets")
+            if (
+                platform.python_implementation() != "CPython"
+                or sys.version_info[:2] != (3, 9)
+            ):
+                errors.append("schema-2 final publication plan must execute on CPython 3.9")
+            if source_tree_oid is None:
+                errors.append("schema-2 release-gate source tree identity is missing")
         kind = "publication"
         output: Dict[str, object] = {"intent": request}
     else:
@@ -9821,6 +10757,17 @@ def publication_plan(
         intent_sha256=digest_value, **output, errors=errors,
         write_state="none", writes_performed=False, network_used=False,
         authorization_required=True,
+        execution={
+            "observed_at": utc_now(),
+            "interpreter": {
+                "implementation": platform.python_implementation(),
+                "major": sys.version_info.major,
+                "minor": sys.version_info.minor,
+                "patch": sys.version_info.micro,
+                "platform": platform.platform(),
+                "executable_name": Path(sys.executable).name,
+            },
+        },
         next_action=(
             {"code": "resolve-publication-plan", "detail": "Correct every local plan error."}
             if errors else None
@@ -9838,7 +10785,7 @@ def publication_plan(
     return 2 if errors else 0
 
 
-def validate_publication_receipt_shape(receipt: object) -> List[str]:
+def validate_publication_receipt_shape_v1(receipt: object) -> List[str]:
     errors: List[str] = []
     top = (
         "schema_version", "kind", "intent_sha256", "authorization_id",
@@ -9851,7 +10798,7 @@ def validate_publication_receipt_shape(receipt: object) -> List[str]:
     value = receipt
     if not isinstance(value, dict):
         return errors
-    if value.get("schema_version") != PUBLICATION_RECEIPT_SCHEMA or value.get("kind") != "vibe-kit-publication-receipt":
+    if value.get("schema_version") != HISTORICAL_PUBLICATION_RECEIPT_SCHEMA or value.get("kind") != "vibe-kit-publication-receipt":
         errors.append("publication receipt schema/kind is unsupported")
     if value.get("remote_write_state") not in REMOTE_WRITE_STATES:
         errors.append("publication receipt remote write state is invalid")
@@ -10008,13 +10955,411 @@ def validate_publication_receipt_shape(receipt: object) -> List[str]:
     return errors
 
 
-def validate_publication(
+V080_OPERATION_OUTCOMES = (
+    "not-attempted", "read-matched", "updated", "created", "uploaded",
+    "confirmed-after-uncertain", "verified", "conflict", "permission-denied",
+    "definite-failure", "absent-after-bounded-retry", "uncertain", "error",
+)
+V080_SUCCESS_OUTCOMES = {
+    "read-matched", "updated", "created", "uploaded",
+    "confirmed-after-uncertain", "verified",
+}
+V080_ATTEMPT_RESPONSES = (
+    "definite-success", "timeout", "transport-unknown", "permission-denied",
+    "definite-failure", "execution-error",
+)
+
+
+def validate_v080_observation(value: object, kind: str) -> List[str]:
+    errors: List[str] = []
+    if kind == "main":
+        if not exact_keys(value, ("observed_at", "state", "oid")):
+            return ["main observation fields are invalid"]
+        if (
+            not is_iso8601(value.get("observed_at"))
+            or value.get("state") not in ("preimage", "target", "divergent", "unknown")
+            or ((value.get("oid") is None) != (value.get("state") == "unknown"))
+            or (value.get("oid") is not None and not valid_oid(value.get("oid")))
+        ):
+            errors.append("main observation value is invalid")
+        return errors
+    if kind == "tag":
+        identity = (
+            "ref_oid", "object_type", "tag_object_oid", "peeled_commit", "tagger_name",
+            "tagger_email", "tagger_timestamp", "tagger_timezone", "message_sha256",
+        )
+        if not exact_keys(value, ("observed_at", "state") + identity):
+            return ["tag observation fields are invalid"]
+        if not is_iso8601(value.get("observed_at")) or value.get("state") not in (
+            "absent", "match", "divergent", "unknown"
+        ):
+            errors.append("tag observation state is invalid")
+        if value.get("state") in ("absent", "unknown"):
+            if any(value.get(key) is not None for key in identity):
+                errors.append("absent/unknown tag observation has non-null identity")
+        elif (
+            not valid_oid(value.get("ref_oid"))
+            or value.get("object_type") != "tag"
+            or not valid_oid(value.get("tag_object_oid"))
+            or not valid_oid(value.get("peeled_commit"))
+            or not isinstance(value.get("tagger_name"), str)
+            or not value.get("tagger_name")
+            or not isinstance(value.get("tagger_email"), str)
+            or not value.get("tagger_email")
+            or not is_iso8601(value.get("tagger_timestamp"))
+            or re.fullmatch(r"[+-][0-9]{4}", str(value.get("tagger_timezone", ""))) is None
+            or not valid_sha256(value.get("message_sha256"))
+        ):
+            errors.append("tag observation identity is invalid")
+        return errors
+    if kind == "release":
+        identity = ("id", "url", "tag", "title", "body_sha256", "draft", "prerelease", "immutable")
+        if not exact_keys(value, ("observed_at", "state") + identity):
+            return ["Release observation fields are invalid"]
+        if not is_iso8601(value.get("observed_at")) or value.get("state") not in (
+            "absent", "match", "divergent", "unknown"
+        ):
+            errors.append("Release observation state is invalid")
+        if value.get("state") in ("absent", "unknown"):
+            if any(value.get(key) is not None for key in identity):
+                errors.append("absent/unknown Release observation has non-null identity")
+        elif (
+            not valid_positive_int(value.get("id"))
+            or not isinstance(value.get("url"), str)
+            or not value.get("url")
+            or value.get("tag") != "v0.8.0"
+            or not isinstance(value.get("title"), str)
+            or not value.get("title")
+            or not valid_sha256(value.get("body_sha256"))
+            or not isinstance(value.get("draft"), bool)
+            or not isinstance(value.get("prerelease"), bool)
+            or value.get("immutable") not in (True, False, "unknown")
+        ):
+            errors.append("Release observation identity is invalid")
+        return errors
+    identity = ("id", "size", "sha256", "download_url")
+    if not exact_keys(value, ("observed_at", "state") + identity):
+        return ["asset observation fields are invalid"]
+    if not is_iso8601(value.get("observed_at")) or value.get("state") not in (
+        "absent", "match", "divergent", "unknown"
+    ):
+        errors.append("asset observation state is invalid")
+    if value.get("state") in ("absent", "unknown"):
+        if any(value.get(key) is not None for key in identity):
+            errors.append("absent/unknown asset observation has non-null identity")
+    elif (
+        not valid_positive_int(value.get("id"))
+        or isinstance(value.get("size"), bool)
+        or not isinstance(value.get("size"), int)
+        or value["size"] < 0
+        or not valid_sha256(value.get("sha256"))
+        or not isinstance(value.get("download_url"), str)
+        or not value.get("download_url")
+    ):
+        errors.append("asset observation identity is invalid")
+    return errors
+
+
+def validate_v080_attempts(value: object, observation_kind: str) -> List[str]:
+    if not isinstance(value, list) or len(value) > 2:
+        return ["operation attempt ledger length is invalid"]
+    errors: List[str] = []
+    for index, attempt in enumerate(value, start=1):
+        if not exact_keys(
+            attempt,
+            ("attempt_number", "pre_write_observation", "response", "read_back_observation"),
+        ):
+            errors.append("operation attempt fields are invalid")
+            continue
+        if attempt.get("attempt_number") != index or attempt.get("response") not in V080_ATTEMPT_RESPONSES:
+            errors.append("operation attempt ordering/response is invalid")
+        errors.extend(validate_v080_observation(attempt.get("pre_write_observation"), observation_kind))
+        errors.extend(validate_v080_observation(attempt.get("read_back_observation"), observation_kind))
+    if len(value) == 2 and isinstance(value[0], dict):
+        first_read = value[0].get("read_back_observation")
+        expected_absence = "preimage" if observation_kind == "main" else "absent"
+        if not isinstance(first_read, dict) or first_read.get("state") != expected_absence:
+            errors.append("second write attempt lacks exact positive-absence proof")
+        if value[0].get("response") in (
+            "permission-denied", "definite-failure", "execution-error"
+        ):
+            errors.append("terminal attempt response cannot be retried")
+    return errors
+
+
+def validate_v080_write_ledger(
+    value: object,
+    observation_kind: str,
+    allowed_successes: Sequence[str],
+    expected_precondition_sha: str,
+    asset: bool = False,
+) -> List[str]:
+    common = (
+        "sequence", "operation_id", "natural_key", "initial_observation", "attempts",
+        "final_observation", "outcome", "error",
+    )
+    fields = common + (
+        ("name", "role", "expected_size", "expected_sha256", "precondition_sha256", "remote_asset_id")
+        if asset
+        else ("kind", "precondition_sha256", "remote_object_id", "asset_receipts")
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["write receipt ledger fields are unknown or incomplete"]
+    errors: List[str] = []
+    if value.get("precondition_sha256") != expected_precondition_sha:
+        errors.append("write receipt precondition digest is invalid")
+    errors.extend(validate_v080_observation(value.get("initial_observation"), observation_kind))
+    errors.extend(validate_v080_attempts(value.get("attempts"), observation_kind))
+    errors.extend(validate_v080_observation(value.get("final_observation"), observation_kind))
+    outcome = value.get("outcome")
+    error = value.get("error")
+    if outcome not in V080_OPERATION_OUTCOMES:
+        errors.append("write receipt outcome is invalid")
+    if (outcome in V080_SUCCESS_OUTCOMES) != (error is None):
+        errors.append("write receipt outcome/error nullability is invalid")
+    if error is not None and not valid_publication_error(error):
+        errors.append("write receipt error is invalid")
+    final = value.get("final_observation")
+    if outcome in allowed_successes and (not isinstance(final, dict) or final.get("state") not in ("target", "match")):
+        errors.append("successful write receipt lacks exact final match")
+    if outcome == "absent-after-bounded-retry" and (
+        not isinstance(value.get("attempts"), list)
+        or len(value["attempts"]) != 2
+        or not isinstance(final, dict)
+        or final.get("state") != ("preimage" if observation_kind == "main" else "absent")
+    ):
+        errors.append("bounded-absence outcome is not proven by two attempts")
+    attempts = value.get("attempts") if isinstance(value.get("attempts"), list) else []
+    if outcome == "confirmed-after-uncertain" and not any(
+        isinstance(attempt, dict) and attempt.get("response") in ("timeout", "transport-unknown")
+        for attempt in attempts
+    ):
+        errors.append("confirmed-after-uncertain lacks an uncertain response")
+    remote_id_key = "remote_asset_id" if asset else "remote_object_id"
+    if outcome in allowed_successes and value.get(remote_id_key) is None:
+        errors.append("successful write receipt lacks a remote object identity")
+    return errors
+
+
+def validate_v080_receipt(value: object, intent: Dict[str, object]) -> List[str]:
+    fields = (
+        "schema_version", "kind", "profile", "version", "intent_sha256",
+        "authorization_id", "host_operation_id", "repository", "remote_write_state",
+        "verification_state", "main", "tag", "release", "assets", "operations",
+        "downloads", "validate_release", "smokes", "limitations", "issue_closeout",
+        "error",
+    )
+    if not exact_keys(value, fields) or not isinstance(value, dict):
+        return ["schema-2 publication receipt fields are unknown or incomplete"]
+    receipt = value
+    errors: List[str] = []
+    if (
+        receipt.get("schema_version") != 2
+        or receipt.get("kind") != "vibe-kit-publication-receipt"
+        or receipt.get("profile") != V080_PUBLICATION_PROFILE
+        or receipt.get("version") != "0.8.0"
+        or receipt.get("repository") != "mintgao/vibe-kit"
+        or receipt.get("intent_sha256") != canonical_json_sha256(intent)
+        or any(
+            not isinstance(receipt.get(key), str) or not receipt.get(key) or len(receipt[key]) > 256
+            for key in ("authorization_id", "host_operation_id")
+        )
+    ):
+        errors.append("schema-2 publication receipt identity is invalid")
+    if receipt.get("remote_write_state") not in REMOTE_WRITE_STATES or receipt.get("verification_state") not in VERIFICATION_STATES:
+        errors.append("schema-2 publication receipt state is invalid")
+    if receipt.get("issue_closeout") is not None:
+        errors.append("schema-2 publication receipt must not contain Issue closeout")
+    if receipt.get("error") is not None and not valid_publication_error(receipt.get("error")):
+        errors.append("schema-2 publication receipt error is invalid")
+    intent_main = intent.get("main") if isinstance(intent.get("main"), dict) else {}
+    main = receipt.get("main")
+    if not exact_keys(main, ("branch", "expected_old_oid", "target_oid", "observed_oid", "write_state", "read_back")) or (
+        main.get("branch") != "main"
+        or main.get("expected_old_oid") != intent_main.get("expected_old_oid")
+        or main.get("target_oid") != intent_main.get("target_oid")
+        or not valid_oid(main.get("observed_oid"))
+        or main.get("write_state") not in REMOTE_WRITE_STATES
+        or not isinstance(main.get("read_back"), bool)
+    ):
+        errors.append("schema-2 final main identity is invalid")
+    intent_tag = intent.get("tag") if isinstance(intent.get("tag"), dict) else {}
+    tag = receipt.get("tag")
+    if not exact_keys(tag, ("name", "expected_tag_object_oid", "observed_ref_oid", "peeled_commit", "write_state", "read_back")) or (
+        tag.get("name") != "v0.8.0"
+        or tag.get("expected_tag_object_oid") != intent_tag.get("expected_tag_object_oid")
+        or not valid_oid(tag.get("observed_ref_oid"))
+        or not valid_oid(tag.get("peeled_commit"))
+        or tag.get("write_state") not in REMOTE_WRITE_STATES
+        or not isinstance(tag.get("read_back"), bool)
+    ):
+        errors.append("schema-2 final tag identity is invalid")
+    release = receipt.get("release")
+    if not exact_keys(release, ("id", "url", "tag", "title", "body_sha256", "draft", "prerelease", "immutable", "write_state", "read_back")) or (
+        not valid_positive_int(release.get("id"))
+        or release.get("url") != "https://github.com/mintgao/vibe-kit/releases/tag/v0.8.0"
+        or release.get("tag") != "v0.8.0"
+        or release.get("title") != "Vibe Kit v0.8.0"
+        or not valid_sha256(release.get("body_sha256"))
+        or release.get("draft") is not False
+        or release.get("prerelease") is not True
+        or release.get("immutable") not in (True, False, "unknown")
+        or release.get("write_state") not in REMOTE_WRITE_STATES
+        or not isinstance(release.get("read_back"), bool)
+    ):
+        errors.append("schema-2 final Release identity is invalid")
+    intended_assets = intent.get("assets") if isinstance(intent.get("assets"), list) else []
+    assets = receipt.get("assets")
+    if not isinstance(assets, list) or len(assets) != 5:
+        errors.append("schema-2 final asset set is invalid")
+        assets = []
+    for item, intended in zip(assets, intended_assets):
+        if not exact_keys(item, ("name", "role", "size", "sha256", "id", "url", "write_state", "read_back")) or any(
+            item.get(key) != intended.get(key) for key in ("name", "role", "size", "sha256")
+        ) or (
+            not valid_positive_int(item.get("id"))
+            or item.get("url") != f"https://github.com/mintgao/vibe-kit/releases/download/v0.8.0/{item.get('name')}"
+            or item.get("write_state") not in REMOTE_WRITE_STATES
+            or not isinstance(item.get("read_back"), bool)
+        ):
+            errors.append("schema-2 final asset identity is invalid")
+    downloads = receipt.get("downloads")
+    if not isinstance(downloads, list) or len(downloads) != 5:
+        errors.append("schema-2 public download set is invalid")
+        downloads = []
+    for item, intended in zip(downloads, intended_assets):
+        if not exact_keys(item, ("name", "size", "sha256", "matched")) or any(
+            item.get(key) != intended.get(key) for key in ("name", "size", "sha256")
+        ) or item.get("matched") is not True:
+            errors.append("schema-2 public download identity is invalid")
+    validate_release_value = receipt.get("validate_release")
+    if not exact_keys(validate_release_value, ("status", "receipt_sha256")) or (
+        validate_release_value.get("status") not in ("valid", "invalid", "error")
+        or not valid_sha256(validate_release_value.get("receipt_sha256"))
+    ):
+        errors.append("schema-2 validate-release evidence is invalid")
+    smokes = receipt.get("smokes")
+    if not isinstance(smokes, list) or len(smokes) != 6 or [
+        item.get("name") for item in smokes if isinstance(item, dict)
+    ] != list(V080_PUBLIC_SMOKES):
+        errors.append("schema-2 public smoke set is invalid")
+        smokes = []
+    for item in smokes:
+        if not exact_keys(item, ("name", "status", "evidence_sha256")) or (
+            item.get("status") not in ("passed", "failed", "error")
+            or not valid_sha256(item.get("evidence_sha256"))
+        ):
+            errors.append("schema-2 public smoke evidence is invalid")
+    if not isinstance(receipt.get("limitations"), list) or any(
+        not isinstance(item, str) or not item or len(item) > 512
+        for item in receipt.get("limitations", [])
+    ):
+        errors.append("schema-2 publication limitations are invalid")
+    intent_operations = intent.get("operations") if isinstance(intent.get("operations"), list) else []
+    operations = receipt.get("operations")
+    if not isinstance(operations, list) or len(operations) != 6:
+        errors.append("schema-2 operation receipt graph is invalid")
+        operations = []
+    for index, (operation, planned) in enumerate(zip(operations, intent_operations)):
+        kind = V080_PUBLICATION_ALLOWED_OPERATIONS[index]
+        pre_sha = canonical_json_sha256(planned.get("expected_precondition"))
+        if index in (0, 1, 2):
+            observation_kind = ("main", "tag", "release")[index]
+            successes = (
+                ("read-matched", "updated", "confirmed-after-uncertain")
+                if index == 0 else ("read-matched", "created", "confirmed-after-uncertain")
+            )
+            errors.extend(validate_v080_write_ledger(operation, observation_kind, successes, pre_sha))
+            if isinstance(operation, dict) and operation.get("asset_receipts") != []:
+                errors.append("non-upload write receipt contains asset receipts")
+        elif index == 3:
+            required = (
+                "sequence", "operation_id", "kind", "natural_key", "precondition_sha256",
+                "initial_observation", "attempts", "final_observation", "outcome",
+                "remote_object_id", "asset_receipts", "error",
+            )
+            if not exact_keys(operation, required):
+                errors.append("upload receipt fields are unknown or incomplete")
+                continue
+            if operation.get("initial_observation") is not None or operation.get("final_observation") is not None or operation.get("attempts") != [] or operation.get("remote_object_id") is not None:
+                errors.append("upload high-level receipt must use child ledgers only")
+            if operation.get("precondition_sha256") != pre_sha:
+                errors.append("upload receipt precondition digest is invalid")
+            children = operation.get("asset_receipts")
+            planned_children = planned.get("asset_operations") if isinstance(planned, dict) else []
+            if not isinstance(children, list) or len(children) != 5:
+                errors.append("upload receipt requires five asset ledgers")
+                children = []
+            child_outcomes = []
+            for child, planned_child in zip(children, planned_children):
+                child_errors = validate_v080_write_ledger(
+                    child, "asset", ("read-matched", "uploaded", "confirmed-after-uncertain"),
+                    canonical_json_sha256(planned_child.get("expected_precondition")), True,
+                )
+                errors.extend(child_errors)
+                if isinstance(child, dict):
+                    child_outcomes.append(child.get("outcome"))
+                    if any(child.get(target) != planned_child.get(source) for target, source in (
+                        ("sequence", "sequence"), ("operation_id", "operation_id"),
+                        ("natural_key", "natural_key"), ("name", "name"), ("role", "role"),
+                        ("expected_size", "size"), ("expected_sha256", "sha256"),
+                    )):
+                        errors.append("asset receipt does not bind its planned child")
+            if child_outcomes and all(item in ("read-matched", "uploaded", "confirmed-after-uncertain") for item in child_outcomes):
+                expected_high = (
+                    "confirmed-after-uncertain" if "confirmed-after-uncertain" in child_outcomes
+                    else "uploaded" if "uploaded" in child_outcomes else "read-matched"
+                )
+            else:
+                expected_high = next((item for item in child_outcomes if item not in V080_SUCCESS_OUTCOMES), None)
+            if operation.get("outcome") != expected_high:
+                errors.append("upload high-level outcome is not derived from child ledgers")
+            if (operation.get("outcome") in V080_SUCCESS_OUTCOMES) != (operation.get("error") is None):
+                errors.append("upload receipt outcome/error nullability is invalid")
+            if operation.get("error") is not None and not valid_publication_error(operation.get("error")):
+                errors.append("upload receipt error is invalid")
+        else:
+            required = (
+                "sequence", "operation_id", "kind", "natural_key", "precondition_sha256",
+                "initial_observation", "attempts", "final_observation", "outcome",
+                "remote_object_id", "asset_receipts", "error",
+            )
+            if not exact_keys(operation, required) or (
+                operation.get("precondition_sha256") != pre_sha
+                or operation.get("initial_observation") is not None
+                or operation.get("attempts") != []
+                or operation.get("final_observation") is not None
+                or operation.get("remote_object_id") is not None
+                or operation.get("asset_receipts") != []
+                or operation.get("outcome") not in ("verified", "not-attempted", "error")
+                or ((operation.get("outcome") == "verified") != (operation.get("error") is None))
+            ):
+                errors.append("read-only operation receipt is invalid")
+        if isinstance(operation, dict) and any(
+            operation.get(key) != planned.get(key)
+            for key in ("sequence", "operation_id", "kind", "natural_key")
+        ):
+            errors.append("operation receipt does not bind the planned operation")
+    return errors
+
+
+def validate_publication_receipt_shape(
+    receipt: object, intent: Optional[Dict[str, object]] = None
+) -> List[str]:
+    if isinstance(receipt, dict) and receipt.get("schema_version") == 1:
+        return validate_publication_receipt_shape_v1(receipt)
+    if isinstance(receipt, dict) and receipt.get("schema_version") == 2 and isinstance(intent, dict):
+        return validate_v080_receipt(receipt, intent)
+    return ["publication receipt schema/profile is unsupported"]
+
+
+def validate_publication_v1(
     intent_path: Path, receipt_path: Path, release_dir: Path, output_format: str
 ) -> int:
     intent = load_json_object_strict(intent_path)
     receipt = load_json_object_strict(receipt_path)
     errors = validate_publication_intent(intent)
-    errors.extend(validate_publication_receipt_shape(receipt))
+    errors.extend(validate_publication_receipt_shape(receipt, intent))
     intent_sha = canonical_json_sha256(intent)
     if receipt.get("intent_sha256") != intent_sha:
         errors.append("publication receipt does not bind the exact intent")
@@ -10143,6 +11488,148 @@ def validate_publication(
         print("Publication validation passed.")
         print("Host evidence is structurally consistent; GitHub authenticity remains a live-host fact.")
     return 1 if errors else 0
+
+
+def validate_publication_v2(
+    intent_path: Path,
+    receipt_path: Path,
+    release_dir: Path,
+    authorization_path: Optional[Path],
+    output_format: str,
+) -> int:
+    intent = load_json_object_strict(intent_path)
+    receipt = load_json_object_strict(receipt_path)
+    errors = validate_v080_intent(intent)
+    errors.extend(validate_v080_receipt(receipt, intent))
+    authorization: object = {}
+    if authorization_path is None:
+        errors.append("schema-2 publication validation requires --authorization")
+    else:
+        authorization = load_json_object_strict(authorization_path)
+        errors.extend(validate_v080_authorization(authorization, intent))
+    if isinstance(authorization, dict):
+        if receipt.get("authorization_id") != authorization.get("authorization_id"):
+            errors.append("publication receipt authorization ID does not match")
+        if receipt.get("host_operation_id") != authorization.get("host_operation_id"):
+            errors.append("publication receipt host operation ID does not match")
+    local_assets = publication_assets(release_dir.resolve(), "0.8.0")
+    if intent.get("assets") != local_assets:
+        errors.append("schema-2 intent assets do not match the local candidate")
+    if receipt.get("remote_write_state") != "confirmed-complete":
+        errors.append("schema-2 remote writes are not confirmed complete")
+    if receipt.get("verification_state") != "passed":
+        errors.append("schema-2 public verification did not pass")
+    main = receipt.get("main") if isinstance(receipt.get("main"), dict) else {}
+    tag = receipt.get("tag") if isinstance(receipt.get("tag"), dict) else {}
+    release = receipt.get("release") if isinstance(receipt.get("release"), dict) else {}
+    intent_main = intent.get("main") if isinstance(intent.get("main"), dict) else {}
+    intent_tag = intent.get("tag") if isinstance(intent.get("tag"), dict) else {}
+    intent_release = intent.get("release") if isinstance(intent.get("release"), dict) else {}
+    if main.get("observed_oid") != intent_main.get("target_oid") or main.get("write_state") != "confirmed-complete" or main.get("read_back") is not True:
+        errors.append("schema-2 final main read-back does not match")
+    if tag.get("observed_ref_oid") != intent_tag.get("expected_tag_object_oid") or tag.get("peeled_commit") != intent.get("source_commit") or tag.get("write_state") != "confirmed-complete" or tag.get("read_back") is not True:
+        errors.append("schema-2 final tag read-back does not match")
+    if release.get("body_sha256") != intent_release.get("body_sha256") or release.get("write_state") != "confirmed-complete" or release.get("read_back") is not True:
+        errors.append("schema-2 final Release read-back does not match")
+    remote_assets = receipt.get("assets") if isinstance(receipt.get("assets"), list) else []
+    downloads = receipt.get("downloads") if isinstance(receipt.get("downloads"), list) else []
+    if [
+        {key: item.get(key) for key in ("name", "role", "size", "sha256")}
+        for item in remote_assets if isinstance(item, dict)
+    ] != local_assets:
+        errors.append("schema-2 final remote asset set does not match")
+    if any(
+        item.get("write_state") != "confirmed-complete" or item.get("read_back") is not True
+        for item in remote_assets if isinstance(item, dict)
+    ):
+        errors.append("schema-2 final remote assets are not confirmed")
+    if [
+        {key: item.get(key) for key in ("name", "size", "sha256")}
+        for item in downloads if isinstance(item, dict)
+    ] != [{key: item[key] for key in ("name", "size", "sha256")} for item in local_assets]:
+        errors.append("schema-2 public downloads do not match")
+    if any(item.get("matched") is not True for item in downloads if isinstance(item, dict)):
+        errors.append("schema-2 public download mismatch was reported")
+    validate_result = receipt.get("validate_release")
+    if not isinstance(validate_result, dict) or validate_result.get("status") != "valid":
+        errors.append("schema-2 target validate-release evidence is not valid")
+    smokes = receipt.get("smokes") if isinstance(receipt.get("smokes"), list) else []
+    if any(item.get("status") != "passed" for item in smokes if isinstance(item, dict)):
+        errors.append("schema-2 public smoke evidence did not pass")
+    operations = receipt.get("operations") if isinstance(receipt.get("operations"), list) else []
+    if len(operations) == 6 and any(
+        item.get("outcome") not in V080_SUCCESS_OUTCOMES or item.get("error") is not None
+        for item in operations if isinstance(item, dict)
+    ):
+        errors.append("schema-2 publication operation graph is not terminal")
+    if receipt.get("error") is not None:
+        errors.append("schema-2 publication receipt contains an error")
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        local_release_status = validate_release(release_dir.resolve(), "json")
+    if local_release_status != 0:
+        errors.append("local v0.8 release directory does not pass validate-release")
+    if platform.python_implementation() != "CPython" or sys.version_info[:2] != (3, 9):
+        errors.append("schema-2 final publication validation must execute on CPython 3.9")
+    serialized = json.dumps(
+        {"intent": intent, "receipt": receipt, "authorization": authorization},
+        ensure_ascii=False,
+    )
+    if contains_secret(serialized):
+        errors.append("schema-2 publication evidence contains credential-like material")
+    status = "invalid" if errors else "valid"
+    if output_format == "json":
+        print_json(result_envelope(
+            "validate-publication", status,
+            profile=V080_PUBLICATION_PROFILE,
+            version="0.8.0",
+            intent_sha256=canonical_json_sha256(intent),
+            authorization_id=(authorization.get("authorization_id") if isinstance(authorization, dict) else None),
+            host_operation_id=receipt.get("host_operation_id"),
+            release_directory=str(release_dir.resolve()),
+            errors=errors,
+            remote_write_state=receipt.get("remote_write_state"),
+            verification_state=receipt.get("verification_state"),
+            execution={
+                "observed_at": utc_now(),
+                "interpreter": {
+                    "implementation": platform.python_implementation(),
+                    "major": sys.version_info.major,
+                    "minor": sys.version_info.minor,
+                    "patch": sys.version_info.micro,
+                    "platform": platform.platform(),
+                    "executable_name": Path(sys.executable).name,
+                },
+            },
+            host_evidence_authenticated=False,
+            network_used=False,
+        ))
+    elif errors:
+        for error in errors:
+            print(f"ERROR: {error}", file=sys.stderr)
+    else:
+        print("Vibe Kit v0.8.0 publication validation passed.")
+        print("Host evidence is structurally consistent; GitHub authenticity remains a live-host fact.")
+    return 1 if errors else 0
+
+
+def validate_publication(
+    intent_path: Path,
+    receipt_path: Path,
+    release_dir: Path,
+    authorization_path: Optional[Path],
+    output_format: str,
+) -> int:
+    intent = load_json_object_strict(intent_path)
+    schema = intent.get("schema_version")
+    if schema == 1:
+        if authorization_path is not None:
+            raise VibeError("historical schema-1 validation does not accept --authorization")
+        return validate_publication_v1(intent_path, receipt_path, release_dir, output_format)
+    if schema == 2:
+        return validate_publication_v2(
+            intent_path, receipt_path, release_dir, authorization_path, output_format
+        )
+    raise VibeError("publication intent schema/profile is unsupported")
 
 
 def utc_now() -> str:
@@ -11284,6 +12771,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     publication_parser.add_argument("--request", type=Path, required=True)
     publication_parser.add_argument("--candidate", type=Path)
+    publication_parser.add_argument("--comparison-candidate", type=Path)
+    publication_parser.add_argument("--release-gate-evidence", type=Path)
     add_format_argument(publication_parser)
 
     publication_validation_parser = subparsers.add_parser(
@@ -11293,6 +12782,7 @@ def build_parser() -> argparse.ArgumentParser:
     publication_validation_parser.add_argument("--intent", type=Path, required=True)
     publication_validation_parser.add_argument("--receipt", type=Path, required=True)
     publication_validation_parser.add_argument("--candidate", type=Path, required=True)
+    publication_validation_parser.add_argument("--authorization", type=Path)
     add_format_argument(publication_validation_parser)
 
     verify_parser = subparsers.add_parser("verify")
@@ -11390,11 +12880,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return validate_release(Path(args.release_dir), args.output_format)
         if args.command == "publication-plan":
             return publication_plan(
-                args.phase, args.request, args.candidate, args.output_format
+                args.phase,
+                args.request,
+                args.candidate,
+                args.comparison_candidate,
+                args.release_gate_evidence,
+                args.output_format,
             )
         if args.command == "validate-publication":
             return validate_publication(
-                args.intent, args.receipt, args.candidate, args.output_format
+                args.intent,
+                args.receipt,
+                args.candidate,
+                args.authorization,
+                args.output_format,
             )
         if args.command == "doctor":
             return doctor(Path(args.target), args.output_format)

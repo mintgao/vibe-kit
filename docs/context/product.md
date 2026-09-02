@@ -14,6 +14,10 @@ Provide a project-pinned development system that lets coding Agents carry truste
 - Project-level PM, UX, read-only Tech Lead, RD, QA, and Investigator roles.
 - Repository-scoped onboarding, feature, design, implementation, verification, and debugging workflows.
 - Size-aware technical-decision readiness before implementation: M trigger scans, explicit L outcomes, Accepted decision/review evidence for durable or high-risk choices, and sequential-perspective fallback disclosure when identity-isolated review is unavailable.
+- Risk-adaptive execution: file count alone does not force M, cross-system and
+  high-risk work remains L, specialist handoffs are artifact-first and bounded,
+  RD owns focused development checks, and independent QA owns one complete
+  default verification of an unchanged normal M/L final candidate.
 - `init` for new projects and conservative `adopt` for existing projects.
 - Read-only `plan init|adopt|upgrade` before project writes.
 - Hash-checked, recoverable `upgrade` with conflict candidates, durable transaction
@@ -30,7 +34,7 @@ Provide a project-pinned development system that lets coding Agents carry truste
   source-checkout contract pair into current managed ownership, without broadening
   adoption for arbitrary untracked files.
 - A narrow create-only onboarding bridge for the audited v0.2 fixture and exact
-  official v0.3/v0.4 identities; missing v0.5/v0.6 onboarding is state loss and
+  official v0.3/v0.4 identities; missing v0.5/v0.6/v0.7 onboarding is state loss and
   blocks before writes.
 - A first-class `vibe-release` workflow with offline publication/closeout intents,
   host-owned GitHub operations, public five-asset verification, and separate
@@ -39,7 +43,10 @@ Provide a project-pinned development system that lets coding Agents carry truste
 
 ## Non-goals and boundaries
 
-- v0.7.0 is the latest GitHub Pre-release. Stable promotion, a public Plugin Directory entry, and automatic network updates remain out of scope.
+- The source/package/Plugin tree is an unpublished v0.8.0 candidate; v0.7.0
+  remains the latest GitHub Pre-release. No tag, GitHub Release, Plugin
+  publication, stable promotion, public Plugin Directory entry, or automatic
+  network update is authorized by the candidate identity.
 - Current repository/Plugin activation is manual-fallback-only unless a running host supplies positive conformance receipts. Static prompts, controlled fixtures and tool presence do not establish live same-task reload or automatic successor handoff.
 - It does not collect telemetry or silently submit feedback. The central feedback repository is configured, but every outbound payload still requires adjacent, unambiguous approval bound to its report, repository and current hash.
 - The accepted distribution uses channel-neutral releases, repository-pinned installations, a bootstrap-only Codex Plugin, generated thin adapters, and a validated GitHub Release bundle.
@@ -47,6 +54,9 @@ Provide a project-pinned development system that lets coding Agents carry truste
 - It does not infer deep product or architecture truth during CLI installation; the onboarding workflow performs evidence-based enrichment afterward.
 - Ordinary users are not expected to learn `init`, `adopt`, `doctor`, or internal Skill names; those remain Agent/maintainer interfaces and may surface for troubleshooting.
 - Ordinary users are not expected to request an ADR or recognize an architecture phase. They decide only technical options that materially change product scope, observable behavior, promised risk/cost, irreversible state, or external compatibility.
+- Vibe Kit does not collect prompt/token telemetry. Static contract and
+  distribution tests can prove the encoded controls, not live host isolation or
+  a token, cost, or percentage reduction.
 
 ## Product principles
 

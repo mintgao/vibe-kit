@@ -1,7 +1,7 @@
 {
   "name": "vibe-kit",
-  "version": "0.7.0",
-  "payload_tree_sha256": "874675420e697ab9c16c35a4f2f558acc65b91dcc42464bd461cda2800116eb1",
+  "version": "0.8.0",
+  "payload_tree_sha256": "2520812a206a15a0aac27833d0c812bbd5c7630b5cd847d1e65ba013017cc0bd",
   "description": "Install and maintain a repository-pinned Vibe Kit workflow from a bundled offline payload.",
   "author": {
     "name": "mintgao",
@@ -11,7 +11,12 @@
   "homepage": "https://github.com/mintgao/vibe-kit",
   "repository": "https://github.com/mintgao/vibe-kit",
   "license": "MIT",
-  "keywords": ["vibe-coding", "workflow", "codex", "multi-agent"],
+  "keywords": [
+    "vibe-coding",
+    "workflow",
+    "codex",
+    "multi-agent"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Vibe Kit",
@@ -19,7 +24,12 @@
     "longDescription": "Agent-first bootstrap and resilient maintenance from a version-matched offline payload. Upgrades are recoverable transactions; publication remains an explicit host-owned workflow.",
     "developerName": "mintgao",
     "category": "Productivity",
-    "capabilities": ["offline-bootstrap", "recoverable-upgrade", "repository-pinned-workflow", "manual-new-task-activation"],
+    "capabilities": [
+      "offline-bootstrap",
+      "recoverable-upgrade",
+      "repository-pinned-workflow",
+      "manual-new-task-activation"
+    ],
     "defaultPrompt": "Adopt or maintain Vibe Kit for this repository, then let me continue in ordinary development language."
   }
 }

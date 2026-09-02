@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.0 — 2026-09-02
+
+- Made task sizing risk-first: multiple tightly coupled files do not by
+  themselves force M, while cross-system and high-risk work remains L.
+- Added role-correct, artifact-first specialist handoffs with fail-closed
+  evidence requests and truthful bounded-history capability disclosure.
+- Assigned focused development checks to RD and one complete default verification
+  of an unchanged normal M/L candidate to independent QA, without weakening
+  triggered-M/L decision, review, gate, writer, or QA separation.
+- Advanced the unpublished source, install, package and Plugin candidate to
+  `0.8.0` with core/Codex protocol 6. Existing schemas, upgrade recovery,
+  takeover, trust, and exact v0.7 publication/closeout behavior remain unchanged.
+- Added deterministic managed-contract, distribution, and healthy offline
+  v0.7-to-v0.8 upgrade scenarios. These checks do not claim measured token
+  reduction or live host context isolation.
+- Added the closed schema-2 v0.8 Pre-release profile: a complete remote snapshot,
+  six no-Issue operations, per-object bounded-attempt ledgers, two-phase release
+  evidence, CPython 3.9 and dual-clean-build gates, exact authorization binding,
+  and offline public-receipt validation. Historical v0.7 schema-1 closeout keeps
+  its original invocation and exact published parent anchor.
+
 ## 0.7.0 — 2026-08-31
 
 - Added a scoped recoverable upgrade transaction with durable preimages/staging,

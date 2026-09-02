@@ -12,7 +12,10 @@
 
 ### S — small and explicit
 
-A local, low-risk change with clear expected behavior, such as copy, a small style adjustment, or an obvious defect with a known cause.
+A clear, local, low-risk, reversible change with settled expected behavior, such
+as copy, a small style adjustment, or an obvious defect with a known cause. It
+may touch multiple tightly coupled implementation, test, or documentation files;
+file count alone is never a size trigger.
 
 - A separate work-item folder is optional.
 - One implementation pass and focused verification are normally enough.
@@ -20,7 +23,9 @@ A local, low-risk change with clear expected behavior, such as copy, a small sty
 
 ### M — bounded feature or uncertain change
 
-A change that affects a user flow, component contract, API behavior, or more than one closely related file, or whose acceptance criteria need shaping.
+A change that affects a user flow, shared component contract or API behavior, or
+whose acceptance criteria still need shaping. A durable shared decision can make
+an M item a triggered M, but cross-system or high-risk work is L.
 
 - Create a work item.
 - Establish acceptance criteria before implementation.
@@ -30,13 +35,84 @@ A change that affects a user flow, component contract, API behavior, or more tha
 
 ### L — cross-cutting or high risk
 
-A change involving multiple subsystems, migrations, authentication, permissions, payments, sensitive data, irreversible state, or substantial ambiguity.
+A change involving a cross-system boundary or a high-risk contract such as
+schema/protocol/version compatibility, migration, authentication, permissions,
+security/privacy/trust, irreversible state, rollback/recovery/crash consistency,
+or substantial ambiguity with material long-term consequences.
 
 - Create a work item and explicit plan.
 - Record an explicit technical-decision readiness outcome before implementation.
 - Record new or changed durable architectural decisions in `docs/decisions/`.
 - Include rollback or recovery considerations.
 - Use independent specialist reviews and QA evidence.
+
+## Risk-adaptive execution
+
+- **S:** Use one implementation perspective and focused verification by default.
+  Delegate only for a concrete risk; reclassify before editing when a readiness
+  trigger appears.
+- **Untriggered M:** Shape only unresolved product or UX questions, record the
+  trigger scan, use one RD writer, and use one independent QA pass. Add another
+  specialist only for an identified ownership question.
+- **Triggered M:** Preserve distinct Tech Lead author and reviewer evidence,
+  orchestrator gate confirmation, one RD writer, and independent QA.
+- **L:** Preserve the explicit plan and every applicable specialist, recovery,
+  compatibility, security/privacy, review, and QA requirement. Efficiency may
+  bound context but never remove required judgment or evidence.
+
+The orchestrator owns classification and delegation. A specialist does not
+self-expand the assignment or recursively delegate unless its bounded handoff
+identifies a genuinely independent subproblem.
+
+## Artifact-first specialist handoffs
+
+Every specialist handoff names the assigned role or mode, bounded objective,
+work-item identifier, exact authoritative artifact references, applicable
+acceptance-criterion identifiers, governing constraints and readiness/ADR
+evidence, ownership boundary, expected output and evidence, known blockers, and
+host capability limitations. Prefer paths plus headings over copied documents.
+
+Do not include complete conversation history, broad repository listings, raw
+logs, unrelated files, or other Agent output by default. Before implementation
+delegation, accepted scope, material product choices, readiness state, and
+governing decisions must exist in project-owned artifacts. If required evidence
+is missing, the receiving role reports or requests the exact missing reference;
+it does not reconstruct it from memory or guesswork.
+
+Minimum authoritative evidence is role-specific:
+
+- PM/UX: the user request, relevant product/design context, and current brief;
+- Tech Lead author: accepted scope/criteria, architecture, readiness contract and
+  record, and only plausibly applicable ADRs;
+- Tech Lead reviewer: the exact persisted decision, accepted scope, readiness
+  record, and referenced governing context;
+- RD: accepted brief, decision/review/gate evidence, project rules, relevant
+  architecture/code, and owned paths; and
+- QA: accepted criteria, governing technical boundary, readiness/review evidence,
+  implementation report, current diff or baseline, and configured checks.
+
+When the host supports bounded or no-history forks, use the smallest viable
+history with a self-contained packet. When transport bounding is absent or
+uncertain, preserve required roles with the available mechanism and record
+`transport context bounding unavailable`; do not claim prompt isolation or token
+reduction. Unknown capability is unavailable, not inferred.
+
+## Verification ownership
+
+RD runs focused development checks for changed units, affected integration
+surfaces, important error paths, and directly related regressions. For one
+unchanged normal M/L final candidate, independent QA is the canonical owner of
+the complete default `./bin/vibe verify . --format json` run and executes it
+exactly once, plus applicable task-specific scenarios.
+
+A later complete default run is allowed only when prior evidence failed, was
+blocked, malformed, partial, stale or otherwise invalid; a post-upgrade,
+release, or other specialized gate independently requires it; or shared
+candidate-defining state changed. Record the rerun reason and candidate state.
+Checks against different candidate states or specialized gates are not duplicate
+verification. Static contracts and distribution tests prove only their encoded
+behavior; without comparable host telemetry they do not prove live isolation or
+a token, cost, or percentage reduction.
 
 Apply the size-aware readiness rules in
 `.vibe/core/technical-decision-readiness.md`. A shaped requirement is not by

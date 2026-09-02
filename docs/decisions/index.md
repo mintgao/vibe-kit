@@ -13,3 +13,5 @@ Record durable architectural choices here when the tradeoff matters beyond one w
 - [0009: Make post-upgrade takeover host-orchestrated and evidence-gated](0009-post-upgrade-takeover.md)
 - [0010: Make upgrades recoverable transactions with a create-only onboarding bridge](0010-recoverable-upgrade-transaction.md)
 - [0011: Separate exact-source trust from platform immutability and orchestrate publication at the Agent/host boundary](0011-exact-source-and-publication-boundary.md)
+- [0012: Make workflow execution risk-adaptive, artifact-first, and capability-honest](0012-token-efficient-adaptive-workflow.md)
+- [0013: Publish v0.8.0 through a closed schema-2 profile without Issue closeout](0013-v0-8-publication-profile.md)

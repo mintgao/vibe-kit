@@ -1,7 +1,7 @@
 # Agent installation and takeover contract
 
 This document is the Codex-facing adoption and maintenance entry point for Vibe
-Kit 0.7.0. The machine-readable source of truth is `agent-install.json`. Keep
+Kit 0.8.0. The machine-readable source of truth is `agent-install.json`. Keep
 CLI commands, JSON receipts, hashes and archive details internal during a healthy
 flow; report them only when they establish evidence or explain a blocker.
 
@@ -36,8 +36,9 @@ Before project writes, compute the versioned payload-tree SHA-256, validate the
 channel evidence in `agent-install.json`, and read its maintenance bridge schema
 2. The target payload's `bin/vibe`, not an older installed CLI, owns
 `plan upgrade`, `upgrade`, `recover-upgrade` and the first target-version doctor.
-Bridge schema 2 supports manifest schema 1 installations from 0.2.x through 0.6.x and treats a
-missing old `agent-install.json` as installed Agent protocol 0.
+Bridge schema 2 supports manifest schema 1 installations from 0.2.x through
+0.7.x and the already defined predecessor Agent protocols 0 through 3. It treats
+a missing old `agent-install.json` as installed Agent protocol 0.
 
 If the acquisition Agent cannot interpret Agent-install schema 3/protocol 3, the
 bridge is unknown, the predecessor is outside the declared range, or source
@@ -56,7 +57,7 @@ never delete, force-adopt or independently replace one member.
 
 Only the audited v0.2 fixture and exact official v0.3/v0.4 identities may receive
 a create-only canonical `.vibe/onboarding.json` with persisted `pending`. Existing
-valid onboarding is byte-preserved. Missing v0.5/v0.6 onboarding or malformed,
+valid onboarding is byte-preserved. Missing v0.5/v0.6/v0.7 onboarding or malformed,
 wrong-type, unreadable, symlinked or raced state blocks before transaction,
 control or project writes; the bridge never fabricates `complete`.
 
@@ -145,7 +146,7 @@ Without a live receipt, stop the source task after upgrade/doctor with
 `overall_status=degraded`, `reason_code=manual-new-task-required`, and exactly one
 action: create a new Codex task in the same project. Say:
 
-> Vibe Kit 文件已升级到 0.7.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个 Codex 任务。
+> Vibe Kit 文件已升级到 0.8.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个 Codex 任务。
 
 Use a host-prefilled continuation when available. Otherwise include one copyable
 sentence containing the active objective. Do not require a CLI command, Skill name
@@ -201,7 +202,7 @@ completion.
 
 Source, bridge and safe-plan failures have no project writes. Managed conflicts
 write only incoming review candidates and preserve managed/application state.
-One v0.7 upgrade is a recoverable transaction over changed framework-managed
+One managed upgrade is a recoverable transaction over changed framework-managed
 files, the complete merged `AGENTS.md`, manifest/version, and only an eligible
 create-only onboarding bridge. Its private state is integrity-checked but
 untrusted; same-OS-principal malicious tamper is outside the threat model.
@@ -223,11 +224,13 @@ installation state.
 
 ## Publication boundary
 
-The repository release Skill presents the exact v0.7.0 Pre-release plan and binds
-authorization. Offline `publication-plan` and `validate-publication` build and
+The repository release Skill preserves the exact v0.7.0 schema-1 publication and
+closeout path and presents the closed v0.8.0 schema-2 no-Issue Pre-release plan.
+Offline `publication-plan` and `validate-publication` build and
 check canonical intents and receipts; they never gain GitHub credentials or
 network authority. The Agent/host performs compare-and-swap main advancement,
 exact annotated tag/Release/five-asset reconciliation, public read-back/download
-checks, then a separately authorized idempotent #1–#5 closeout. Divergent or extra
-remote state blocks. Delete, replace, force and stable/draft transitions require
-separate authorization.
+checks and, only for the historical v0.7 profile, a separately authorized
+idempotent #1–#5 closeout. The v0.8 profile contains no Issue operation or
+closeout authorization. Divergent or extra remote state blocks. Delete, replace,
+force and stable/draft transitions require separate authorization.

@@ -35,11 +35,37 @@ Only the activated task may inspect/refresh onboarding, run final default verifi
 
 Users do not need to ask for an ADR or identify an architecture phase. For feature, debug-to-fix, and direct implementation work, the Agent detects the size and risk triggers defined in `.vibe/core/technical-decision-readiness.md`. Unresolved applicable work is blocked before code editing and handed to the read-only `vibe_tech_lead` perspective for decision evidence and required review. The workflow orchestrator confirms the gate; one `vibe_rd` writer implements only after it is `implementation-ready`. Ask the user only for a material product choice, not an internal technical preference.
 
+## Risk-adaptive handoff
+
+File count alone never requires M: a clear, local, low-risk, reversible change
+may remain S across multiple tightly coupled implementation, test, or
+documentation files. User-flow, shared contract/API, and unresolved acceptance
+work remains at least M. Cross-system and high-risk work is L. Triggered M and L
+retain required Tech Lead author/reviewer evidence, gate confirmation, one RD
+writer, and independent QA.
+
+Every specialist handoff names the role/mode, bounded objective, work item,
+exact authoritative artifact references, applicable criteria, accepted
+constraints/readiness evidence, ownership boundary, expected output/evidence,
+blockers, and host capability limitations. Use paths plus headings instead of
+copying complete briefs, ADR sets, repository listings, logs, conversations, or
+unrelated Agent output. Missing evidence is requested or reported, never
+invented. Use the smallest viable/no-history fork when supported; otherwise
+record `transport context bounding unavailable` and preserve the required role.
+
+For normal M/L implementation, RD runs focused development checks. Independent
+QA owns the complete default `./bin/vibe verify . --format json` for the unchanged
+final candidate and runs it exactly once. A new full run requires failed,
+blocked, malformed, partial, stale or invalid prior evidence, changed shared
+candidate state, or a distinct post-upgrade/release/specialized gate; record the
+reason and state. Static contract checks do not prove live host isolation or a
+measured token reduction.
+
 ## Continuous improvement
 
 At Close for M/L work, resolve the project-owned feedback mode through `vibe-feedback-flow`. In `ask` or `local`, silently check whether the task exposed a reproducible Vibe Kit gap; in `off`, skip classification. No qualifying signal stays silent. A new or materially changed candidate follows the mode-aware local Close flow only after the primary result and verification are complete. `ask` presents one exact, local-only decision block; `local` stores without asking; no mode authorizes network access. Submit only after the user's adjacent, unambiguous approval of the exact outbound payload.
 
-Classify work as S, M, or L using `.vibe/core/operating-model.md`. Keep S work lightweight. For M/L work, use the relevant `vibe_pm`, `vibe_ux`, `vibe_tech_lead`, `vibe_rd`, `vibe_qa`, or `vibe_investigator` custom agents when their independent judgment materially improves the result. Prefer parallel agents for read-heavy analysis; keep one active writer for application code and shared artifacts. For required technical review, use a different Tech Lead instance from the decision author when native subagents are available; otherwise record the sequential-perspective limitation required by the core readiness contract.
+Classify work as S, M, or L using `.vibe/core/operating-model.md`. Keep S work lightweight. For M/L work, use only the relevant `vibe_pm`, `vibe_ux`, `vibe_tech_lead`, `vibe_rd`, `vibe_qa`, or `vibe_investigator` perspective for an identified ownership question. Keep one active writer for application code and shared artifacts. For required technical review, use a different Tech Lead instance from the decision author when native subagents are available; otherwise record the sequential-perspective limitation required by the core readiness contract.
 
 Do not claim completion without relevant verification evidence. Record skipped checks and the reason. Preserve existing project conventions unless the task explicitly changes them.
 <!-- vibe-kit:managed:end -->

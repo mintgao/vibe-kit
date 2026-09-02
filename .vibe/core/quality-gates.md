@@ -14,8 +14,12 @@ Apply gates in proportion to the work size and risk.
 
 - Acceptance criteria exist before implementation is considered complete.
 - User-visible states are covered when relevant: loading, empty, success, error, disabled, and permission states.
-- Relevant lint, type, test, and build commands from `.vibe/project.yaml` are run when available.
-- QA maps each acceptance criterion to evidence.
+- RD runs focused checks for the changed units, affected integrations, important
+  error paths, and directly related regressions.
+- Independent QA maps each acceptance criterion to evidence and exactly one of
+  `Pass`, `Fail`, `Blocked`, or `Not applicable`.
+- For an unchanged normal M/L final candidate, QA owns one complete default
+  `./bin/vibe verify . --format json` run. RD does not duplicate that full matrix.
 - The M work item records its technical-decision trigger scan; triggered M work is blocked until required decision and review evidence is approved.
 
 ## Additional for L work
@@ -33,7 +37,13 @@ Apply gates in proportion to the work size and risk.
 - Use the mode-aware `feedback close` contract so new/material candidates prompt once in `ask`, remain local without a question in `local`, and unchanged/legacy candidates do not create noise.
 - Feedback remains local and non-blocking unless the user gives adjacent, unambiguous approval for the exact report, destination and review hash.
 
-Use `./bin/vibe verify` to run the configured project checks. The command complements task-specific validation; it does not replace it.
+A repeated complete default verification is allowed only after failed, blocked,
+malformed, partial, stale or otherwise invalid evidence; after shared
+candidate-defining state changes; or for a post-upgrade, release, or other
+specialized gate that independently requires it. Record the reason and candidate
+state. A run against a different candidate or for a distinct specialized gate is
+not a duplicate. The command complements task-specific validation; it does not
+replace it.
 
 ## Post-upgrade takeover gate
 

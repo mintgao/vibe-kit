@@ -128,6 +128,115 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("local, reversible choices", core)
         self.assertIn("reclassify to m or l before editing", core)
 
+    def test_managed_contracts_encode_risk_first_classification(self) -> None:
+        operating = (ROOT / ".vibe/core/operating-model.md").read_text()
+        readiness = CORE_PATH.read_text()
+        agents = (ROOT / "AGENTS.md").read_text()
+
+        for content in (operating, readiness, agents):
+            normalized = " ".join(content.split()).lower()
+            self.assertIn("file count alone", normalized)
+            self.assertIn("cross-system", normalized)
+            self.assertIn("high-risk", normalized)
+        self.assertIn(
+            "multiple tightly coupled implementation, test, or documentation files",
+            operating,
+        )
+        self.assertIn("User-flow, shared contract/API", readiness)
+        for boundary in (
+            "authentication",
+            "permissions",
+            "security/privacy/trust",
+            "schema/protocol/version/API compatibility",
+            "migration",
+            "irreversible-state",
+            "rollback/recovery/crash",
+            "failure-consistency",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertIn(boundary, readiness)
+        for stage in (
+            "Tech Lead author and reviewer",
+            "orchestrator gate confirmation",
+            "one RD writer",
+            "independent QA",
+        ):
+            self.assertIn(stage, operating)
+
+    def test_specialist_handoffs_are_artifact_first_and_fail_closed(self) -> None:
+        operating = (ROOT / ".vibe/core/operating-model.md").read_text()
+        self.assertIn("Artifact-first specialist handoffs", operating)
+        for required in (
+            "assigned role or mode",
+            "bounded objective",
+            "exact authoritative artifact references",
+            "acceptance-criterion identifiers",
+            "expected output and evidence",
+            "known blockers",
+            "host capability limitations",
+            "complete conversation history",
+            "transport context bounding unavailable",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, operating)
+        for role in ("PM/UX", "Tech Lead author", "Tech Lead reviewer", "RD", "QA"):
+            self.assertRegex(operating, rf"(?m)^- {re.escape(role)}:")
+
+        role_files = {
+            "pm": ROOT / ".codex/agents/vibe-pm.toml",
+            "ux": ROOT / ".codex/agents/vibe-ux.toml",
+            "investigator": ROOT / ".codex/agents/vibe-investigator.toml",
+            "tech-lead": ROOT / ".codex/agents/vibe-tech-lead.toml",
+            "rd": ROOT / ".codex/agents/vibe-rd.toml",
+            "qa": ROOT / ".codex/agents/vibe-qa.toml",
+        }
+        for role, path in role_files.items():
+            with self.subTest(role=role):
+                content = path.read_text().lower()
+                self.assertIn("bounded", content)
+                self.assertIn("expected", content)
+                self.assertIn("missing", content)
+                self.assertIn("unrelated", content)
+
+    def test_normal_ml_verification_has_one_canonical_full_owner(self) -> None:
+        operating = (ROOT / ".vibe/core/operating-model.md").read_text()
+        implementation = (
+            ROOT / ".agents/skills/vibe-implementation-flow/SKILL.md"
+        ).read_text()
+        verification = (
+            ROOT / ".agents/skills/vibe-verification-flow/SKILL.md"
+        ).read_text()
+        rd = (ROOT / ".codex/agents/vibe-rd.toml").read_text()
+        qa = (ROOT / ".codex/agents/vibe-qa.toml").read_text()
+
+        self.assertIn("RD runs focused development checks", operating)
+        self.assertIn("executes it exactly once", " ".join(operating.split()))
+        self.assertIn("do not run the complete default matrix", implementation)
+        self.assertIn("do not run the complete default verification matrix", rd)
+        self.assertIn("run the complete default `./bin/vibe verify . --format json` exactly once", qa)
+        self.assertIn("run default\n   `./bin/vibe verify . --format json` exactly once", verification)
+        for exception in (
+            "failed",
+            "blocked",
+            "malformed",
+            "partial",
+            "stale",
+            "candidate-defining state changed",
+            "post-upgrade",
+            "release",
+            "specialized gate",
+        ):
+            with self.subTest(exception=exception):
+                self.assertIn(exception, operating)
+        self.assertIn("default `./bin/vibe verify . --format json`", (
+            ROOT / ".agents/skills/vibe-project-onboarding/SKILL.md"
+        ).read_text())
+        self.assertIn("all configured checks", (
+            ROOT / ".agents/skills/vibe-release/SKILL.md"
+        ).read_text())
+        self.assertIn("do not prove live isolation", operating)
+        self.assertIn("measured token reduction", qa)
+
     def test_role_prompts_preserve_author_review_writer_authority(self) -> None:
         pm = (ROOT / ".codex/agents/vibe-pm.toml").read_text()
         tech_lead = (ROOT / ".codex/agents/vibe-tech-lead.toml").read_text()
@@ -178,7 +287,16 @@ class WorkflowContractTests(unittest.TestCase):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         self.assertEqual(contract["schema_version"], 3)
         self.assertEqual(contract["protocol_version"], 3)
-        self.assertEqual(contract["kit_version"], "0.7.0")
+        self.assertEqual(contract["kit_version"], "0.8.0")
+        self.assertEqual(contract["adapter"]["protocol"], 6)
+        self.assertEqual(
+            contract["maintenance_bridge"]["supported_installed_agent_protocols"],
+            [0, 1, 2, 3],
+        )
+        self.assertEqual(
+            contract["maintenance_bridge"]["maximum_installed_kit_version_exclusive"],
+            "0.8.0",
+        )
         self.assertEqual(
             contract["lifecycle"]["stages"],
             [
@@ -220,6 +338,13 @@ class WorkflowContractTests(unittest.TestCase):
             contract["takeover"]["contract_registry_sha256"],
         )
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
+        self.assertEqual(protocol["core_protocol"], 6)
+        self.assertEqual(protocol["adapters"]["codex"]["version"], 6)
+        self.assertEqual(protocol["agent_install_schema"], 3)
+        self.assertEqual(protocol["agent_install_protocol"], 3)
+        self.assertEqual(protocol["takeover_schema"], 2)
+        self.assertEqual(protocol["maintenance_bridge_schema"], 2)
+        self.assertEqual(protocol["release_manifest_schema"], 2)
         self.assertEqual(
             independent_digest,
             protocol["takeover_contract_registry_sha256"],

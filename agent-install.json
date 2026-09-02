@@ -1,10 +1,10 @@
 {
   "schema_version": 3,
   "protocol_version": 3,
-  "kit_version": "0.7.0",
+  "kit_version": "0.8.0",
   "adapter": {
     "name": "codex",
-    "protocol": 5,
+    "protocol": 6,
     "capabilities": {
       "same_task_reload": {
         "status": "conditional",
@@ -29,16 +29,18 @@
     ],
     "supported_installed_agent_protocols": [
       0,
-      1
+      1,
+      2,
+      3
     ],
     "minimum_installed_kit_version": "0.2.0",
-    "maximum_installed_kit_version_exclusive": "0.7.0",
+    "maximum_installed_kit_version_exclusive": "0.8.0",
     "target_agent_install_schema": 3,
     "target_agent_install_protocol": 3,
     "target_cli_result_schema": 2,
     "predecessor_migrations": {
       "schema_version": 2,
-      "registry_sha256": "e1ea4a078d6d253343ebacc57593794a2a13014946d1c38b6f3b130e8e484d09",
+      "registry_sha256": "ef53ba7a30cb20d1d5eba6c77428e7dbb5b59b4201feb822ef5db9453b931978",
       "authority": "target-cli-compiled",
       "modes": [
         "create-pending-onboarding-if-absent",
@@ -157,7 +159,7 @@
       "bin/vibe"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "07613a6a22db6bb6454ba55dbaf12681b54e5024eff6d526f99ee45d2d2fe992",
+    "activation_set_sha256": "b247e389c80c0518201bd678dd23223a32d6b422e5ee97e02ffc387c329a6ab9",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",
@@ -1074,8 +1076,8 @@
     "ordinary_upgrade_auto_recovers": false
   },
   "publication": {
-    "intent_schema": 1,
-    "receipt_schema": 1,
+    "intent_schema": 2,
+    "receipt_schema": 2,
     "issue_closeout_intent_schema": 1,
     "commands": [
       "publication-plan",

@@ -32,7 +32,7 @@ Vibe Kit is a dependency-free Python CLI plus distributable Codex instructions, 
 
 The install path validates caller-supplied source provenance and computes the release payload-tree identity before project writes, discovers managed source files, preflights collisions, copies managed files atomically, merges only the marked `AGENTS.md` block, creates missing project-owned context/readiness, and finally records `.vibe/manifest.json` plus `.vibe/version`. The manifest additively carries the target fingerprint, exact activation paths/hashes and target activation-set digest so installed doctor and host receipts can bind activation to actual content.
 
-The upgrade path compares the recorded, local, and incoming hashes before writing. If both local and incoming content changed, it writes incoming candidates under `.vibe/conflicts/<timestamp>/` and returns without changing managed files. For a v0.7 transaction, final existing-parent leaves use capability-probed hard-link no-clobber or atomic exchange through the platform libc adapter; a first missing managed parent is instead published as one prepared adjacent directory unit with no-replace rename. Ordinary rename/replace/unlink is not a fallback for a final installation entry, and recovery retains exact displaced objects or trees until predecessor or target state is proved.
+The upgrade path compares the recorded, local, and incoming hashes before writing. If both local and incoming content changed, it writes incoming candidates under `.vibe/conflicts/<timestamp>/` and returns without changing managed files. Under the carried-forward recoverable transaction, final existing-parent leaves use capability-probed hard-link no-clobber or atomic exchange through the platform libc adapter; a first missing managed parent is instead published as one prepared adjacent directory unit with no-replace rename. Ordinary rename/replace/unlink is not a fallback for a final installation entry, and recovery retains exact displaced objects or trees until predecessor or target state is proved.
 
 The sole untracked-contract exception is an exact official v0.5.0
 authenticated-predecessor migration for the two Agent-install contracts that
@@ -66,6 +66,20 @@ eligibility, while selected target-channel provenance remains mandatory.
 
 Readiness state is project-owned Markdown in the work-item brief. The orchestrator persists read-only Tech Lead output and confirms the gate; a separate Tech Lead instance reviews L/triggered-M evidence on native-subagent hosts, with an explicitly disclosed sequential-perspective fallback on degraded hosts. One RD writer implements only after release and reopens the gate when implementation reveals a new durable/high-risk boundary. The CLI distributes and hash-checks these managed contracts but does not parse readiness state or enforce a file-write lock.
 
+Classification is risk-first. Multiple tightly coupled files do not by
+themselves move a clear, local, low-risk, reversible task out of S. User-flow,
+shared contract/API, or unresolved acceptance work is at least M; cross-system
+and high-risk boundaries are L. Specialist handoffs use role-specific,
+artifact-first evidence packets and fail closed on missing evidence. Bounded or
+no-history transport is used only when the host exposes it; otherwise the
+required role remains and the limitation is disclosed.
+
+For a normal M/L implementation, RD runs focused checks and independent QA owns
+one complete default verification of the unchanged final candidate. Invalid
+prior evidence, changed candidate state, and explicit post-upgrade/release or
+other specialized gates are the only full-rerun cases. Static checks do not
+establish live host context isolation or measured token reduction.
+
 ## Constraints and risks
 
 - Upgrades require a trusted local checkout, validated GitHub release payload, or bundled Plugin payload; there is no remote updater or Plugin Directory publication.
@@ -89,4 +103,4 @@ The release manifest also mirrors the compiled predecessor-migration registry
 digest, authority and only supported mode. Validation requires exact equality with
 the Agent-install/core mirrors and the packaged compiled CLI authority.
 
-The Plugin exposes only `vibe-bootstrap` and `vibe-maintain`; project runtime Skills appear only after installation. Its wrapper verifies the bundled version and payload-tree identity before target-CLI execution, but it provides no reload/task-creation API. The installed repository remains the runtime source of truth. v0.7.0 is the latest GitHub Pre-release. See ADRs 0002, 0004, 0005, 0006, 0007, 0008, 0009, 0010 and 0011.
+The Plugin exposes only `vibe-bootstrap` and `vibe-maintain`; project runtime Skills appear only after installation. Its wrapper verifies the bundled version and payload-tree identity before target-CLI execution, but it provides no reload/task-creation API. The installed repository remains the runtime source of truth. The source tree is an unpublished v0.8.0/core-and-Codex-protocol-6 candidate; v0.7.0 remains the latest GitHub Pre-release. See ADRs 0002, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011 and 0012.

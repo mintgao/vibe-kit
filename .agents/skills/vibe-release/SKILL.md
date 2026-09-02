@@ -1,12 +1,14 @@
 ---
 name: vibe-release
-description: Plan, authorize, publish, verify, and close the exact Vibe Kit v0.7.0 GitHub Pre-release through an offline-intent and host-owned remote workflow.
+description: Plan, authorize, publish, and verify exact Vibe Kit v0.7.0 and v0.8.0 GitHub Pre-releases through offline intents and host-owned remote operations.
 ---
 
 # Vibe Kit release
 
 Use this Skill only for the Vibe Kit repository release lifecycle. The CLI stays
 offline; GitHub authentication, network reads and writes belong to the Agent/host.
+
+## Historical v0.7 profile
 
 1. Confirm the accepted version, release kind and scope. For v0.7.0 the exact
    scope is repository `mintgao/vibe-kit`, annotated tag `v0.7.0`, one non-draft
@@ -46,7 +48,52 @@ offline; GitHub authentication, network reads and writes belong to the Agent/hos
    same intent from the first non-terminal operation without duplicating comments
    or closes.
 
+## V0.8 profile
+
+V0.8.0 is the separate closed schema-2 profile
+`vibe-kit-v0.8.0-prerelease`; it must never enter the schema-1 Issue-closeout
+branch. Require the accepted clean source commit, fresh independent
+prepublication QA, canonical configured checks, actual CPython 3.9 evidence,
+and two independent clean byte-identical prerelease builds from the same commit
+and tree. Keep the complete release-gate evidence outside the source checkout.
+
+Read complete paginated main/tag/Release/assets state and publicly hash every
+existing asset. Extra, duplicate, divergent, incomplete or unhashable state
+blocks before an intent digest exists. Run:
+
+```text
+bin/vibe publication-plan --phase publish --request <json> \
+  --candidate <candidate-a> --comparison-candidate <candidate-b> \
+  --release-gate-evidence <json> --format json
+```
+
+The plan and both candidates run on CPython 3.9 and perform no network or writes.
+Obtain a later executable authorization bound to the exact six-operation intent
+digest and one host operation ID. Apply expected-old-OID main CAS, annotated tag,
+non-draft Pre-release and exactly five assets without force, move, delete,
+replace, rewrite, promotion or any Issue operation. Read before every natural-key
+write and after every response. A second write is permitted only after the first
+read-back proves the kind-specific positive-absence state; permission denial,
+divergence, failure, execution error or unknown state gets no retry. Preserve
+the main/tag/Release and five child asset attempt ledgers for same-intent resume.
+
+After authenticated read-back, canonical public downloads, nested checksum and
+distribution validation, target `validate-release`, and all six exact public
+smokes, run:
+
+```text
+bin/vibe validate-publication --intent <json> --authorization <json> \
+  --receipt <json> --candidate <candidate-a> --format json
+```
+
+Only a later independent postpublication receipt with AC-1 through AC-12 all
+passed permits “v0.8.0 published and verified.” Record platform immutability as
+true, false or unknown. The causally later evidence commit is not part of the
+publication operation set and `evidence_pushed=false` unless a separate future
+task authorizes its exact CAS push.
+
 Persist only allowlisted public facts and hashes in work-item evidence. Never put
 tokens, headers, environment values, raw host output, hidden reasoning, goal text
 or conversation content in an intent, receipt, release asset or issue comment.
-Do not announce the release or close issues until public verification has passed.
+Do not claim platform immutability, publisher signing, provenance, final product
+acceptance or measured token reduction without corresponding evidence.

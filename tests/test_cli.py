@@ -66,6 +66,19 @@ def official_v050_source_fixture(destination: Path) -> Path:
     return destination
 
 
+def official_v070_source_fixture(destination: Path) -> Path:
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", "v0.7.0"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout
+    destination.mkdir(parents=True)
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+        bundle.extractall(destination)
+    return destination
+
+
 def load_cli_module():
     loader = importlib.machinery.SourceFileLoader("vibe_cli_test_module", str(CLI))
     spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -144,6 +157,152 @@ def refresh_release_checksums(release_dir: Path, artifact_relative: str) -> None
             for relative in sorted(relative_paths)
         )
     )
+
+
+def canonical_digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
+
+
+def v080_test_intent(module) -> dict:
+    commit = "1" * 40
+    assets = sorted(
+        [
+            {"name": "SHA256SUMS", "role": "checksum", "size": 10, "sha256": "1" * 64},
+            {"name": "release-manifest.json", "role": "manifest", "size": 20, "sha256": "2" * 64},
+            {"name": "vibe-kit-0.8.0.zip", "role": "direct", "size": 30, "sha256": "3" * 64},
+            {"name": "vibe-kit-distribution-0.8.0.zip", "role": "distribution", "size": 40, "sha256": "4" * 64},
+            {"name": "vibe-kit-plugin-0.8.0.zip", "role": "plugin", "size": 50, "sha256": "5" * 64},
+        ],
+        key=lambda item: item["name"].encode(),
+    )
+    snapshot = {
+        "observed_at": "2026-09-02T08:00:00Z",
+        "main": {"branch": "main", "observed_oid": "0" * 40},
+        "tag": {
+            "state": "absent", "ref_oid": None, "object_type": None,
+            "tag_object_oid": None, "peeled_commit": None, "tagger_name": None,
+            "tagger_email": None, "tagger_timestamp": None,
+            "tagger_timezone": None, "message_sha256": None,
+        },
+        "release": {
+            "state": "absent", "id": None, "url": None, "tag": None,
+            "title": None, "body_sha256": None, "draft": None,
+            "prerelease": None, "immutable": None,
+        },
+        "asset_list_complete": True,
+        "assets": [],
+    }
+    snapshot_sha = canonical_digest(snapshot)
+    kinds = list(module.V080_PUBLICATION_ALLOWED_OPERATIONS)
+    natural_keys = [
+        "mintgao/vibe-kit:main", "mintgao/vibe-kit:tag:v0.8.0",
+        "mintgao/vibe-kit:release:v0.8.0",
+        "mintgao/vibe-kit:release:v0.8.0:assets",
+        "mintgao/vibe-kit:publication:v0.8.0:read-back",
+        "mintgao/vibe-kit:release:v0.8.0:public-assets",
+    ]
+    operations = []
+    for index, (kind, natural_key) in enumerate(zip(kinds, natural_keys)):
+        initial = module.v080_operation_initial_observation(snapshot, kind)
+        operation = {
+            "sequence": index,
+            "operation_id": f"publish-{index}",
+            "kind": kind,
+            "natural_key": natural_key,
+            "expected_precondition": {
+                "kind": "exact-remote-snapshot",
+                "remote_snapshot_sha256": snapshot_sha,
+                "identity_sha256": canonical_digest(
+                    module.v080_operation_identity(kind, natural_key, snapshot_sha, initial)
+                ),
+            },
+            "max_write_attempts": 0 if index >= 4 else 2,
+            "asset_operations": [],
+        }
+        if index == 3:
+            children = []
+            for asset_index, asset in enumerate(assets):
+                child_key = f"mintgao/vibe-kit:release:v0.8.0:asset:{asset['name']}"
+                child_identity = {
+                    "schema_version": 2,
+                    "profile": module.V080_PUBLICATION_PROFILE,
+                    "parent_operation_id": operation["operation_id"],
+                    "natural_key": child_key,
+                    "remote_snapshot_sha256": snapshot_sha,
+                    "asset": asset,
+                    "initial_observation": {
+                        "state": "absent", "id": None, "size": None,
+                        "sha256": None, "download_url": None,
+                    },
+                }
+                children.append({
+                    "sequence": asset_index,
+                    "operation_id": f"asset-{asset_index}",
+                    "natural_key": child_key,
+                    **asset,
+                    "expected_precondition": {
+                        "kind": "exact-asset-snapshot",
+                        "remote_snapshot_sha256": snapshot_sha,
+                        "identity_sha256": canonical_digest(child_identity),
+                    },
+                    "max_write_attempts": 2,
+                })
+            operation["asset_operations"] = children
+        operations.append(operation)
+    return {
+        "schema_version": 2,
+        "kind": "vibe-kit-publication",
+        "profile": module.V080_PUBLICATION_PROFILE,
+        "repository": module.publication_repository(),
+        "version": "0.8.0",
+        "source_commit": commit,
+        "main": {
+            "branch": "main", "expected_old_oid": "0" * 40,
+            "target_oid": commit, "policy": "fast-forward-cas-only",
+        },
+        "tag": {
+            "name": "v0.8.0", "object_type": "tag",
+            "expected_tag_object_oid": "2" * 40, "target_commit": commit,
+            "tagger_name": "Release Test", "tagger_email": "release@example.invalid",
+            "tagger_timestamp": "2026-09-02T08:00:00Z", "tagger_timezone": "+0800",
+            "message_sha256": "6" * 64,
+        },
+        "release": {
+            "title": "Vibe Kit v0.8.0", "body_sha256": "7" * 64,
+            "body_source_path": "docs/releases/0.8.0.md", "draft": False,
+            "prerelease": True, "generated_notes": False,
+            "platform_immutability_required": False,
+        },
+        "assets": assets,
+        "asset_set_sha256": canonical_digest(assets),
+        "local_gates": {"release_gate_evidence_sha256": "8" * 64},
+        "remote_snapshot": snapshot,
+        "remote_snapshot_sha256": snapshot_sha,
+        "operations": operations,
+        "authorization_scope": {
+            "repository": "mintgao/vibe-kit", "version": "0.8.0",
+            "release_kind": "prerelease", "allowed_operations": kinds,
+            "destructive_operations_allowed": False,
+        },
+        "issue_closeout_policy": {"mode": "none", "issues": [], "allowed_operations": []},
+        "recovery_policy": {
+            "read_back_before_retry": True, "delete": False,
+            "replace": False, "force": False,
+        },
+    }
+
+
+def passing_command(sequence: int, command_id: str, argv: list = None) -> dict:
+    result = {"status": "passed", "passed_count": 1, "failed_count": 0, "skipped_count": 0}
+    return {
+        "sequence": sequence, "command_id": command_id,
+        "argv": argv or ["$SOURCE/bin/vibe", command_id], "exit_code": 0,
+        "status": "passed", "result": result, "result_sha256": canonical_digest(result),
+    }
 
 
 class VibeCliTests(unittest.TestCase):
@@ -958,7 +1117,9 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(validation_receipt["status"], "valid")
             self.assertEqual(validation_receipt["agent_install_protocol"], 3)
             release_metadata = json.loads((first / "release-manifest.json").read_text())
-            self.assertEqual(release_metadata["core_protocol"], 5)
+            self.assertEqual(release_metadata["status"], "release-candidate-unpublished")
+            self.assertEqual(release_metadata["kit_version"], "0.8.0")
+            self.assertEqual(release_metadata["core_protocol"], 6)
             self.assertEqual(release_metadata["feedback_protocol"], 2)
             self.assertEqual(release_metadata["agent_install_schema"], 3)
             self.assertEqual(release_metadata["agent_install_protocol"], 3)
@@ -978,7 +1139,7 @@ class VibeCliTests(unittest.TestCase):
             )
             self.assertRegex(release_metadata["payload_tree_sha256"], r"^[0-9a-f]{64}$")
             self.assertRegex(release_metadata["activation_set_sha256"], r"^[0-9a-f]{64}$")
-            self.assertEqual(release_metadata["adapters"]["codex"]["version"], 5)
+            self.assertEqual(release_metadata["adapters"]["codex"]["version"], 6)
 
             release_unpack = base / "release-unpacked"
             with zipfile.ZipFile(first / KIT_ARCHIVE) as archive:
@@ -996,6 +1157,15 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(install_contract["schema_version"], 3)
             self.assertEqual(install_contract["protocol_version"], 3)
             self.assertEqual(install_contract["kit_version"], KIT_VERSION)
+            self.assertEqual(install_contract["adapter"]["protocol"], 6)
+            self.assertEqual(
+                install_contract["maintenance_bridge"]["supported_installed_agent_protocols"],
+                [0, 1, 2, 3],
+            )
+            self.assertEqual(
+                install_contract["maintenance_bridge"]["maximum_installed_kit_version_exclusive"],
+                "0.8.0",
+            )
             self.assertEqual(
                 install_contract["activation"]["current_repository_capability"],
                 "manual-fallback-only",
@@ -1761,7 +1931,7 @@ class VibeCliTests(unittest.TestCase):
             )
             self.assertRegex(receipt["manifest_sha256"], r"^[0-9a-f]{64}$")
             self.assertEqual(receipt["target_fingerprint"]["kit_version"], KIT_VERSION)
-            self.assertEqual(receipt["target_fingerprint"]["core_protocol"], 5)
+            self.assertEqual(receipt["target_fingerprint"]["core_protocol"], 6)
             self.assertEqual(receipt["target_fingerprint"]["agent_install_schema"], 3)
             self.assertEqual(receipt["target_fingerprint"]["manifest_sha256"], receipt["manifest_sha256"])
 
@@ -2690,6 +2860,74 @@ class VibeCliTests(unittest.TestCase):
             )
             self.assertEqual(doctor.returncode, 0, doctor.stdout + doctor.stderr)
 
+    def test_v080_offline_upgrade_from_healthy_v070_is_ordinary_and_consistent(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = official_v070_source_fixture(Path(temporary) / "healthy-v070")
+            before = file_snapshot(project)
+            predecessor_doctor = run_cli(
+                project / "bin/vibe", "doctor", str(project), "--format", "json"
+            )
+            self.assertEqual(
+                predecessor_doctor.returncode,
+                0,
+                predecessor_doctor.stdout + predecessor_doctor.stderr,
+            )
+            self.assertEqual(json.loads(predecessor_doctor.stdout)["status"], "healthy")
+
+            planned = run_cli(
+                CLI,
+                "plan",
+                "upgrade",
+                str(project),
+                "--format",
+                "json",
+                "--source-type",
+                "local-payload",
+                "--source-ref",
+                KIT_VERSION,
+            )
+            self.assertEqual(planned.returncode, 0, planned.stderr)
+            self.assertEqual(file_snapshot(project), before)
+            plan_receipt = json.loads(planned.stdout)
+            self.assertEqual(plan_receipt["current_version"], "0.7.0")
+            self.assertEqual(plan_receipt["target_version"], "0.8.0")
+            self.assertNotIn("compatibility_migrations", plan_receipt)
+            self.assertEqual(plan_receipt["onboarding_bridge"]["state"], "preserved")
+
+            upgraded = run_cli(
+                CLI,
+                "upgrade",
+                str(project),
+                "--format",
+                "json",
+                "--source-type",
+                "local-payload",
+                "--source-ref",
+                KIT_VERSION,
+            )
+            self.assertEqual(upgraded.returncode, 0, upgraded.stderr)
+            receipt = json.loads(upgraded.stdout)
+            self.assertEqual(receipt["from_version"], "0.7.0")
+            self.assertEqual(receipt["target_version"], "0.8.0")
+            self.assertEqual(receipt["transaction"]["outcome"], "committed")
+            self.assertEqual(receipt["compatibility_migrations"], [])
+            self.assertEqual(receipt["onboarding_bridge"]["state"], "preserved")
+
+            manifest = json.loads((project / ".vibe/manifest.json").read_text())
+            self.assertEqual(manifest["framework_version"], "0.8.0")
+            self.assertEqual(manifest["target_fingerprint"]["core_protocol"], 6)
+            self.assertEqual(manifest["target_fingerprint"]["adapter_protocol"], 6)
+            self.assertEqual((project / ".vibe/version").read_text(), "0.8.0\n")
+            final_doctor = run_cli(
+                project / "bin/vibe", "doctor", str(project), "--format", "json"
+            )
+            self.assertEqual(
+                final_doctor.returncode,
+                0,
+                final_doctor.stdout + final_doctor.stderr,
+            )
+            self.assertEqual(json.loads(final_doctor.stdout)["status"], "healthy")
+
     def test_v070_upgrade_write_failure_rolls_back_and_committed_cleanup_recovers(self) -> None:
         module = load_cli_module()
         with tempfile.TemporaryDirectory() as temporary:
@@ -2802,11 +3040,300 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(list(external.iterdir()), [])
             self.assertTrue(control.is_symlink())
 
+    def test_v080_schema2_profile_snapshot_preconditions_and_retry_are_closed(self) -> None:
+        module = load_cli_module()
+        intent = v080_test_intent(module)
+        self.assertEqual(module.validate_v080_intent(intent), [])
+
+        extra_snapshot_field = json.loads(json.dumps(intent))
+        extra_snapshot_field["remote_snapshot"]["unexpected"] = True
+        self.assertTrue(module.validate_v080_intent(extra_snapshot_field))
+
+        incomplete_pagination = json.loads(json.dumps(intent))
+        incomplete_pagination["remote_snapshot"]["asset_list_complete"] = False
+        incomplete_pagination["remote_snapshot_sha256"] = canonical_digest(
+            incomplete_pagination["remote_snapshot"]
+        )
+        self.assertTrue(module.validate_v080_intent(incomplete_pagination))
+
+        substituted_child = json.loads(json.dumps(intent))
+        substituted_child["operations"][3]["asset_operations"] = []
+        self.assertTrue(module.validate_v080_intent(substituted_child))
+
+        issue_operation = json.loads(json.dumps(intent))
+        issue_operation["authorization_scope"]["allowed_operations"].append(
+            "close-issue"
+        )
+        self.assertTrue(module.validate_v080_intent(issue_operation))
+
+        def main_observation(state: str, oid: str) -> dict:
+            return {"observed_at": "2026-09-02T08:01:00Z", "state": state, "oid": oid}
+
+        valid_attempts = [
+            {
+                "attempt_number": 1,
+                "pre_write_observation": main_observation("preimage", "0" * 40),
+                "response": "timeout",
+                "read_back_observation": main_observation("preimage", "0" * 40),
+            },
+            {
+                "attempt_number": 2,
+                "pre_write_observation": main_observation("preimage", "0" * 40),
+                "response": "definite-success",
+                "read_back_observation": main_observation("target", "1" * 40),
+            },
+        ]
+        self.assertEqual(module.validate_v080_attempts(valid_attempts, "main"), [])
+        invalid_retry = json.loads(json.dumps(valid_attempts))
+        invalid_retry[0]["read_back_observation"] = main_observation("unknown", None)
+        self.assertTrue(module.validate_v080_attempts(invalid_retry, "main"))
+        invalid_permission_retry = json.loads(json.dumps(valid_attempts))
+        invalid_permission_retry[0]["response"] = "permission-denied"
+        self.assertTrue(module.validate_v080_attempts(invalid_permission_retry, "main"))
+
+    def test_v080_release_gate_evidence_is_two_phase_python39_and_dual_build(self) -> None:
+        module = load_cli_module()
+        intent = v080_test_intent(module)
+        commit = intent["source_commit"]
+        tree = "9" * 40
+        started = "2026-09-02T08:00:00Z"
+        finished = "2026-09-02T08:10:00Z"
+        common = {
+            "schema_version": 1, "repository": "mintgao/vibe-kit",
+            "version": "0.8.0", "profile": module.V080_PUBLICATION_PROFILE,
+            "source_commit": commit, "source_tree_oid": tree,
+            "started_at": started, "finished_at": finished,
+        }
+        qa_commands = [passing_command(0, "qa-focused")]
+        post = {
+            "AC-1": "none", "AC-2": "offline-publication-validation",
+            "AC-3": "none", "AC-4": "public-download", "AC-5": "live-read-back",
+            "AC-6": "offline-publication-validation", "AC-7": "live-read-back",
+            "AC-8": "live-read-back", "AC-9": "public-smoke", "AC-10": "none",
+            "AC-11": "live-read-back", "AC-12": "final-claim-gate",
+        }
+        qa = {
+            **common, "kind": "vibe-kit-v0.8-prepublication-qa",
+            "execution_id": "qa-1", "executor_role": "independent-qa",
+            "asset_set_sha256": intent["asset_set_sha256"], "commands": qa_commands,
+            "criterion_mapping": [
+                {
+                    "criterion_id": criterion,
+                    "state": module.V080_PREPUBLICATION_STATES[criterion],
+                    "evidence_command_sequences": (
+                        [] if state == "not-runnable-before-publication" else [0]
+                    ),
+                    "postpublication_requirement": post[criterion],
+                }
+                for criterion, state in module.V080_PREPUBLICATION_STATES.items()
+            ],
+            "status": "passed", "error": None,
+        }
+        configured = {
+            **common, "kind": "vibe-kit-v0.8-configured-checks",
+            "execution_id": "configured-1", "executor_role": "independent-qa",
+            "commands": [passing_command(
+                0, "default-verify", ["./bin/vibe", "verify", ".", "--format", "json"]
+            )],
+            "checks": [
+                {
+                    "name": name, "configured": name == "test",
+                    "status": "passed" if name == "test" else "not-configured",
+                    "exit_code": 0 if name == "test" else None,
+                    "result_sha256": "a" * 64 if name == "test" else None,
+                }
+                for name in ("lint", "typecheck", "test", "build")
+            ],
+            "status": "passed", "error": None,
+        }
+        python_commands = [
+            "python39-default-verify", "python39-publication-focused-tests",
+            "python39-package-a", "python39-validate-release-a",
+            "python39-package-b", "python39-validate-release-b",
+        ]
+        python_receipt = {
+            **common, "kind": "vibe-kit-v0.8-python-3.9",
+            "execution_id": "python39-1", "executor_role": "release-build-host",
+            "interpreter": {
+                "implementation": "CPython", "major": 3, "minor": 9, "patch": 19,
+                "platform": "test-platform", "executable_name": "python3.9",
+            },
+            "commands": [passing_command(index, name) for index, name in enumerate(python_commands)],
+            "status": "passed", "error": None,
+        }
+        builds = []
+        for build_id in ("A", "B"):
+            builds.append({
+                **common, "kind": "vibe-kit-v0.8-clean-build",
+                "execution_id": f"build-{build_id}", "executor_role": "release-build-host",
+                "build_id": build_id, "checkout_id": f"checkout-{build_id}",
+                "output_id": f"output-{build_id}", "source_clean": True,
+                "interpreter": python_receipt["interpreter"],
+                "package_command": passing_command(0, f"package-{build_id}"),
+                "assets": intent["assets"], "asset_set_sha256": intent["asset_set_sha256"],
+                "validate_release_command": passing_command(1, f"validate-{build_id}"),
+                "validate_release_result_sha256": "b" * 64,
+                "status": "passed", "error": None,
+            })
+        bundle = {
+            "schema_version": 1, "kind": "vibe-kit-v0.8-release-gate-evidence",
+            "repository": "mintgao/vibe-kit", "version": "0.8.0",
+            "profile": module.V080_PUBLICATION_PROFILE, "source_commit": commit,
+            "source_tree_oid": tree, "generated_at": finished, "qa": qa,
+            "configured_checks": configured, "python_3_9": python_receipt,
+            "builds": builds,
+            "receipt_sha256s": {
+                "qa": canonical_digest(qa), "configured_checks": canonical_digest(configured),
+                "python_3_9": canonical_digest(python_receipt),
+                "build_a": canonical_digest(builds[0]), "build_b": canonical_digest(builds[1]),
+            },
+        }
+        errors, observed_tree, observed_assets = module.validate_v080_release_gate_bundle(bundle, commit)
+        self.assertEqual(errors, [])
+        self.assertEqual(observed_tree, tree)
+        self.assertEqual(observed_assets, intent["assets"])
+
+        prepublication_overclaim = json.loads(json.dumps(bundle))
+        prepublication_overclaim["qa"]["criterion_mapping"][3]["state"] = "passed"
+        prepublication_overclaim["receipt_sha256s"]["qa"] = canonical_digest(prepublication_overclaim["qa"])
+        self.assertTrue(module.validate_v080_release_gate_bundle(prepublication_overclaim, commit)[0])
+
+        duplicate_build_identity = json.loads(json.dumps(bundle))
+        duplicate_build_identity["builds"][1]["checkout_id"] = "checkout-A"
+        duplicate_build_identity["receipt_sha256s"]["build_b"] = canonical_digest(duplicate_build_identity["builds"][1])
+        self.assertTrue(module.validate_v080_release_gate_bundle(duplicate_build_identity, commit)[0])
+
+        wrong_python = json.loads(json.dumps(bundle))
+        wrong_python["python_3_9"]["interpreter"]["minor"] = 10
+        wrong_python["receipt_sha256s"]["python_3_9"] = canonical_digest(wrong_python["python_3_9"])
+        self.assertTrue(module.validate_v080_release_gate_bundle(wrong_python, commit)[0])
+
+    def test_v080_receipt_has_six_ledgers_five_asset_children_and_no_issues(self) -> None:
+        module = load_cli_module()
+        intent = v080_test_intent(module)
+        observed_at = "2026-09-02T09:00:00Z"
+        main_match = {"observed_at": observed_at, "state": "target", "oid": intent["source_commit"]}
+        tag_match = {
+            "observed_at": observed_at, "state": "match", "ref_oid": "2" * 40,
+            "object_type": "tag", "tag_object_oid": "2" * 40,
+            "peeled_commit": intent["source_commit"], "tagger_name": "Release Test",
+            "tagger_email": "release@example.invalid",
+            "tagger_timestamp": "2026-09-02T08:00:00Z", "tagger_timezone": "+0800",
+            "message_sha256": "6" * 64,
+        }
+        release_match = {
+            "observed_at": observed_at, "state": "match", "id": 80,
+            "url": "https://github.com/mintgao/vibe-kit/releases/tag/v0.8.0",
+            "tag": "v0.8.0", "title": "Vibe Kit v0.8.0", "body_sha256": "7" * 64,
+            "draft": False, "prerelease": True, "immutable": "unknown",
+        }
+        ledgers = []
+        for index, observation in enumerate((main_match, tag_match, release_match)):
+            planned = intent["operations"][index]
+            ledgers.append({
+                "sequence": index, "operation_id": planned["operation_id"],
+                "kind": planned["kind"], "natural_key": planned["natural_key"],
+                "precondition_sha256": canonical_digest(planned["expected_precondition"]),
+                "initial_observation": observation, "attempts": [],
+                "final_observation": observation, "outcome": "read-matched",
+                "remote_object_id": observation.get("id", observation.get("oid", observation.get("ref_oid"))),
+                "asset_receipts": [], "error": None,
+            })
+        asset_ledgers = []
+        for asset_index, (asset, planned) in enumerate(zip(
+            intent["assets"], intent["operations"][3]["asset_operations"]
+        )):
+            observation = {
+                "observed_at": observed_at, "state": "match", "id": asset_index + 1,
+                "size": asset["size"], "sha256": asset["sha256"],
+                "download_url": f"https://github.com/mintgao/vibe-kit/releases/download/v0.8.0/{asset['name']}",
+            }
+            asset_ledgers.append({
+                "sequence": asset_index, "operation_id": planned["operation_id"],
+                "natural_key": planned["natural_key"], "name": asset["name"],
+                "role": asset["role"], "expected_size": asset["size"],
+                "expected_sha256": asset["sha256"],
+                "precondition_sha256": canonical_digest(planned["expected_precondition"]),
+                "initial_observation": observation, "attempts": [],
+                "final_observation": observation, "outcome": "read-matched",
+                "remote_asset_id": asset_index + 1, "error": None,
+            })
+        planned_upload = intent["operations"][3]
+        ledgers.append({
+            "sequence": 3, "operation_id": planned_upload["operation_id"],
+            "kind": planned_upload["kind"], "natural_key": planned_upload["natural_key"],
+            "precondition_sha256": canonical_digest(planned_upload["expected_precondition"]),
+            "initial_observation": None, "attempts": [], "final_observation": None,
+            "outcome": "read-matched", "remote_object_id": None,
+            "asset_receipts": asset_ledgers, "error": None,
+        })
+        for index in (4, 5):
+            planned = intent["operations"][index]
+            ledgers.append({
+                "sequence": index, "operation_id": planned["operation_id"],
+                "kind": planned["kind"], "natural_key": planned["natural_key"],
+                "precondition_sha256": canonical_digest(planned["expected_precondition"]),
+                "initial_observation": None, "attempts": [], "final_observation": None,
+                "outcome": "verified", "remote_object_id": None,
+                "asset_receipts": [], "error": None,
+            })
+        remote_assets = [
+            {
+                **asset, "id": index + 1,
+                "url": f"https://github.com/mintgao/vibe-kit/releases/download/v0.8.0/{asset['name']}",
+                "write_state": "confirmed-complete", "read_back": True,
+            }
+            for index, asset in enumerate(intent["assets"])
+        ]
+        receipt = {
+            "schema_version": 2, "kind": "vibe-kit-publication-receipt",
+            "profile": module.V080_PUBLICATION_PROFILE, "version": "0.8.0",
+            "intent_sha256": canonical_digest(intent), "authorization_id": "auth-v080",
+            "host_operation_id": "host-v080", "repository": "mintgao/vibe-kit",
+            "remote_write_state": "confirmed-complete", "verification_state": "passed",
+            "main": {
+                "branch": "main", "expected_old_oid": "0" * 40,
+                "target_oid": intent["source_commit"], "observed_oid": intent["source_commit"],
+                "write_state": "confirmed-complete", "read_back": True,
+            },
+            "tag": {
+                "name": "v0.8.0", "expected_tag_object_oid": "2" * 40,
+                "observed_ref_oid": "2" * 40, "peeled_commit": intent["source_commit"],
+                "write_state": "confirmed-complete", "read_back": True,
+            },
+            "release": {
+                "id": 80, "url": "https://github.com/mintgao/vibe-kit/releases/tag/v0.8.0",
+                "tag": "v0.8.0", "title": "Vibe Kit v0.8.0", "body_sha256": "7" * 64,
+                "draft": False, "prerelease": True, "immutable": "unknown",
+                "write_state": "confirmed-complete", "read_back": True,
+            },
+            "assets": remote_assets, "operations": ledgers,
+            "downloads": [
+                {"name": asset["name"], "size": asset["size"], "sha256": asset["sha256"], "matched": True}
+                for asset in intent["assets"]
+            ],
+            "validate_release": {"status": "valid", "receipt_sha256": "c" * 64},
+            "smokes": [
+                {"name": name, "status": "passed", "evidence_sha256": "d" * 64}
+                for name in module.V080_PUBLIC_SMOKES
+            ],
+            "limitations": ["Platform immutability is unknown."],
+            "issue_closeout": None, "error": None,
+        }
+        self.assertEqual(module.validate_v080_receipt(receipt, intent), [])
+
+        missing_asset_child = json.loads(json.dumps(receipt))
+        missing_asset_child["operations"][3]["asset_receipts"].pop()
+        self.assertTrue(module.validate_v080_receipt(missing_asset_child, intent))
+        issue_claim = json.loads(json.dumps(receipt))
+        issue_claim["issue_closeout"] = {"overall_state": "confirmed-complete"}
+        self.assertTrue(module.validate_v080_receipt(issue_claim, intent))
+
     def test_v070_publication_plan_and_validation_are_closed_and_offline(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
-            source = base / "source"
-            cli = copy_source(source)
+            source = official_v070_source_fixture(base / "source")
+            cli = source / "bin/vibe"
             subprocess.run(
                 ["git", "init", "-b", "main"], cwd=source, check=True,
                 capture_output=True,
@@ -2834,7 +3361,7 @@ class VibeCliTests(unittest.TestCase):
             )
             self.assertEqual(built.returncode, 0, built.stderr)
             distribution_sha = hashlib.sha256(
-                (candidate / DISTRIBUTION_ARCHIVE).read_bytes()
+                (candidate / "vibe-kit-distribution-0.7.0.zip").read_bytes()
             ).hexdigest()
             body_sha = hashlib.sha256(
                 (source / "docs/releases/0.7.0.md").read_bytes()
@@ -3078,6 +3605,38 @@ class VibeCliTests(unittest.TestCase):
             )
             self.assertEqual(rejected.returncode, 1)
             self.assertEqual(json.loads(rejected.stdout)["status"], "invalid")
+
+    def test_v080_candidate_cannot_enter_v070_publication_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            candidate = base / "v080-candidate"
+            built = run_cli(CLI, "package", "--output", str(candidate))
+            self.assertEqual(built.returncode, 0, built.stderr)
+            manifest = json.loads((candidate / "release-manifest.json").read_text())
+            self.assertEqual(manifest["kit_version"], "0.8.0")
+            self.assertEqual(manifest["status"], "release-candidate-unpublished")
+
+            request = base / "request.json"
+            request.write_text('{"schema_version": 1}\n')
+            planned = run_cli(
+                CLI,
+                "publication-plan",
+                "--phase",
+                "publish",
+                "--request",
+                str(request),
+                "--candidate",
+                str(candidate),
+                "--format",
+                "json",
+            )
+            self.assertEqual(planned.returncode, 2, planned.stderr)
+            receipt = json.loads(planned.stdout)
+            self.assertEqual(receipt["status"], "blocked")
+            self.assertIn(
+                "publication candidate must be the exact 0.7.0 prerelease",
+                receipt["errors"],
+            )
 
     def test_v070_interrupted_prepare_recovers_and_tampered_stage_stays_fail_closed(self) -> None:
         module = load_cli_module()
@@ -3852,7 +4411,7 @@ class VibeCliTests(unittest.TestCase):
         module = load_cli_module()
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
-            parent_sha = "1" * 64
+            parent_sha = "1914fe1761cae16224a94e6f96c9dd71ecff9f2a4179848295ece1cef418a175"
             closeout_id = hashlib.sha256(
                 json.dumps(
                     {
@@ -3967,6 +4526,20 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(intent["operations"], operations)
             self.assertEqual(intent["authorization_scope"], scope)
             self.assertEqual(len(result["comment_bodies"]), 5)
+
+            arbitrary_parent = json.loads(json.dumps(request))
+            arbitrary_parent["parent_publication_intent_sha256"] = "1" * 64
+            request_path.write_text(json.dumps(arbitrary_parent, indent=2) + "\n")
+            rejected_parent = run_cli(
+                CLI, "publication-plan", "--phase", "issue-closeout",
+                "--request", str(request_path), "--format", "json",
+            )
+            self.assertEqual(rejected_parent.returncode, 2)
+            self.assertIn(
+                "exact published v0.7.0 publication intent",
+                " ".join(json.loads(rejected_parent.stdout)["errors"]),
+            )
+            request_path.write_text(json.dumps(request, indent=2) + "\n")
 
             authorization = {
                 "closeout_authorization_id": "closeout-authorization-v070",

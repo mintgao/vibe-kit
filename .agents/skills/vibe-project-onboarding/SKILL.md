@@ -10,7 +10,11 @@ Create an accurate baseline without refactoring the application. This is an inte
 When onboarding follows a Vibe Kit upgrade, begin only in the task with positive target-version activation evidence under `AGENT_INSTALL.md`. An apply or doctor receipt from the source task is insufficient. The activated task owns adaptation, final verification, target-rule re-evaluation, and resumption; the source task must not duplicate that work.
 
 1. Read `.vibe/project.yaml`, `.vibe/project-rules.md`, the README, dependency manifests, build configuration, tests, and entry points.
-2. Inspect the repository broadly enough to distinguish observed facts from guesses. For a large repository, delegate bounded read-only exploration by subsystem and synthesize the results.
+2. Inspect the repository broadly enough to distinguish observed facts from
+   guesses. For a large repository, use bounded read-only exploration only for a
+   named subsystem question. Supply the role, objective, exact evidence paths,
+   ownership boundary, and expected findings; exclude full conversation history
+   and unrelated files. Missing evidence is reported, not invented.
 3. Update only the durable context that can be supported by evidence:
    - `docs/context/product.md` for users, problems, current capabilities, boundaries, and unknowns;
    - `docs/context/architecture.md` for runtime structure, dependencies, data flow, commands, and constraints;

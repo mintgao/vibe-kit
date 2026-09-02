@@ -29,14 +29,20 @@ planning decisions. They do not require an ADR.
 ## Size policy
 
 - **S:** A clear, local, low-risk, reversible S task needs no readiness artifact
-  or independent review. If the trigger scan finds a durable or high-risk
-  boundary, the size is no longer credible; reclassify to M or L before editing
-  code.
-- **M:** Every M work item receives a trigger scan at planning or handoff. An
+  or independent review. It may touch multiple tightly coupled implementation,
+  test, or documentation files; file count alone never changes its size. If the
+  trigger scan finds a durable or high-risk boundary, the size is no longer
+  credible; reclassify to M or L before editing code.
+- **M:** User-flow, shared contract/API, or unresolved acceptance work is at
+  least M. Every M work item receives a trigger scan at planning or handoff. An
   untriggered M records a concise `no-new-durable-decision` rationale and needs
-  no ADR or technical review. A triggered M is blocked until decision-owner
-  evidence and approved technical review satisfy this contract.
-- **L:** Every L work item has an explicit readiness record and approved
+  no ADR or technical review. A durable/shared trigger that is not cross-system
+  or high-risk creates a triggered M, blocked until decision-owner evidence and
+  approved technical review satisfy this contract.
+- **L:** Cross-system work and high-risk authentication, permissions,
+  security/privacy/trust, schema/protocol/version/API compatibility, migration,
+  irreversible-state, rollback/recovery/crash, or failure-consistency work is L.
+  Every L work item has an explicit readiness record and approved
   technical review before implementation. L does not automatically mean a new
   ADR: an applicable Accepted decision or a reviewed no-new-decision rationale
   can satisfy the gate.
@@ -152,10 +158,23 @@ decision author, reviewer, and gate approver.
 
 ## Specialist execution
 
+The orchestrator constructs the artifact-first handoff defined in
+`.vibe/core/operating-model.md`. Each handoff names the role/mode, bounded task,
+minimum authoritative evidence, expected output, ownership boundary, and known
+limitations. Missing evidence fails closed: the receiver requests or reports the
+exact missing artifact instead of inventing it. Complete conversation history
+and unrelated repository material are excluded by default.
+
 In a host with native subagents, one read-only Tech Lead instance authors the
 decision evidence, the orchestrator persists it, a different read-only Tech
 Lead instance reviews the exact persisted artifact, and one RD writer starts
 only after the orchestrator confirms readiness.
+
+When the host exposes bounded or no-history fork controls, use the smallest
+viable history plus the self-contained packet. If transport bounding is absent
+or uncertain, preserve the required perspectives and record
+`transport context bounding unavailable`; tool presence or static documentation
+does not establish prompt isolation.
 
 A host without independent subagents may use separate sequential passes for
 technical authoring, critical technical review, gate confirmation, and
