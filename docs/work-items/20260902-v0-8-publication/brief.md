@@ -2,7 +2,7 @@
 
 - ID: `20260902-v0-8-publication`
 - Size: `L`
-- Status: implementation-ready
+- Status: complete
 - Created: 2026-09-02
 
 ## Technical decision readiness
@@ -19,10 +19,10 @@
   causality, v0.7 closeout compatibility, checksum closure, and evidence-push
   exclusion, then approved the exact persisted ADR 0013 on 2026-09-02.
 - Material product decisions: User requested publication on 2026-09-02; scope is v0.8.0 non-draft GitHub Pre-release with exactly five assets and public verification, excluding Issue closeout and Stable promotion.
-- Open blockers: none for implementation. Final release QA, clean accepted
-  commit, Python 3.9 evidence, deterministic dual builds, remote snapshot,
-  offline intent, and exact remote-write authorization remain runtime release
-  gates rather than technical-decision blockers.
+- Open blockers: none. Final release QA, the clean accepted commit, actual
+  Python 3.9 evidence, deterministic dual builds, the closed remote snapshot,
+  the offline intent, exact authorization, public read-back/downloads, and
+  post-publication acceptance all passed on 2026-09-02.
 - Gate: `implementation-ready`
 - Gate owner: Workflow orchestrator
 - Confirmed at: `2026-09-02T06:57:32Z`
@@ -80,42 +80,42 @@ validated without weakening historical v0.7 publication guarantees.
 
 ## Acceptance criteria
 
-- [ ] AC-1: The final candidate is a clean accepted full-length commit at
+- [x] AC-1: The final candidate is a clean accepted full-length commit at
   Vibe Kit 0.8.0/core-Codex protocol 6 and receives fresh independent release
   QA, all configured checks, and release-specific gates after publication
   tooling changes.
-- [ ] AC-2: The exact final candidate passes applicable package,
+- [x] AC-2: The exact final candidate passes applicable package,
   `validate-release`, publication plan/receipt validation, and scenarios under
   actual Python 3.9; the CLI remains standard-library-only, offline, and free of
   credentials.
-- [ ] AC-3: Two independent clean builds from the same accepted commit produce
+- [x] AC-3: Two independent clean builds from the same accepted commit produce
   byte-identical five-asset sets with identical names, sizes, and SHA-256, and
   both pass release validation.
-- [ ] AC-4: The public Release asset list is exactly the five scoped names with
+- [x] AC-4: The public Release asset list is exactly the five scoped names with
   one role each; missing, extra, duplicate, or divergent bytes block. Public
   assets match the intent and the distribution's nested checksum graph.
-- [ ] AC-5: An offline v0.8 publication plan binds repository, version, commit,
+- [x] AC-5: An offline v0.8 publication plan binds repository, version, commit,
   main CAS preimage/target, annotated tag identity, Release body/title/state,
   five assets, remote snapshot, operations, and non-destructive recovery into a
   stable intent digest; any bound-field change invalidates authorization.
-- [ ] AC-6: A closed allowlisted receipt validates offline, while completion
+- [x] AC-6: A closed allowlisted receipt validates offline, while completion
   still requires authenticated live read-back, public downloads, and smoke
   evidence rather than structural validity alone.
-- [ ] AC-7: Main uses expected-old-OID fast-forward CAS only. Existing
+- [x] AC-7: Main uses expected-old-OID fast-forward CAS only. Existing
   tag/Release/assets are reused only on exact match; force, move, rewrite,
   delete, replace, extra, duplicate, or divergent state blocks safely.
-- [ ] AC-8: Every definite or uncertain write response is read back; only a
+- [x] AC-8: Every definite or uncertain write response is read back; only a
   positively absent natural-key object may receive one bounded retry. Permission
   denial, divergence, or still-unknown state stops writes with one next action.
-- [ ] AC-9: Canonical public downloads verify all five SHA-256 values, the
+- [x] AC-9: Canonical public downloads verify all five SHA-256 values, the
   distribution graph, `validate-release`, fresh direct init/doctor, Plugin
   smoke, historical critical upgrades, and healthy v0.7-to-v0.8 upgrade.
-- [ ] AC-10: Historical v0.7 tag/notes/evidence/assets/markers/Skill,
+- [x] AC-10: Historical v0.7 tag/notes/evidence/assets/markers/Skill,
   plan/receipt/closeout validators, and tests retain exact semantics; v0.8 input
   cannot pass the v0.7 profile.
-- [ ] AC-11: The v0.8 executable operation set contains no Issue action, creates
+- [x] AC-11: The v0.8 executable operation set contains no Issue action, creates
   no closeout intent or authorization, and leaves every Issue unchanged.
-- [ ] AC-12: Only `confirmed-complete` remote writes, `passed` public
+- [x] AC-12: Only `confirmed-complete` remote writes, `passed` public
   verification, all smokes, and a valid receipt permit the claim "v0.8.0
   published and verified". Platform immutability is reported only from live
   metadata as true, false, or unknown.
