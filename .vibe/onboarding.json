@@ -14,7 +14,11 @@
     "docs/decisions/0010-recoverable-upgrade-transaction.md",
     "docs/decisions/0011-exact-source-and-publication-boundary.md",
     "docs/releases/0.8.0.md",
-    "docs/work-items/20260902-v0-8-publication/verification.md"
+    "docs/work-items/20260902-v0-8-publication/verification.md",
+    "tests/test_readiness_doc_gates.py",
+    "docs/decisions/0014-readiness-doc-gates-v09-publication.md",
+    "docs/releases/0.9.0.md",
+    "docs/work-items/20260908-readiness-doc-gates-release/verification.md"
   ],
   "updated_at": "2026-09-08"
 }

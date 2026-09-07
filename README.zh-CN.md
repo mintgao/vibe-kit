@@ -8,7 +8,7 @@
 
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-<p align="center">发布目标 · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.9.0"><code>v0.9.0 Pre-release</code></a></p>
+<p align="center">最新已发布 · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.9.0"><code>v0.9.0 Pre-release</code></a></p>
 
 ## Vibe Kit 是做什么的
 

@@ -2,7 +2,7 @@
 
 - ID: `20260908-readiness-doc-gates-release`
 - Size: `L`
-- Status: implementing
+- Status: complete
 - Created: 2026-09-08
 
 ## Goal and scope
@@ -46,3 +46,7 @@ General Markdown linting, automatic arbitrary-project budget rewriting, CLI file
 - Confirmed at: `2026-09-07T16:55:58.967963+00:00`
 - Confirmation basis: Accepted ADR0014 and its exact review addenda cover this brief, issue evidence, rationale and review; distinct reviewer approved; user authorized fixes, conditional release and homepage policy; implementation and later publication gates remain separate.
 - Readiness history: 2026-09-08 PM scope established; author proposed ADR0014; distinct review required exact grammar/schema/phase definitions; author addenda persisted and approved; orchestrator confirmed readiness before shared implementation edits.
+
+## Completion
+
+All eleven criteria passed. Vibe Kit v0.9.0 is published and independently verified; issues #6 and #7 are closed with exact evidence comments. See `verification.md` and `public-evidence.json`. The later homepage/evidence commit does not move the release tag or change the published assets.

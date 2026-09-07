@@ -8,7 +8,7 @@
 
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
 
-<p align="center">Release target · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.9.0"><code>v0.9.0 Pre-release</code></a></p>
+<p align="center">Latest published · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.9.0"><code>v0.9.0 Pre-release</code></a></p>
 
 ## What Vibe Kit does
 
