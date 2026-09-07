@@ -7,7 +7,7 @@ This repository uses Vibe Kit. Before substantive work:
 2. Read only the product, architecture, design, and work-item documents relevant to the task.
 3. Check `.vibe/onboarding.json` and the durable context against repository evidence before substantive work.
 4. Route the request to the matching `vibe-*` skill under `.agents/skills/`.
-5. Before the first application or shared implementation code edit, apply `.vibe/core/technical-decision-readiness.md`. Product-shaped does not imply implementation-ready.
+5. Before the first application or shared implementation code edit, apply `.vibe/core/technical-decision-readiness.md` and run `validate-readiness` for applicable new M/L records. Product-shaped does not imply implementation-ready.
 
 ## Automatic readiness
 
@@ -37,29 +37,11 @@ Users do not need to ask for an ADR or identify an architecture phase. For featu
 
 ## Risk-adaptive handoff
 
-File count alone never requires M: a clear, local, low-risk, reversible change
-may remain S across multiple tightly coupled implementation, test, or
-documentation files. User-flow, shared contract/API, and unresolved acceptance
-work remains at least M. Cross-system and high-risk work is L. Triggered M and L
-retain required Tech Lead author/reviewer evidence, gate confirmation, one RD
-writer, and independent QA.
+File count alone never requires M: a clear, local, low-risk, reversible change may remain S across multiple tightly coupled implementation, test, or documentation files. User-flow, shared contract/API, and unresolved acceptance work remains at least M. Cross-system and high-risk work is L. Triggered M and L retain required Tech Lead author/reviewer evidence, gate confirmation, one RD writer, and independent QA.
 
-Every specialist handoff names the role/mode, bounded objective, work item,
-exact authoritative artifact references, applicable criteria, accepted
-constraints/readiness evidence, ownership boundary, expected output/evidence,
-blockers, and host capability limitations. Use paths plus headings instead of
-copying complete briefs, ADR sets, repository listings, logs, conversations, or
-unrelated Agent output. Missing evidence is requested or reported, never
-invented. Use the smallest viable/no-history fork when supported; otherwise
-record `transport context bounding unavailable` and preserve the required role.
+Every specialist handoff names the role/mode, bounded objective, work item, exact authoritative artifact references, applicable criteria, accepted constraints/readiness evidence, ownership boundary, expected output/evidence, blockers, and host capability limitations. Use paths plus headings instead of copying complete briefs, ADR sets, repository listings, logs, conversations, or unrelated Agent output. Missing evidence is requested or reported, never invented. Use the smallest viable/no-history fork when supported; otherwise record `transport context bounding unavailable` and preserve the required role.
 
-For normal M/L implementation, RD runs focused development checks. Independent
-QA owns the complete default `./bin/vibe verify . --format json` for the unchanged
-final candidate and runs it exactly once. A new full run requires failed,
-blocked, malformed, partial, stale or invalid prior evidence, changed shared
-candidate state, or a distinct post-upgrade/release/specialized gate; record the
-reason and state. Static contract checks do not prove live host isolation or a
-measured token reduction.
+For normal M/L implementation, RD runs focused development checks. Independent QA owns the complete default `./bin/vibe verify . --format json` for the unchanged final candidate and runs it exactly once. A new full run requires failed, blocked, malformed, partial, stale or invalid prior evidence, changed shared candidate state, or a distinct post-upgrade/release/specialized gate; record the reason and state. Static contract checks do not prove live host isolation or a measured token reduction.
 
 ## Continuous improvement
 

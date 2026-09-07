@@ -36,3 +36,5 @@ absent or uncertain, preserve required perspectives and record
 `transport context bounding unavailable`; do not claim prompt isolation.
 
 For M/L incidents, create or update a work item. Record root cause, evidence, fix, regression coverage, skipped checks, and follow-ups. Do not present temporal correlation or a plausible code path as proven causation.
+
+For newly adopted applicable M/L work, the orchestrator runs `./bin/vibe validate-readiness . --brief docs/work-items/<id>/brief.md --format json` before implementation release and after referenced evidence changes. Nonzero blocks release. QA verifies the persisted release evidence; a passed structural check does not establish human applicability, independence or product acceptance. Implemented notes do not replace Accepted ADRs.

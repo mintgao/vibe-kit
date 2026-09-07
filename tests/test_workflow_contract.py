@@ -68,6 +68,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "Trigger evidence": "none",
                 "Decision owner": "none",
                 "Governing decision": "none",
+                "No-new-decision rationale": "none",
                 "Review mode": "not-required",
                 "Review result": "not-required",
                 "Review evidence": "none",
@@ -287,15 +288,15 @@ class WorkflowContractTests(unittest.TestCase):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         self.assertEqual(contract["schema_version"], 3)
         self.assertEqual(contract["protocol_version"], 3)
-        self.assertEqual(contract["kit_version"], "0.8.0")
-        self.assertEqual(contract["adapter"]["protocol"], 6)
+        self.assertEqual(contract["kit_version"], "0.9.0")
+        self.assertEqual(contract["adapter"]["protocol"], 7)
         self.assertEqual(
             contract["maintenance_bridge"]["supported_installed_agent_protocols"],
             [0, 1, 2, 3],
         )
         self.assertEqual(
             contract["maintenance_bridge"]["maximum_installed_kit_version_exclusive"],
-            "0.8.0",
+            "0.9.0",
         )
         self.assertEqual(
             contract["lifecycle"]["stages"],
@@ -338,8 +339,8 @@ class WorkflowContractTests(unittest.TestCase):
             contract["takeover"]["contract_registry_sha256"],
         )
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
-        self.assertEqual(protocol["core_protocol"], 6)
-        self.assertEqual(protocol["adapters"]["codex"]["version"], 6)
+        self.assertEqual(protocol["core_protocol"], 7)
+        self.assertEqual(protocol["adapters"]["codex"]["version"], 7)
         self.assertEqual(protocol["agent_install_schema"], 3)
         self.assertEqual(protocol["agent_install_protocol"], 3)
         self.assertEqual(protocol["takeover_schema"], 2)

@@ -67,18 +67,18 @@ AGENT_COMMAND_STATUSES = {
     "publication-plan": ("safe", "blocked", "error"),
     "validate-publication": ("valid", "invalid", "error"),
 }
-CORE_PROTOCOL = 6
-CODEX_ADAPTER_PROTOCOL = 6
+CORE_PROTOCOL = 7
+CODEX_ADAPTER_PROTOCOL = 7
 TAKEOVER_SCHEMA_VERSION = 2
 MAINTENANCE_BRIDGE_SCHEMA_VERSION = 2
 COMPATIBILITY_MIGRATION_REGISTRY_SCHEMA = 2
 TRANSACTION_JOURNAL_SCHEMA = 1
 TRANSACTION_COMMIT_SCHEMA = 1
-PUBLICATION_INTENT_SCHEMA = 2
-PUBLICATION_RECEIPT_SCHEMA = 2
+PUBLICATION_INTENT_SCHEMA = 3
+PUBLICATION_RECEIPT_SCHEMA = 3
 HISTORICAL_PUBLICATION_INTENT_SCHEMA = 1
 HISTORICAL_PUBLICATION_RECEIPT_SCHEMA = 1
-ISSUE_CLOSEOUT_INTENT_SCHEMA = 1
+ISSUE_CLOSEOUT_INTENT_SCHEMA = 2
 TRANSACTION_ACTIVE_PATH = Path(".vibe/local/upgrade-transactions/active")
 TRANSACTION_ROOT_PATH = TRANSACTION_ACTIVE_PATH.parent
 LEAF_ATOMICITY_PLAN_PATH = ".vibe/local/upgrade-leaf-atomicity"
@@ -193,7 +193,7 @@ PREDECESSOR_MIGRATION_REGISTRY = {
                 "manifest_schema": 1,
             },
             "target": {
-                "framework_version": "0.8.0",
+                "framework_version": "0.9.0",
                 "source_types": list(SOURCE_TYPES),
             },
         },
@@ -208,7 +208,7 @@ PREDECESSOR_MIGRATION_REGISTRY_SHA256 = hashlib.sha256(
     ).encode("utf-8")
 ).hexdigest()
 EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256 = (
-    "ef53ba7a30cb20d1d5eba6c77428e7dbb5b59b4201feb822ef5db9453b931978"
+    "42b28f7e13a86b39b2a88136613cdcbeed62b3302ae0a7ba3238612114c11314"
 )
 if PREDECESSOR_MIGRATION_REGISTRY_SHA256 != (
     EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256
@@ -1143,8 +1143,8 @@ def predecessor_migration_evidence(phase: str) -> Dict[str, object]:
 
 
 def validate_target_predecessor_migration_contract(root: Path) -> None:
-    if framework_version(root) != "0.8.0":
-        raise VibeError("predecessor migration is supported only by target 0.8.0")
+    if framework_version(root) != "0.9.0":
+        raise VibeError("predecessor migration is supported only by target 0.9.0")
     contract = load_agent_install_contract(root)
     try:
         protocol = load_json_object_strict(root / ".vibe/core/protocol.json")
@@ -5243,7 +5243,7 @@ def upgrade_plan(
             )],
             "<transaction-active>", version, [], bridge,
         )
-    if version == "0.8.0":
+    if version == "0.9.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -5700,7 +5700,7 @@ def upgrade(
             None, "inspect-upgrade-transaction" if active_kind == "invalid" else "recover-upgrade",
             output_format,
         )
-    if version == "0.8.0":
+    if version == "0.9.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -7600,7 +7600,7 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
         "supported_installed_manifest_schemas": [1],
         "supported_installed_agent_protocols": [0, 1, 2, 3],
         "minimum_installed_kit_version": "0.2.0",
-        "maximum_installed_kit_version_exclusive": "0.8.0",
+        "maximum_installed_kit_version_exclusive": "0.9.0",
         "target_agent_install_schema": AGENT_INSTALL_SCHEMA,
         "target_agent_install_protocol": AGENT_INSTALL_PROTOCOL,
         "target_cli_result_schema": AGENT_RESULT_SCHEMA,
@@ -9381,6 +9381,32 @@ V080_PREPUBLICATION_STATES = {
     "AC-11": "tooling-pass-live-pending",
     "AC-12": "not-runnable-before-publication",
 }
+
+PUBLICATION_PROFILES = {
+    2: {
+        "schema": 2, "version": "0.8.0", "tag": "v0.8.0", "title": "Vibe Kit v0.8.0",
+        "profile": V080_PUBLICATION_PROFILE, "body_path": "docs/releases/0.8.0.md",
+        "direct": "vibe-kit-0.8.0.zip", "plugin": "vibe-kit-plugin-0.8.0.zip", "distribution": "vibe-kit-distribution-0.8.0.zip",
+        "smokes": V080_PUBLIC_SMOKES, "states": V080_PREPUBLICATION_STATES,
+        "requirements": {"AC-1": "none", "AC-2": "offline-publication-validation", "AC-3": "none", "AC-4": "public-download", "AC-5": "live-read-back", "AC-6": "offline-publication-validation", "AC-7": "live-read-back", "AC-8": "live-read-back", "AC-9": "public-smoke", "AC-10": "none", "AC-11": "live-read-back", "AC-12": "final-claim-gate"},
+        "post_criteria": ["AC-1", "AC-2", "AC-3", "AC-4", "AC-5", "AC-6", "AC-7", "AC-8", "AC-9", "AC-10", "AC-11", "AC-12"],
+        "authorization_fields": (), "issue_policy": {"mode": "none", "issues": [], "allowed_operations": []},
+        "kinds": {"prepublication-qa": "vibe-kit-v0.8-prepublication-qa", "configured-checks": "vibe-kit-v0.8-configured-checks", "python-3.9": "vibe-kit-v0.8-python-3.9", "clean-build": "vibe-kit-v0.8-clean-build", "release-gate-evidence": "vibe-kit-v0.8-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.8-postpublication-acceptance"},
+    },
+    3: {
+        "schema": 3, "version": "0.9.0", "tag": "v0.9.0", "title": "Vibe Kit v0.9.0",
+        "profile": "vibe-kit-v0.9.0-prerelease", "body_path": "docs/releases/0.9.0.md",
+        "direct": "vibe-kit-0.9.0.zip", "plugin": "vibe-kit-plugin-0.9.0.zip", "distribution": "vibe-kit-distribution-0.9.0.zip",
+        "smokes": ("public-direct-init-doctor", "public-plugin-bundled-plan-init-doctor", "public-upgrade-v0.3-to-v0.9", "public-upgrade-v0.5-to-v0.9", "public-upgrade-v0.6-to-v0.9", "public-upgrade-v0.7-to-v0.9", "public-upgrade-v0.8-to-v0.9"),
+        "states": {"AC-6.1": "passed", "AC-6.2": "passed", "AC-6.3": "passed", "AC-7.1": "passed", "AC-7.2": "passed", "AC-7.3": "passed", "AC-DOC.1": "passed", "AC-REL.1": "passed", "AC-REL.2": "passed", "AC-REL.3": "not-runnable-before-publication", "AC-CLOSE.1": "not-runnable-before-publication"},
+        "requirements": {"AC-6.1": "none", "AC-6.2": "none", "AC-6.3": "none", "AC-7.1": "none", "AC-7.2": "none", "AC-7.3": "none", "AC-DOC.1": "none", "AC-REL.1": "none", "AC-REL.2": "none", "AC-REL.3": "public-smoke", "AC-CLOSE.1": "issue-closeout"},
+        "post_criteria": ["AC-6.1", "AC-6.2", "AC-6.3", "AC-7.1", "AC-7.2", "AC-7.3", "AC-DOC.1", "AC-REL.1", "AC-REL.2", "AC-REL.3"],
+        "authorization_fields": ("authorization_source_ref", "bound_at"),
+        "issue_policy": {"mode": "after-public-verification", "issues": [6, 7], "allowed_operations": ["create-exact-evidence-comment", "close-issue"]},
+        "kinds": {"prepublication-qa": "vibe-kit-v0.9-prepublication-qa", "configured-checks": "vibe-kit-v0.9-configured-checks", "python-3.9": "vibe-kit-v0.9-python-3.9", "clean-build": "vibe-kit-v0.9-clean-build", "release-gate-evidence": "vibe-kit-v0.9-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.9-postpublication-acceptance"},
+    },
+}
+
 REMOTE_WRITE_STATES = ("none", "confirmed-partial", "confirmed-complete", "uncertain")
 VERIFICATION_STATES = ("not-run", "passed", "failed", "uncertain")
 
@@ -9617,16 +9643,16 @@ def validate_publication_intent_v1(value: object) -> List[str]:
     return errors
 
 
-def closeout_id(parent_intent_sha256: str) -> str:
+def profile_closeout_id(parent_intent_sha256: str, *, version: str, schema: int, issues: List[int]) -> str:
     return canonical_json_sha256({
-        "schema_version": ISSUE_CLOSEOUT_INTENT_SCHEMA,
-        "repository": "mintgao/vibe-kit", "version": "0.7.0",
+        "schema_version": schema,
+        "repository": "mintgao/vibe-kit", "version": version,
         "parent_publication_intent_sha256": parent_intent_sha256,
-        "issues": [1, 2, 3, 4, 5],
+        "issues": issues,
     })
 
 
-def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object], Dict[str, str]]:
+def build_profile_closeout_intent(request: Dict[str, object], *, version: str, schema: int, issue_numbers: List[int], parent_digest: str) -> Tuple[Dict[str, object], Dict[str, str]]:
     fields = (
         "parent_publication_intent_sha256", "publication_receipt_sha256",
         "verification_receipt_sha256", "repository", "issues", "remote_snapshot",
@@ -9637,16 +9663,16 @@ def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object]
     for key in fields[:3]:
         if re.fullmatch(r"[0-9a-f]{64}", str(request.get(key, ""))) is None:
             raise VibeError("issue closeout receipt binding is invalid")
-    if request.get("parent_publication_intent_sha256") != V070_PUBLISHED_INTENT_SHA256:
+    if request.get("parent_publication_intent_sha256") != parent_digest:
         raise VibeError(
             "issue closeout parent must equal the exact published v0.7.0 publication intent"
         )
     if request.get("repository") != {"owner": "mintgao", "name": "vibe-kit", "canonical_url": "https://github.com/mintgao/vibe-kit"}:
         raise VibeError("issue closeout repository identity is invalid")
     inputs = request.get("issues")
-    if not isinstance(inputs, list) or [item.get("issue_number") for item in inputs if isinstance(item, dict)] != [1, 2, 3, 4, 5]:
+    if not isinstance(inputs, list) or [item.get("issue_number") for item in inputs if isinstance(item, dict)] != issue_numbers:
         raise VibeError("issue closeout requires exactly issues 1 through 5")
-    identifier = closeout_id(str(request["parent_publication_intent_sha256"]))
+    identifier = profile_closeout_id(str(request["parent_publication_intent_sha256"]), version=version, schema=schema, issues=issue_numbers)
     issues = []
     bodies: Dict[str, str] = {}
     issue_inputs: Dict[int, Dict[str, object]] = {}
@@ -9659,7 +9685,7 @@ def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object]
         number = item["issue_number"]
         if isinstance(number, bool) or not isinstance(number, int):
             raise VibeError("issue closeout issue number must be an integer")
-        marker = f"<!-- vibe-kit:v0.7.0:issue-{number}:{identifier} -->"
+        marker = f"<!-- vibe-kit:v{version}:issue-{number}:{identifier} -->"
         body = item["comment_body"]
         if not isinstance(body, str) or body.count(marker) != 1 or "\r" in body:
             raise VibeError(f"issue {number} comment must contain its exact stable marker")
@@ -9692,7 +9718,7 @@ def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object]
     snapshot_issues = snapshot.get("issues")
     if not isinstance(snapshot_issues, list) or [
         item.get("issue_number") for item in snapshot_issues if isinstance(item, dict)
-    ] != [1, 2, 3, 4, 5]:
+    ] != issue_numbers:
         raise VibeError("issue closeout snapshot requires exactly issues 1 through 5")
     for snapshot_item in snapshot_issues:
         if not exact_keys(
@@ -9730,10 +9756,11 @@ def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object]
         ):
             raise VibeError("issue closeout snapshot disagrees with issue observation")
     expected_operations = []
-    for number, snapshot_item in enumerate(snapshot_issues, start=1):
+    for issue_index, snapshot_item in enumerate(snapshot_issues):
+        number = snapshot_item["issue_number"]
         snapshot_sha = canonical_json_sha256(snapshot_item)
         for offset, kind in enumerate(("create-exact-evidence-comment", "close-issue")):
-            sequence = 2 * (number - 1) + offset
+            sequence = 2 * issue_index + offset
             comment = kind == "create-exact-evidence-comment"
             expected_operations.append({
                 "sequence": sequence,
@@ -9758,7 +9785,7 @@ def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object]
         raise VibeError("issue closeout operations are not the exact ordered ten-operation graph")
     expected_scope = {
         "repository": "mintgao/vibe-kit",
-        "issues": [1, 2, 3, 4, 5],
+        "issues": issue_numbers,
         "allowed_operations": ["create-exact-evidence-comment", "close-issue"],
         "destructive_operations_allowed": False,
         "requires_separate_closeout_authorization": True,
@@ -9766,7 +9793,7 @@ def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object]
     if request.get("authorization_scope") != expected_scope:
         raise VibeError("issue closeout declarative authorization scope is invalid")
     intent = {
-        "schema_version": ISSUE_CLOSEOUT_INTENT_SCHEMA,
+        "schema_version": schema,
         "kind": "vibe-kit-issue-closeout", "closeout_id": identifier,
         "parent_publication_intent_sha256": request["parent_publication_intent_sha256"],
         "publication_receipt_sha256": request["publication_receipt_sha256"],
@@ -9779,17 +9806,21 @@ def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object]
     return intent, bodies
 
 
-def validate_closeout_authorization(
-    value: object, intent: Dict[str, object]
+def validate_profile_closeout_authorization(
+    value: object, intent: Dict[str, object], *, schema: int
 ) -> List[str]:
     fields = (
         "closeout_authorization_id", "repository", "issues",
         "allowed_operations", "closeout_intent_sha256",
         "destructive_operations_allowed",
     )
+    if schema == 2:
+        fields += ("authorization_source_ref", "bound_at")
     if not exact_keys(value, fields) or not isinstance(value, dict):
         return ["closeout authorization fields are unknown or incomplete"]
     errors: List[str] = []
+    if schema == 2 and (not isinstance(value.get("authorization_source_ref"), str) or not value.get("authorization_source_ref") or contains_secret(value["authorization_source_ref"]) or not is_iso8601(value.get("bound_at"))):
+        errors.append("closeout authorization source reference or binding time is invalid")
     if (
         not isinstance(value.get("closeout_authorization_id"), str)
         or not value.get("closeout_authorization_id")
@@ -9806,6 +9837,70 @@ def validate_closeout_authorization(
         errors.append("closeout authorization does not bind the exact intent")
     return errors
 
+
+
+def closeout_id(parent_intent_sha256: str) -> str:
+    return profile_closeout_id(parent_intent_sha256, version="0.7.0", schema=1, issues=[1, 2, 3, 4, 5])
+
+
+def build_closeout_intent(request: Dict[str, object]) -> Tuple[Dict[str, object], Dict[str, str]]:
+    return build_profile_closeout_intent(request, version="0.7.0", schema=1, issue_numbers=[1, 2, 3, 4, 5], parent_digest=V070_PUBLISHED_INTENT_SHA256)
+
+
+def validate_closeout_authorization(value: object, intent: Dict[str, object]) -> List[str]:
+    return validate_profile_closeout_authorization(value, intent, schema=1)
+
+
+def validate_v090_closeout_parent(parent: Dict[str, object], publication: Dict[str, object], authorization: Dict[str, object], acceptance: Dict[str, object], validation: Dict[str, object]) -> List[str]:
+    profile = PUBLICATION_PROFILES[3]
+    errors = validate_profile_intent(parent, profile=profile)
+    errors.extend(validate_profile_receipt(publication, parent, profile=profile))
+    errors.extend(validate_profile_authorization(authorization, parent, profile=profile))
+    errors.extend(validate_profile_postpublication_acceptance(acceptance, parent, authorization, str(acceptance.get("source_tree_oid", "")), profile=profile))
+    if (publication.get("remote_write_state") != "confirmed-complete" or publication.get("verification_state") != "passed" or publication.get("error") is not None or acceptance.get("status") != "passed" or not valid_oid(acceptance.get("source_tree_oid"))):
+        errors.append("closeout requires completed public verification and passing acceptance")
+    if (validation.get("command") != "validate-publication" or validation.get("status") != "valid" or validation.get("profile") != profile["profile"] or validation.get("intent_sha256") != canonical_json_sha256(parent) or validation.get("authorization_id") != authorization.get("authorization_id") or validation.get("host_operation_id") != authorization.get("host_operation_id") or acceptance.get("validate_publication_result_sha256") != canonical_json_sha256(validation)):
+        errors.append("closeout validation receipt does not bind the accepted publication")
+    if (publication.get("authorization_id") != authorization.get("authorization_id") or publication.get("host_operation_id") != authorization.get("host_operation_id")):
+        errors.append("closeout parent authorization mismatch")
+    return errors
+
+
+def build_v090_closeout_intent(request: Dict[str, object], parent: Dict[str, object], publication: Dict[str, object], authorization: Dict[str, object], acceptance: Dict[str, object], validation: Dict[str, object]) -> Tuple[Dict[str, object], Dict[str, str]]:
+    errors = validate_v090_closeout_parent(parent, publication, authorization, acceptance, validation)
+    if request.get("publication_receipt_sha256") != canonical_json_sha256(publication) or request.get("verification_receipt_sha256") != canonical_json_sha256(acceptance):
+        errors.append("closeout parent receipt digest mismatch")
+    if errors:
+        raise VibeError("; ".join(errors))
+    return build_profile_closeout_intent(request, version="0.9.0", schema=2, issue_numbers=[6, 7], parent_digest=canonical_json_sha256(parent))
+
+
+HISTORICAL_CLOSEOUT_OUTCOMES = ("not-attempted", "read-matched", "created", "uploaded", "confirmed-after-uncertain", "conflict", "permission-denied", "absent-after-bounded-retry", "uncertain")
+
+
+def validate_v090_closeout_receipt(value: object, intent: Dict[str, object], authorization: Dict[str, object]) -> List[str]:
+    errors = validate_profile_closeout_authorization(authorization, intent, schema=2)
+    fields = ("schema_version", "kind", "closeout_id", "closeout_intent_sha256", "closeout_authorization_id", "overall_state", "items")
+    if not exact_keys(value, fields):
+        return errors + ["closeout receipt fields are unknown or incomplete"]
+    if (value.get("schema_version") != 2 or value.get("kind") != "vibe-kit-issue-closeout-receipt" or value.get("closeout_id") != intent.get("closeout_id") or value.get("closeout_intent_sha256") != canonical_json_sha256(intent) or value.get("closeout_authorization_id") != authorization.get("closeout_authorization_id") or value.get("overall_state") not in ("not-run", "confirmed-partial", "confirmed-complete", "uncertain", "conflict")):
+        errors.append("closeout receipt identity or state is invalid")
+    items = value.get("items")
+    if not isinstance(items, list) or [item.get("issue_number") for item in items if isinstance(item, dict)] != [6, 7]:
+        return errors + ["closeout receipt requires exactly ordered issues 6 and 7"]
+    for item, expected in zip(items, intent.get("issues", [])):
+        if not exact_keys(item, ("issue_number", "expected_initial_state", "comment_body_sha256", "comment_id", "comment_url", "comment_write_state", "close_write_state", "observed_post_state", "read_back", "error")):
+            errors.append("closeout receipt item fields are invalid")
+            continue
+        number = item["issue_number"]
+        comment_id = item.get("comment_id")
+        if (item.get("expected_initial_state") != expected.get("observed_state") or item.get("comment_body_sha256") != expected.get("comment_body_sha256") or item.get("observed_post_state") not in (None, "open", "closed") or not isinstance(item.get("read_back"), bool) or item.get("comment_write_state") not in HISTORICAL_CLOSEOUT_OUTCOMES or item.get("close_write_state") not in HISTORICAL_CLOSEOUT_OUTCOMES or (item.get("error") is not None and not valid_publication_error(item["error"]))):
+            errors.append("closeout receipt item identity or state is invalid")
+        if (comment_id is None and item.get("comment_url") is not None) or (comment_id is not None and (not valid_positive_int(comment_id) or item.get("comment_url") != f"https://github.com/mintgao/vibe-kit/issues/{number}#issuecomment-{comment_id}")):
+            errors.append("closeout comment identity is invalid")
+        if value.get("overall_state") == "confirmed-complete" and (not valid_positive_int(comment_id) or item.get("observed_post_state") != "closed" or item.get("read_back") is not True or item.get("error") is not None or item.get("comment_write_state") not in ("created", "read-matched", "confirmed-after-uncertain") or item.get("close_write_state") not in ("created", "read-matched", "confirmed-after-uncertain")):
+            errors.append("complete closeout requires exact comments and closed issue read-back")
+    return errors
 
 def publication_repository() -> Dict[str, str]:
     return {
@@ -9887,18 +9982,8 @@ def validate_canonical_command(value: object) -> List[str]:
     return errors
 
 
-def valid_receipt_header(
-    value: Dict[str, object], kind: str, source_commit: str, source_tree_oid: str
-) -> bool:
-    return (
-        value.get("schema_version") == 1
-        and value.get("kind") == kind
-        and value.get("repository") == "mintgao/vibe-kit"
-        and value.get("version") == "0.8.0"
-        and value.get("profile") == V080_PUBLICATION_PROFILE
-        and value.get("source_commit") == source_commit
-        and value.get("source_tree_oid") == source_tree_oid
-    )
+def valid_profile_receipt_header(value: Dict[str, object], kind: str, source_commit: str, source_tree_oid: str, *, profile) -> bool:
+    return value.get('schema_version') == 1 and value.get('kind') == kind and (value.get('repository') == 'mintgao/vibe-kit') and (value.get('version') == profile['version']) and (value.get('profile') == profile['profile']) and (value.get('source_commit') == source_commit) and (value.get('source_tree_oid') == source_tree_oid)
 
 
 def validate_receipt_times(value: Dict[str, object]) -> bool:
@@ -9932,708 +10017,392 @@ def validate_python_identity(value: object) -> bool:
     )
 
 
-def validate_v080_qa_receipt(
-    value: object, source_commit: str, source_tree_oid: str
-) -> List[str]:
-    fields = (
-        "schema_version", "kind", "execution_id", "executor_role", "started_at",
-        "finished_at", "repository", "version", "profile", "source_commit",
-        "source_tree_oid", "asset_set_sha256", "commands", "criterion_mapping",
-        "status", "error",
-    )
+def validate_profile_qa_receipt(value: object, source_commit: str, source_tree_oid: str, *, profile) -> List[str]:
+    fields = ('schema_version', 'kind', 'execution_id', 'executor_role', 'started_at', 'finished_at', 'repository', 'version', 'profile', 'source_commit', 'source_tree_oid', 'asset_set_sha256', 'commands', 'criterion_mapping', 'status', 'error')
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return ["prepublication QA receipt fields are unknown or incomplete"]
+        return ['prepublication QA receipt fields are unknown or incomplete']
     errors: List[str] = []
-    if not valid_receipt_header(value, "vibe-kit-v0.8-prepublication-qa", source_commit, source_tree_oid):
-        errors.append("prepublication QA receipt identity is invalid")
-    if value.get("executor_role") != "independent-qa" or not validate_receipt_times(value):
-        errors.append("prepublication QA execution evidence is invalid")
-    commands = value.get("commands")
+    if not valid_profile_receipt_header(value, profile['kinds']['prepublication-qa'], source_commit, source_tree_oid, profile=profile):
+        errors.append('prepublication QA receipt identity is invalid')
+    if value.get('executor_role') != 'independent-qa' or not validate_receipt_times(value):
+        errors.append('prepublication QA execution evidence is invalid')
+    commands = value.get('commands')
     if not isinstance(commands, list) or not commands:
-        errors.append("prepublication QA commands are missing")
+        errors.append('prepublication QA commands are missing')
         commands = []
     for index, command in enumerate(commands):
         command_errors = validate_canonical_command(command)
-        if command_errors or command.get("sequence") != index:
-            errors.append("prepublication QA command is invalid")
-    criteria = value.get("criterion_mapping")
-    required_post = {
-        "AC-1": "none", "AC-2": "offline-publication-validation",
-        "AC-3": "none", "AC-4": "public-download", "AC-5": "live-read-back",
-        "AC-6": "offline-publication-validation", "AC-7": "live-read-back",
-        "AC-8": "live-read-back", "AC-9": "public-smoke", "AC-10": "none",
-        "AC-11": "live-read-back", "AC-12": "final-claim-gate",
-    }
-    if not isinstance(criteria, list) or len(criteria) != 12:
-        errors.append("prepublication QA criterion mapping is incomplete")
+        if command_errors or command.get('sequence') != index:
+            errors.append('prepublication QA command is invalid')
+    criteria = value.get('criterion_mapping')
+    required_post = profile['requirements']
+    if not isinstance(criteria, list) or len(criteria) != len(profile['states']):
+        errors.append('prepublication QA criterion mapping is incomplete')
     else:
         for index, item in enumerate(criteria, start=1):
-            criterion = f"AC-{index}"
-            if not exact_keys(
-                item,
-                ("criterion_id", "state", "evidence_command_sequences", "postpublication_requirement"),
-            ):
-                errors.append("prepublication QA criterion fields are invalid")
+            criterion = list(profile['states'])[index - 1]
+            if not exact_keys(item, ('criterion_id', 'state', 'evidence_command_sequences', 'postpublication_requirement')):
+                errors.append('prepublication QA criterion fields are invalid')
                 continue
-            sequences = item.get("evidence_command_sequences")
-            if (
-                item.get("criterion_id") != criterion
-                or item.get("state") != V080_PREPUBLICATION_STATES[criterion]
-                or item.get("postpublication_requirement") != required_post[criterion]
-                or not isinstance(sequences, list)
-                or any(isinstance(seq, bool) or not isinstance(seq, int) for seq in sequences)
-                or sequences != sorted(set(sequences))
-                or any(seq < 0 or seq >= len(commands) for seq in sequences)
-                or (not sequences and item.get("state") != "not-runnable-before-publication")
-            ):
-                errors.append(f"prepublication QA mapping is invalid for {criterion}")
-    if value.get("status") != "passed" or value.get("error") is not None:
-        errors.append("prepublication QA receipt did not pass")
-    if any(command.get("status") != "passed" for command in commands if isinstance(command, dict)):
-        errors.append("prepublication QA receipt contains a non-passing command")
+            sequences = item.get('evidence_command_sequences')
+            if item.get('criterion_id') != criterion or item.get('state') != profile['states'][criterion] or item.get('postpublication_requirement') != required_post[criterion] or (not isinstance(sequences, list)) or any((isinstance(seq, bool) or not isinstance(seq, int) for seq in sequences)) or (sequences != sorted(set(sequences))) or any((seq < 0 or seq >= len(commands) for seq in sequences)) or (not sequences and item.get('state') != 'not-runnable-before-publication'):
+                errors.append(f'prepublication QA mapping is invalid for {criterion}')
+    if value.get('status') != 'passed' or value.get('error') is not None:
+        errors.append('prepublication QA receipt did not pass')
+    if any((command.get('status') != 'passed' for command in commands if isinstance(command, dict))):
+        errors.append('prepublication QA receipt contains a non-passing command')
     return errors
 
 
-def validate_v080_configured_receipt(
-    value: object, source_commit: str, source_tree_oid: str
-) -> List[str]:
-    fields = (
-        "schema_version", "kind", "execution_id", "executor_role", "started_at",
-        "finished_at", "repository", "version", "profile", "source_commit",
-        "source_tree_oid", "commands", "checks", "status", "error",
-    )
+def validate_profile_configured_receipt(value: object, source_commit: str, source_tree_oid: str, *, profile) -> List[str]:
+    fields = ('schema_version', 'kind', 'execution_id', 'executor_role', 'started_at', 'finished_at', 'repository', 'version', 'profile', 'source_commit', 'source_tree_oid', 'commands', 'checks', 'status', 'error')
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return ["configured-check receipt fields are unknown or incomplete"]
+        return ['configured-check receipt fields are unknown or incomplete']
     errors: List[str] = []
-    if not valid_receipt_header(value, "vibe-kit-v0.8-configured-checks", source_commit, source_tree_oid):
-        errors.append("configured-check receipt identity is invalid")
-    if not isinstance(value.get("executor_role"), str) or not value.get("executor_role") or not validate_receipt_times(value):
-        errors.append("configured-check execution evidence is invalid")
-    commands = value.get("commands")
+    if not valid_profile_receipt_header(value, profile['kinds']['configured-checks'], source_commit, source_tree_oid, profile=profile):
+        errors.append('configured-check receipt identity is invalid')
+    if not isinstance(value.get('executor_role'), str) or not value.get('executor_role') or (not validate_receipt_times(value)):
+        errors.append('configured-check execution evidence is invalid')
+    commands = value.get('commands')
     if not isinstance(commands, list) or len(commands) != 1:
-        errors.append("configured-check receipt requires one command")
+        errors.append('configured-check receipt requires one command')
     else:
         errors.extend(validate_canonical_command(commands[0]))
-        if commands[0].get("sequence") != 0 or commands[0].get("argv") != [
-            "./bin/vibe", "verify", ".", "--format", "json"
-        ]:
-            errors.append("configured-check command is not canonical")
-    checks = value.get("checks")
-    if not isinstance(checks, list) or [item.get("name") for item in checks if isinstance(item, dict)] != list(VERIFY_ORDER):
-        errors.append("configured-check items are not the exact ordered matrix")
+        if commands[0].get('sequence') != 0 or commands[0].get('argv') != ['./bin/vibe', 'verify', '.', '--format', 'json']:
+            errors.append('configured-check command is not canonical')
+    checks = value.get('checks')
+    if not isinstance(checks, list) or [item.get('name') for item in checks if isinstance(item, dict)] != list(VERIFY_ORDER):
+        errors.append('configured-check items are not the exact ordered matrix')
         checks = []
     for item in checks:
-        if not exact_keys(item, ("name", "configured", "status", "exit_code", "result_sha256")):
-            errors.append("configured-check item fields are invalid")
+        if not exact_keys(item, ('name', 'configured', 'status', 'exit_code', 'result_sha256')):
+            errors.append('configured-check item fields are invalid')
             continue
-        configured = item.get("configured")
-        status = item.get("status")
-        exit_code = item.get("exit_code")
-        result_sha = item.get("result_sha256")
-        if not isinstance(configured, bool) or status not in (
-            "passed", "failed", "not-configured", "blocked", "error"
-        ):
-            errors.append("configured-check item value is invalid")
-        elif not configured and (status != "not-configured" or exit_code is not None or result_sha is not None):
-            errors.append("unconfigured check nullability is invalid")
-        elif configured and status == "passed" and (exit_code != 0 or not valid_sha256(result_sha)):
-            errors.append("passing configured check evidence is invalid")
-        elif configured and status in ("failed", "error") and (
-            isinstance(exit_code, bool) or not isinstance(exit_code, int) or not valid_sha256(result_sha)
-        ):
-            errors.append("started configured check evidence is invalid")
-        elif configured and status == "blocked" and (exit_code is not None or result_sha is not None):
-            errors.append("blocked configured check nullability is invalid")
-    if value.get("status") != "passed" or value.get("error") is not None or any(
-        item.get("status") not in ("passed", "not-configured") for item in checks
-    ):
-        errors.append("configured-check receipt did not pass")
+        configured = item.get('configured')
+        status = item.get('status')
+        exit_code = item.get('exit_code')
+        result_sha = item.get('result_sha256')
+        if not isinstance(configured, bool) or status not in ('passed', 'failed', 'not-configured', 'blocked', 'error'):
+            errors.append('configured-check item value is invalid')
+        elif not configured and (status != 'not-configured' or exit_code is not None or result_sha is not None):
+            errors.append('unconfigured check nullability is invalid')
+        elif configured and status == 'passed' and (exit_code != 0 or not valid_sha256(result_sha)):
+            errors.append('passing configured check evidence is invalid')
+        elif configured and status in ('failed', 'error') and (isinstance(exit_code, bool) or not isinstance(exit_code, int) or (not valid_sha256(result_sha))):
+            errors.append('started configured check evidence is invalid')
+        elif configured and status == 'blocked' and (exit_code is not None or result_sha is not None):
+            errors.append('blocked configured check nullability is invalid')
+    if value.get('status') != 'passed' or value.get('error') is not None or any((item.get('status') not in ('passed', 'not-configured') for item in checks)):
+        errors.append('configured-check receipt did not pass')
     return errors
 
 
-def validate_v080_python_receipt(
-    value: object, source_commit: str, source_tree_oid: str
-) -> List[str]:
-    fields = (
-        "schema_version", "kind", "execution_id", "executor_role", "started_at",
-        "finished_at", "repository", "version", "profile", "source_commit",
-        "source_tree_oid", "interpreter", "commands", "status", "error",
-    )
+def validate_profile_python_receipt(value: object, source_commit: str, source_tree_oid: str, *, profile) -> List[str]:
+    fields = ('schema_version', 'kind', 'execution_id', 'executor_role', 'started_at', 'finished_at', 'repository', 'version', 'profile', 'source_commit', 'source_tree_oid', 'interpreter', 'commands', 'status', 'error')
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return ["Python 3.9 receipt fields are unknown or incomplete"]
+        return ['Python 3.9 receipt fields are unknown or incomplete']
     errors: List[str] = []
-    if not valid_receipt_header(value, "vibe-kit-v0.8-python-3.9", source_commit, source_tree_oid):
-        errors.append("Python 3.9 receipt identity is invalid")
-    if not validate_python_identity(value.get("interpreter")) or not validate_receipt_times(value):
-        errors.append("Python 3.9 execution evidence is invalid")
-    command_ids = [
-        "python39-default-verify", "python39-publication-focused-tests",
-        "python39-package-a", "python39-validate-release-a", "python39-package-b",
-        "python39-validate-release-b",
-    ]
-    commands = value.get("commands")
-    if not isinstance(commands, list) or [item.get("command_id") for item in commands if isinstance(item, dict)] != command_ids:
-        errors.append("Python 3.9 command set is invalid")
+    if not valid_profile_receipt_header(value, profile['kinds']['python-3.9'], source_commit, source_tree_oid, profile=profile):
+        errors.append('Python 3.9 receipt identity is invalid')
+    if not validate_python_identity(value.get('interpreter')) or not validate_receipt_times(value):
+        errors.append('Python 3.9 execution evidence is invalid')
+    command_ids = ['python39-default-verify', 'python39-publication-focused-tests', 'python39-package-a', 'python39-validate-release-a', 'python39-package-b', 'python39-validate-release-b']
+    commands = value.get('commands')
+    if not isinstance(commands, list) or [item.get('command_id') for item in commands if isinstance(item, dict)] != command_ids:
+        errors.append('Python 3.9 command set is invalid')
         commands = []
     for index, command in enumerate(commands):
-        if validate_canonical_command(command) or command.get("sequence") != index or command.get("status") != "passed":
-            errors.append("Python 3.9 command evidence is invalid")
-    if value.get("status") != "passed" or value.get("error") is not None:
-        errors.append("Python 3.9 receipt did not pass")
+        if validate_canonical_command(command) or command.get('sequence') != index or command.get('status') != 'passed':
+            errors.append('Python 3.9 command evidence is invalid')
+    if value.get('status') != 'passed' or value.get('error') is not None:
+        errors.append('Python 3.9 receipt did not pass')
     return errors
 
 
-def validate_v080_build_receipt(
-    value: object, source_commit: str, source_tree_oid: str, build_id: str
-) -> List[str]:
-    fields = (
-        "schema_version", "kind", "execution_id", "executor_role", "started_at",
-        "finished_at", "repository", "version", "profile", "source_commit",
-        "source_tree_oid", "build_id", "checkout_id", "output_id", "source_clean",
-        "interpreter", "package_command", "assets", "asset_set_sha256",
-        "validate_release_command", "validate_release_result_sha256", "status", "error",
-    )
+def validate_profile_build_receipt(value: object, source_commit: str, source_tree_oid: str, build_id: str, *, profile) -> List[str]:
+    fields = ('schema_version', 'kind', 'execution_id', 'executor_role', 'started_at', 'finished_at', 'repository', 'version', 'profile', 'source_commit', 'source_tree_oid', 'build_id', 'checkout_id', 'output_id', 'source_clean', 'interpreter', 'package_command', 'assets', 'asset_set_sha256', 'validate_release_command', 'validate_release_result_sha256', 'status', 'error')
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return [f"clean-build {build_id} receipt fields are unknown or incomplete"]
+        return [f'clean-build {build_id} receipt fields are unknown or incomplete']
     errors: List[str] = []
-    if not valid_receipt_header(value, "vibe-kit-v0.8-clean-build", source_commit, source_tree_oid):
-        errors.append(f"clean-build {build_id} identity is invalid")
-    if (
-        value.get("executor_role") != "release-build-host"
-        or value.get("build_id") != build_id
-        or value.get("source_clean") is not True
-        or not validate_receipt_times(value)
-        or not validate_python_identity(value.get("interpreter"))
-        or any(
-            not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256
-            for key in ("execution_id", "checkout_id", "output_id")
-        )
-    ):
-        errors.append(f"clean-build {build_id} execution evidence is invalid")
-    for field in ("package_command", "validate_release_command"):
+    if not valid_profile_receipt_header(value, profile['kinds']['clean-build'], source_commit, source_tree_oid, profile=profile):
+        errors.append(f'clean-build {build_id} identity is invalid')
+    if value.get('executor_role') != 'release-build-host' or value.get('build_id') != build_id or value.get('source_clean') is not True or (not validate_receipt_times(value)) or (not validate_python_identity(value.get('interpreter'))) or any((not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256 for key in ('execution_id', 'checkout_id', 'output_id'))):
+        errors.append(f'clean-build {build_id} execution evidence is invalid')
+    for field in ('package_command', 'validate_release_command'):
         command = value.get(field)
-        if validate_canonical_command(command) or not isinstance(command, dict) or command.get("status") != "passed":
-            errors.append(f"clean-build {build_id} {field} is invalid")
-    assets = value.get("assets")
-    expected_names_roles = {
-        "SHA256SUMS": "checksum",
-        "release-manifest.json": "manifest",
-        "vibe-kit-0.8.0.zip": "direct",
-        "vibe-kit-distribution-0.8.0.zip": "distribution",
-        "vibe-kit-plugin-0.8.0.zip": "plugin",
-    }
-    if (
-        not isinstance(assets, list)
-        or len(assets) != 5
-        or assets != sorted(assets, key=lambda item: str(item.get("name", "")).encode("utf-8") if isinstance(item, dict) else b"")
-    ):
-        errors.append(f"clean-build {build_id} asset set is invalid")
+        if validate_canonical_command(command) or not isinstance(command, dict) or command.get('status') != 'passed':
+            errors.append(f'clean-build {build_id} {field} is invalid')
+    assets = value.get('assets')
+    expected_names_roles = {'SHA256SUMS': 'checksum', 'release-manifest.json': 'manifest', profile['direct']: 'direct', profile['distribution']: 'distribution', profile['plugin']: 'plugin'}
+    if not isinstance(assets, list) or len(assets) != 5 or assets != sorted(assets, key=lambda item: str(item.get('name', '')).encode('utf-8') if isinstance(item, dict) else b''):
+        errors.append(f'clean-build {build_id} asset set is invalid')
     else:
         for item in assets:
-            if (
-                not exact_keys(item, ("name", "role", "size", "sha256"))
-                or expected_names_roles.get(item.get("name")) != item.get("role")
-                or isinstance(item.get("size"), bool)
-                or not isinstance(item.get("size"), int)
-                or item["size"] < 0
-                or not valid_sha256(item.get("sha256"))
-            ):
-                errors.append(f"clean-build {build_id} asset identity is invalid")
-        if value.get("asset_set_sha256") != canonical_json_sha256(assets):
-            errors.append(f"clean-build {build_id} asset-set digest is invalid")
-    if not valid_sha256(value.get("validate_release_result_sha256")):
-        errors.append(f"clean-build {build_id} validation digest is invalid")
-    if value.get("status") != "passed" or value.get("error") is not None:
-        errors.append(f"clean-build {build_id} did not pass")
+            if not exact_keys(item, ('name', 'role', 'size', 'sha256')) or expected_names_roles.get(item.get('name')) != item.get('role') or isinstance(item.get('size'), bool) or (not isinstance(item.get('size'), int)) or (item['size'] < 0) or (not valid_sha256(item.get('sha256'))):
+                errors.append(f'clean-build {build_id} asset identity is invalid')
+        if value.get('asset_set_sha256') != canonical_json_sha256(assets):
+            errors.append(f'clean-build {build_id} asset-set digest is invalid')
+    if not valid_sha256(value.get('validate_release_result_sha256')):
+        errors.append(f'clean-build {build_id} validation digest is invalid')
+    if value.get('status') != 'passed' or value.get('error') is not None:
+        errors.append(f'clean-build {build_id} did not pass')
     return errors
 
 
-def validate_v080_release_gate_bundle(
-    value: object, source_commit: str
-) -> Tuple[List[str], Optional[str], Optional[List[Dict[str, object]]]]:
-    fields = (
-        "schema_version", "kind", "repository", "version", "profile",
-        "source_commit", "source_tree_oid", "generated_at", "qa",
-        "configured_checks", "python_3_9", "builds", "receipt_sha256s",
-    )
+def validate_profile_release_gate_bundle(value: object, source_commit: str, *, profile) -> Tuple[List[str], Optional[str], Optional[List[Dict[str, object]]]]:
+    fields = ('schema_version', 'kind', 'repository', 'version', 'profile', 'source_commit', 'source_tree_oid', 'generated_at', 'qa', 'configured_checks', 'python_3_9', 'builds', 'receipt_sha256s')
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return ["release-gate bundle fields are unknown or incomplete"], None, None
+        return (['release-gate bundle fields are unknown or incomplete'], None, None)
     errors: List[str] = []
-    tree = value.get("source_tree_oid")
-    if (
-        value.get("schema_version") != 1
-        or value.get("kind") != "vibe-kit-v0.8-release-gate-evidence"
-        or value.get("repository") != "mintgao/vibe-kit"
-        or value.get("version") != "0.8.0"
-        or value.get("profile") != V080_PUBLICATION_PROFILE
-        or value.get("source_commit") != source_commit
-        or not valid_oid(tree)
-        or not is_iso8601(value.get("generated_at"))
-    ):
-        errors.append("release-gate bundle identity is invalid")
+    tree = value.get('source_tree_oid')
+    if value.get('schema_version') != 1 or value.get('kind') != profile['kinds']['release-gate-evidence'] or value.get('repository') != 'mintgao/vibe-kit' or (value.get('version') != profile['version']) or (value.get('profile') != profile['profile']) or (value.get('source_commit') != source_commit) or (not valid_oid(tree)) or (not is_iso8601(value.get('generated_at'))):
+        errors.append('release-gate bundle identity is invalid')
     if not isinstance(tree, str):
-        tree = ""
-    qa = value.get("qa")
-    configured = value.get("configured_checks")
-    python_receipt = value.get("python_3_9")
-    builds = value.get("builds")
-    errors.extend(validate_v080_qa_receipt(qa, source_commit, tree))
-    errors.extend(validate_v080_configured_receipt(configured, source_commit, tree))
-    errors.extend(validate_v080_python_receipt(python_receipt, source_commit, tree))
+        tree = ''
+    qa = value.get('qa')
+    configured = value.get('configured_checks')
+    python_receipt = value.get('python_3_9')
+    builds = value.get('builds')
+    errors.extend(validate_profile_qa_receipt(qa, source_commit, tree, profile=profile))
+    errors.extend(validate_profile_configured_receipt(configured, source_commit, tree, profile=profile))
+    errors.extend(validate_profile_python_receipt(python_receipt, source_commit, tree, profile=profile))
     if not isinstance(builds, list) or len(builds) != 2:
-        errors.append("release-gate bundle requires builds A and B")
+        errors.append('release-gate bundle requires builds A and B')
         builds = []
     else:
-        errors.extend(validate_v080_build_receipt(builds[0], source_commit, tree, "A"))
-        errors.extend(validate_v080_build_receipt(builds[1], source_commit, tree, "B"))
-        if all(isinstance(item, dict) for item in builds):
-            if any(
-                builds[0].get(field) == builds[1].get(field)
-                for field in ("execution_id", "checkout_id", "output_id")
-            ):
-                errors.append("clean builds A and B do not have distinct execution identities")
-            if builds[0].get("assets") != builds[1].get("assets") or builds[0].get("asset_set_sha256") != builds[1].get("asset_set_sha256"):
-                errors.append("clean builds A and B are not byte-identical")
-    digest_map = value.get("receipt_sha256s")
-    if not exact_keys(digest_map, ("qa", "configured_checks", "python_3_9", "build_a", "build_b")):
-        errors.append("release-gate receipt digest map is invalid")
+        errors.extend(validate_profile_build_receipt(builds[0], source_commit, tree, 'A', profile=profile))
+        errors.extend(validate_profile_build_receipt(builds[1], source_commit, tree, 'B', profile=profile))
+        if all((isinstance(item, dict) for item in builds)):
+            if any((builds[0].get(field) == builds[1].get(field) for field in ('execution_id', 'checkout_id', 'output_id'))):
+                errors.append('clean builds A and B do not have distinct execution identities')
+            if builds[0].get('assets') != builds[1].get('assets') or builds[0].get('asset_set_sha256') != builds[1].get('asset_set_sha256'):
+                errors.append('clean builds A and B are not byte-identical')
+    digest_map = value.get('receipt_sha256s')
+    if not exact_keys(digest_map, ('qa', 'configured_checks', 'python_3_9', 'build_a', 'build_b')):
+        errors.append('release-gate receipt digest map is invalid')
     else:
-        children = {
-            "qa": qa,
-            "configured_checks": configured,
-            "python_3_9": python_receipt,
-            "build_a": builds[0] if len(builds) == 2 else None,
-            "build_b": builds[1] if len(builds) == 2 else None,
-        }
+        children = {'qa': qa, 'configured_checks': configured, 'python_3_9': python_receipt, 'build_a': builds[0] if len(builds) == 2 else None, 'build_b': builds[1] if len(builds) == 2 else None}
         for key, child in children.items():
             if digest_map.get(key) != canonical_json_sha256(child):
-                errors.append(f"release-gate child digest is invalid: {key}")
-    assets = builds[0].get("assets") if len(builds) == 2 and isinstance(builds[0], dict) else None
-    return errors, tree or None, assets if isinstance(assets, list) else None
+                errors.append(f'release-gate child digest is invalid: {key}')
+    assets = builds[0].get('assets') if len(builds) == 2 and isinstance(builds[0], dict) else None
+    return (errors, tree or None, assets if isinstance(assets, list) else None)
 
 
-def validate_v080_authorization(value: object, intent: Dict[str, object]) -> List[str]:
-    fields = (
-        "authorization_id", "repository", "version", "release_kind",
-        "allowed_operations", "publication_intent_sha256", "host_operation_id",
-    )
+def validate_profile_authorization(value: object, intent: Dict[str, object], *, profile) -> List[str]:
+    fields = ('authorization_id', 'repository', 'version', 'release_kind', 'allowed_operations', 'publication_intent_sha256', 'host_operation_id')
+    fields += profile['authorization_fields']
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return ["publication authorization fields are unknown or incomplete"]
+        return ['publication authorization fields are unknown or incomplete']
     errors: List[str] = []
-    if any(
-        not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256
-        for key in ("authorization_id", "host_operation_id")
-    ):
-        errors.append("publication authorization identity is invalid")
-    expected = {
-        "repository": "mintgao/vibe-kit",
-        "version": "0.8.0",
-        "release_kind": "prerelease",
-        "allowed_operations": list(V080_PUBLICATION_ALLOWED_OPERATIONS),
-        "publication_intent_sha256": canonical_json_sha256(intent),
-    }
-    if any(value.get(key) != expected[key] for key in expected):
-        errors.append("publication authorization does not bind the exact intent and scope")
+    if any((not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
+        errors.append('publication authorization identity is invalid')
+    if profile['schema'] == 3 and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
+        errors.append('authorization source reference or binding time is invalid')
+    expected = {'repository': 'mintgao/vibe-kit', 'version': profile['version'], 'release_kind': 'prerelease', 'allowed_operations': list(V080_PUBLICATION_ALLOWED_OPERATIONS), 'publication_intent_sha256': canonical_json_sha256(intent)}
+    if any((value.get(key) != expected[key] for key in expected)):
+        errors.append('publication authorization does not bind the exact intent and scope')
     return errors
 
 
-def validate_v080_postpublication_acceptance(
-    value: object,
-    intent: Dict[str, object],
-    authorization: Dict[str, object],
-    source_tree_oid: str,
-) -> List[str]:
-    fields = (
-        "schema_version", "kind", "execution_id", "executor_role", "started_at",
-        "finished_at", "repository", "version", "profile", "source_commit",
-        "source_tree_oid", "publication_intent_sha256", "authorization_id",
-        "host_operation_id", "validate_publication_result_sha256", "criteria",
-        "status", "error",
-    )
+def validate_profile_postpublication_acceptance(value: object, intent: Dict[str, object], authorization: Dict[str, object], source_tree_oid: str, *, profile) -> List[str]:
+    fields = ('schema_version', 'kind', 'execution_id', 'executor_role', 'started_at', 'finished_at', 'repository', 'version', 'profile', 'source_commit', 'source_tree_oid', 'publication_intent_sha256', 'authorization_id', 'host_operation_id', 'validate_publication_result_sha256', 'criteria', 'status', 'error')
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return ["postpublication acceptance fields are unknown or incomplete"]
+        return ['postpublication acceptance fields are unknown or incomplete']
     errors: List[str] = []
-    if (
-        not valid_receipt_header(
-            value, "vibe-kit-v0.8-postpublication-acceptance",
-            str(intent.get("source_commit", "")), source_tree_oid,
-        )
-        or value.get("executor_role") != "independent-qa"
-        or not validate_receipt_times(value)
-        or value.get("publication_intent_sha256") != canonical_json_sha256(intent)
-        or value.get("authorization_id") != authorization.get("authorization_id")
-        or value.get("host_operation_id") != authorization.get("host_operation_id")
-        or not valid_sha256(value.get("validate_publication_result_sha256"))
-    ):
-        errors.append("postpublication acceptance identity is invalid")
-    criteria = value.get("criteria")
-    allowed_kinds = {
-        "local-gate-receipt", "publication-receipt", "live-read-back",
-        "public-download", "public-smoke", "validate-publication",
-    }
-    if not isinstance(criteria, list) or len(criteria) != 12:
-        errors.append("postpublication acceptance criteria are incomplete")
+    if not valid_profile_receipt_header(value, profile['kinds']['postpublication-acceptance'], str(intent.get('source_commit', '')), source_tree_oid, profile=profile) or value.get('executor_role') != 'independent-qa' or (not validate_receipt_times(value)) or (value.get('publication_intent_sha256') != canonical_json_sha256(intent)) or (value.get('authorization_id') != authorization.get('authorization_id')) or (value.get('host_operation_id') != authorization.get('host_operation_id')) or (not valid_sha256(value.get('validate_publication_result_sha256'))):
+        errors.append('postpublication acceptance identity is invalid')
+    criteria = value.get('criteria')
+    allowed_kinds = {'local-gate-receipt', 'publication-receipt', 'live-read-back', 'public-download', 'public-smoke', 'validate-publication'}
+    if not isinstance(criteria, list) or len(criteria) != len(profile['post_criteria']):
+        errors.append('postpublication acceptance criteria are incomplete')
         criteria = []
     for index, item in enumerate(criteria, start=1):
-        if not exact_keys(item, ("criterion_id", "state", "evidence_refs")) or (
-            item.get("criterion_id") != f"AC-{index}"
-            or item.get("state") not in ("passed", "failed", "blocked")
-            or not isinstance(item.get("evidence_refs"), list)
-            or not item.get("evidence_refs")
-        ):
-            errors.append(f"postpublication acceptance criterion AC-{index} is invalid")
+        if not exact_keys(item, ('criterion_id', 'state', 'evidence_refs')) or (item.get('criterion_id') != profile['post_criteria'][index - 1] or item.get('state') not in ('passed', 'failed', 'blocked') or (not isinstance(item.get('evidence_refs'), list)) or (not item.get('evidence_refs'))):
+            errors.append(f'postpublication acceptance criterion AC-{index} is invalid')
             continue
-        for reference in item["evidence_refs"]:
-            if (
-                not exact_keys(reference, ("kind", "sha256"))
-                or reference.get("kind") not in allowed_kinds
-                or not valid_sha256(reference.get("sha256"))
-            ):
-                errors.append(f"postpublication acceptance evidence for AC-{index} is invalid")
-    if value.get("status") == "passed":
-        if value.get("error") is not None or any(item.get("state") != "passed" for item in criteria):
-            errors.append("passed postpublication acceptance does not contain twelve passes")
-    elif value.get("status") not in ("failed", "blocked") or not valid_publication_error(value.get("error")):
-        errors.append("non-passing postpublication acceptance lacks one next action")
+        for reference in item['evidence_refs']:
+            if not exact_keys(reference, ('kind', 'sha256')) or reference.get('kind') not in allowed_kinds or (not valid_sha256(reference.get('sha256'))):
+                errors.append(f'postpublication acceptance evidence for AC-{index} is invalid')
+    if value.get('status') == 'passed':
+        if value.get('error') is not None or any((item.get('state') != 'passed' for item in criteria)):
+            errors.append('passed postpublication acceptance does not contain twelve passes')
+    elif value.get('status') not in ('failed', 'blocked') or not valid_publication_error(value.get('error')):
+        errors.append('non-passing postpublication acceptance lacks one next action')
     return errors
 
 
-def v080_operation_initial_observation(
-    snapshot: Dict[str, object], kind: str
-) -> object:
-    if kind == "fast-forward-main":
-        return snapshot.get("main")
-    if kind == "create-or-confirm-annotated-tag":
-        return snapshot.get("tag")
-    if kind == "create-or-confirm-prerelease":
-        return snapshot.get("release")
-    if kind == "upload-or-confirm-five-assets":
-        return snapshot.get("assets")
+def profile_operation_initial_observation(snapshot: Dict[str, object], kind: str, *, profile) -> object:
+    if kind == 'fast-forward-main':
+        return snapshot.get('main')
+    if kind == 'create-or-confirm-annotated-tag':
+        return snapshot.get('tag')
+    if kind == 'create-or-confirm-prerelease':
+        return snapshot.get('release')
+    if kind == 'upload-or-confirm-five-assets':
+        return snapshot.get('assets')
     return snapshot
 
 
-def v080_operation_identity(
-    kind: str, natural_key: str, snapshot_sha: str, initial: object
-) -> Dict[str, object]:
-    return {
-        "schema_version": 2,
-        "profile": V080_PUBLICATION_PROFILE,
-        "operation_kind": kind,
-        "natural_key": natural_key,
-        "remote_snapshot_sha256": snapshot_sha,
-        "initial_observation": initial,
-    }
+def profile_operation_identity(kind: str, natural_key: str, snapshot_sha: str, initial: object, *, profile) -> Dict[str, object]:
+    return {'schema_version': profile['schema'], 'profile': profile['profile'], 'operation_kind': kind, 'natural_key': natural_key, 'remote_snapshot_sha256': snapshot_sha, 'initial_observation': initial}
 
 
-def validate_v080_remote_snapshot(
-    snapshot: object, intent: Dict[str, object]
-) -> List[str]:
-    fields = ("observed_at", "main", "tag", "release", "asset_list_complete", "assets")
+def validate_profile_remote_snapshot(snapshot: object, intent: Dict[str, object], *, profile) -> List[str]:
+    fields = ('observed_at', 'main', 'tag', 'release', 'asset_list_complete', 'assets')
     if not exact_keys(snapshot, fields) or not isinstance(snapshot, dict):
-        return ["schema-2 remote snapshot fields are unknown or incomplete"]
+        return ['schema-2 remote snapshot fields are unknown or incomplete']
     errors: List[str] = []
-    main = snapshot.get("main")
-    intent_main = intent.get("main") if isinstance(intent.get("main"), dict) else {}
-    if (
-        not is_iso8601(snapshot.get("observed_at"))
-        or not exact_keys(main, ("branch", "observed_oid"))
-        or main.get("branch") != "main"
-        or not valid_oid(main.get("observed_oid"))
-        or main.get("observed_oid") not in (intent_main.get("expected_old_oid"), intent_main.get("target_oid"))
-    ):
-        errors.append("schema-2 remote main snapshot is invalid")
-    tag = snapshot.get("tag")
-    tag_fields = (
-        "state", "ref_oid", "object_type", "tag_object_oid", "peeled_commit",
-        "tagger_name", "tagger_email", "tagger_timestamp", "tagger_timezone",
-        "message_sha256",
-    )
-    intent_tag = intent.get("tag") if isinstance(intent.get("tag"), dict) else {}
-    if not exact_keys(tag, tag_fields) or tag.get("state") not in ("absent", "present"):
-        errors.append("schema-2 remote tag snapshot is invalid")
-    elif tag.get("state") == "absent":
-        if any(tag.get(key) is not None for key in tag_fields[1:]):
-            errors.append("absent schema-2 tag snapshot has non-null identity")
-    elif (
-        not valid_oid(tag.get("ref_oid"))
-        or tag.get("object_type") != "tag"
-        or not valid_oid(tag.get("tag_object_oid"))
-        or tag.get("ref_oid") != intent_tag.get("expected_tag_object_oid")
-        or tag.get("tag_object_oid") != intent_tag.get("expected_tag_object_oid")
-        or tag.get("peeled_commit") != intent.get("source_commit")
-        or any(tag.get(key) != intent_tag.get(key) for key in (
-            "tagger_name", "tagger_email", "tagger_timestamp", "tagger_timezone", "message_sha256"
-        ))
-    ):
-        errors.append("present schema-2 tag snapshot diverges from the intent")
-    release = snapshot.get("release")
-    release_fields = (
-        "state", "id", "url", "tag", "title", "body_sha256", "draft",
-        "prerelease", "immutable",
-    )
-    intent_release = intent.get("release") if isinstance(intent.get("release"), dict) else {}
-    if not exact_keys(release, release_fields) or release.get("state") not in ("absent", "present"):
-        errors.append("schema-2 remote Release snapshot is invalid")
-    elif release.get("state") == "absent":
-        if any(release.get(key) is not None for key in release_fields[1:]):
-            errors.append("absent schema-2 Release snapshot has non-null identity")
-    elif (
-        not valid_positive_int(release.get("id"))
-        or release.get("url") != "https://github.com/mintgao/vibe-kit/releases/tag/v0.8.0"
-        or release.get("tag") != "v0.8.0"
-        or release.get("title") != intent_release.get("title")
-        or release.get("body_sha256") != intent_release.get("body_sha256")
-        or release.get("draft") is not False
-        or release.get("prerelease") is not True
-        or release.get("immutable") not in (True, False, "unknown")
-    ):
-        errors.append("present schema-2 Release snapshot diverges from the intent")
-    assets = snapshot.get("assets")
-    intended_assets = intent.get("assets") if isinstance(intent.get("assets"), list) else []
-    intended = {item.get("name"): item for item in intended_assets if isinstance(item, dict)}
-    if snapshot.get("asset_list_complete") is not True or not isinstance(assets, list):
-        errors.append("schema-2 remote asset pagination is incomplete")
+    main = snapshot.get('main')
+    intent_main = intent.get('main') if isinstance(intent.get('main'), dict) else {}
+    if not is_iso8601(snapshot.get('observed_at')) or not exact_keys(main, ('branch', 'observed_oid')) or main.get('branch') != 'main' or (not valid_oid(main.get('observed_oid'))) or (main.get('observed_oid') not in (intent_main.get('expected_old_oid'), intent_main.get('target_oid'))):
+        errors.append('schema-2 remote main snapshot is invalid')
+    tag = snapshot.get('tag')
+    tag_fields = ('state', 'ref_oid', 'object_type', 'tag_object_oid', 'peeled_commit', 'tagger_name', 'tagger_email', 'tagger_timestamp', 'tagger_timezone', 'message_sha256')
+    intent_tag = intent.get('tag') if isinstance(intent.get('tag'), dict) else {}
+    if not exact_keys(tag, tag_fields) or tag.get('state') not in ('absent', 'present'):
+        errors.append('schema-2 remote tag snapshot is invalid')
+    elif tag.get('state') == 'absent':
+        if any((tag.get(key) is not None for key in tag_fields[1:])):
+            errors.append('absent schema-2 tag snapshot has non-null identity')
+    elif not valid_oid(tag.get('ref_oid')) or tag.get('object_type') != 'tag' or (not valid_oid(tag.get('tag_object_oid'))) or (tag.get('ref_oid') != intent_tag.get('expected_tag_object_oid')) or (tag.get('tag_object_oid') != intent_tag.get('expected_tag_object_oid')) or (tag.get('peeled_commit') != intent.get('source_commit')) or any((tag.get(key) != intent_tag.get(key) for key in ('tagger_name', 'tagger_email', 'tagger_timestamp', 'tagger_timezone', 'message_sha256'))):
+        errors.append('present schema-2 tag snapshot diverges from the intent')
+    release = snapshot.get('release')
+    release_fields = ('state', 'id', 'url', 'tag', 'title', 'body_sha256', 'draft', 'prerelease', 'immutable')
+    intent_release = intent.get('release') if isinstance(intent.get('release'), dict) else {}
+    if not exact_keys(release, release_fields) or release.get('state') not in ('absent', 'present'):
+        errors.append('schema-2 remote Release snapshot is invalid')
+    elif release.get('state') == 'absent':
+        if any((release.get(key) is not None for key in release_fields[1:])):
+            errors.append('absent schema-2 Release snapshot has non-null identity')
+    elif not valid_positive_int(release.get('id')) or release.get('url') != ("https://github.com/mintgao/vibe-kit/releases/tag/" + str(profile["tag"])) or release.get('tag') != profile['tag'] or (release.get('title') != intent_release.get('title')) or (release.get('body_sha256') != intent_release.get('body_sha256')) or (release.get('draft') is not False) or (release.get('prerelease') is not True) or (release.get('immutable') not in (True, False, 'unknown')):
+        errors.append('present schema-2 Release snapshot diverges from the intent')
+    assets = snapshot.get('assets')
+    intended_assets = intent.get('assets') if isinstance(intent.get('assets'), list) else []
+    intended = {item.get('name'): item for item in intended_assets if isinstance(item, dict)}
+    if snapshot.get('asset_list_complete') is not True or not isinstance(assets, list):
+        errors.append('schema-2 remote asset pagination is incomplete')
         assets = []
-    elif assets != sorted(
-        assets,
-        key=lambda item: (
-            str(item.get("name", "")).encode("utf-8"),
-            item.get("id", 0) if isinstance(item, dict) else 0,
-        ),
-    ):
-        errors.append("schema-2 remote assets are not in canonical order")
+    elif assets != sorted(assets, key=lambda item: (str(item.get('name', '')).encode('utf-8'), item.get('id', 0) if isinstance(item, dict) else 0)):
+        errors.append('schema-2 remote assets are not in canonical order')
     seen_names = []
     for item in assets:
-        if not exact_keys(item, ("id", "name", "size", "sha256", "download_url")):
-            errors.append("schema-2 remote asset fields are invalid")
+        if not exact_keys(item, ('id', 'name', 'size', 'sha256', 'download_url')):
+            errors.append('schema-2 remote asset fields are invalid')
             continue
-        seen_names.append(item.get("name"))
-        expected = intended.get(item.get("name"))
-        if (
-            not valid_positive_int(item.get("id"))
-            or not isinstance(item.get("name"), str)
-            or not archive_name_is_safe(item["name"])
-            or isinstance(item.get("size"), bool)
-            or not isinstance(item.get("size"), int)
-            or item["size"] < 0
-            or not valid_sha256(item.get("sha256"))
-            or item.get("download_url") != (
-                f"https://github.com/mintgao/vibe-kit/releases/download/v0.8.0/{item.get('name')}"
-            )
-            or expected is None
-            or item.get("size") != expected.get("size")
-            or item.get("sha256") != expected.get("sha256")
-        ):
-            errors.append("schema-2 remote asset is unsafe, extra, or divergent")
+        seen_names.append(item.get('name'))
+        expected = intended.get(item.get('name'))
+        if not valid_positive_int(item.get('id')) or not isinstance(item.get('name'), str) or (not archive_name_is_safe(item['name'])) or isinstance(item.get('size'), bool) or (not isinstance(item.get('size'), int)) or (item['size'] < 0) or (not valid_sha256(item.get('sha256'))) or (item.get('download_url') != f"https://github.com/mintgao/vibe-kit/releases/download/{profile['tag']}/{item.get('name')}") or (expected is None) or (item.get('size') != expected.get('size')) or (item.get('sha256') != expected.get('sha256')):
+            errors.append('schema-2 remote asset is unsafe, extra, or divergent')
     if len(seen_names) != len(set(seen_names)):
-        errors.append("schema-2 remote assets contain duplicate names")
-    if isinstance(release, dict) and release.get("state") == "absent" and assets:
-        errors.append("absent schema-2 Release must have no assets")
+        errors.append('schema-2 remote assets contain duplicate names')
+    if isinstance(release, dict) and release.get('state') == 'absent' and assets:
+        errors.append('absent schema-2 Release must have no assets')
     return errors
 
 
-def validate_v080_intent(value: object) -> List[str]:
-    fields = (
-        "schema_version", "kind", "profile", "repository", "version",
-        "source_commit", "main", "tag", "release", "assets", "asset_set_sha256",
-        "local_gates", "remote_snapshot", "remote_snapshot_sha256", "operations",
-        "authorization_scope", "issue_closeout_policy", "recovery_policy",
-    )
+def validate_profile_intent(value: object, *, profile) -> List[str]:
+    fields = ('schema_version', 'kind', 'profile', 'repository', 'version', 'source_commit', 'main', 'tag', 'release', 'assets', 'asset_set_sha256', 'local_gates', 'remote_snapshot', 'remote_snapshot_sha256', 'operations', 'authorization_scope', 'issue_closeout_policy', 'recovery_policy')
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return ["schema-2 publication intent fields are unknown or incomplete"]
+        return ['schema-2 publication intent fields are unknown or incomplete']
     intent = value
     errors: List[str] = []
-    if (
-        intent.get("schema_version") != 2
-        or intent.get("kind") != "vibe-kit-publication"
-        or intent.get("profile") != V080_PUBLICATION_PROFILE
-        or intent.get("repository") != publication_repository()
-        or intent.get("version") != "0.8.0"
-        or not valid_oid(intent.get("source_commit"))
-    ):
-        errors.append("schema-2 publication profile identity is invalid")
-    main = intent.get("main")
-    if (
-        not exact_keys(main, ("branch", "expected_old_oid", "target_oid", "policy"))
-        or main.get("branch") != "main"
-        or not valid_oid(main.get("expected_old_oid"))
-        or main.get("target_oid") != intent.get("source_commit")
-        or main.get("policy") != "fast-forward-cas-only"
-    ):
-        errors.append("schema-2 publication main identity is invalid")
-    tag = intent.get("tag")
-    tag_fields = (
-        "name", "object_type", "expected_tag_object_oid", "target_commit",
-        "tagger_name", "tagger_email", "tagger_timestamp", "tagger_timezone",
-        "message_sha256",
-    )
-    if (
-        not exact_keys(tag, tag_fields)
-        or tag.get("name") != "v0.8.0"
-        or tag.get("object_type") != "tag"
-        or not valid_oid(tag.get("expected_tag_object_oid"))
-        or tag.get("target_commit") != intent.get("source_commit")
-        or not isinstance(tag.get("tagger_name"), str)
-        or not tag.get("tagger_name")
-        or not isinstance(tag.get("tagger_email"), str)
-        or not tag.get("tagger_email")
-        or not is_iso8601(tag.get("tagger_timestamp"))
-        or re.fullmatch(r"[+-][0-9]{4}", str(tag.get("tagger_timezone", ""))) is None
-        or not valid_sha256(tag.get("message_sha256"))
-    ):
-        errors.append("schema-2 annotated-tag identity is invalid")
-    release = intent.get("release")
-    expected_release = {
-        "title": "Vibe Kit v0.8.0",
-        "body_sha256": release.get("body_sha256") if isinstance(release, dict) else None,
-        "body_source_path": "docs/releases/0.8.0.md",
-        "draft": False,
-        "prerelease": True,
-        "generated_notes": False,
-        "platform_immutability_required": False,
-    }
-    if release != expected_release or not valid_sha256(expected_release["body_sha256"]):
-        errors.append("schema-2 Release identity/state is invalid")
-    assets = intent.get("assets")
-    expected_names_roles = {
-        "SHA256SUMS": "checksum", "release-manifest.json": "manifest",
-        "vibe-kit-0.8.0.zip": "direct",
-        "vibe-kit-distribution-0.8.0.zip": "distribution",
-        "vibe-kit-plugin-0.8.0.zip": "plugin",
-    }
-    if not isinstance(assets, list) or len(assets) != 5 or assets != sorted(
-        assets, key=lambda item: str(item.get("name", "")).encode("utf-8") if isinstance(item, dict) else b""
-    ):
-        errors.append("schema-2 publication assets are not the exact sorted five-asset set")
+    if intent.get('schema_version') != profile['schema'] or intent.get('kind') != 'vibe-kit-publication' or intent.get('profile') != profile['profile'] or (intent.get('repository') != publication_repository()) or (intent.get('version') != profile['version']) or (not valid_oid(intent.get('source_commit'))):
+        errors.append('schema-2 publication profile identity is invalid')
+    main = intent.get('main')
+    if not exact_keys(main, ('branch', 'expected_old_oid', 'target_oid', 'policy')) or main.get('branch') != 'main' or (not valid_oid(main.get('expected_old_oid'))) or (main.get('target_oid') != intent.get('source_commit')) or (main.get('policy') != 'fast-forward-cas-only'):
+        errors.append('schema-2 publication main identity is invalid')
+    tag = intent.get('tag')
+    tag_fields = ('name', 'object_type', 'expected_tag_object_oid', 'target_commit', 'tagger_name', 'tagger_email', 'tagger_timestamp', 'tagger_timezone', 'message_sha256')
+    if not exact_keys(tag, tag_fields) or tag.get('name') != profile['tag'] or tag.get('object_type') != 'tag' or (not valid_oid(tag.get('expected_tag_object_oid'))) or (tag.get('target_commit') != intent.get('source_commit')) or (not isinstance(tag.get('tagger_name'), str)) or (not tag.get('tagger_name')) or (not isinstance(tag.get('tagger_email'), str)) or (not tag.get('tagger_email')) or (not is_iso8601(tag.get('tagger_timestamp'))) or (re.fullmatch('[+-][0-9]{4}', str(tag.get('tagger_timezone', ''))) is None) or (not valid_sha256(tag.get('message_sha256'))):
+        errors.append('schema-2 annotated-tag identity is invalid')
+    release = intent.get('release')
+    expected_release = {'title': profile['title'], 'body_sha256': release.get('body_sha256') if isinstance(release, dict) else None, 'body_source_path': profile['body_path'], 'draft': False, 'prerelease': True, 'generated_notes': False, 'platform_immutability_required': False}
+    if release != expected_release or not valid_sha256(expected_release['body_sha256']):
+        errors.append('schema-2 Release identity/state is invalid')
+    assets = intent.get('assets')
+    expected_names_roles = {'SHA256SUMS': 'checksum', 'release-manifest.json': 'manifest', profile['direct']: 'direct', profile['distribution']: 'distribution', profile['plugin']: 'plugin'}
+    if not isinstance(assets, list) or len(assets) != 5 or assets != sorted(assets, key=lambda item: str(item.get('name', '')).encode('utf-8') if isinstance(item, dict) else b''):
+        errors.append('schema-2 publication assets are not the exact sorted five-asset set')
         assets = []
     else:
         for item in assets:
-            if (
-                not exact_keys(item, ("name", "role", "size", "sha256"))
-                or expected_names_roles.get(item.get("name")) != item.get("role")
-                or isinstance(item.get("size"), bool)
-                or not isinstance(item.get("size"), int)
-                or item["size"] < 0
-                or not valid_sha256(item.get("sha256"))
-            ):
-                errors.append("schema-2 publication asset identity is invalid")
-        if intent.get("asset_set_sha256") != canonical_json_sha256(assets):
-            errors.append("schema-2 publication asset-set digest is invalid")
-    gates = intent.get("local_gates")
-    if not exact_keys(gates, ("release_gate_evidence_sha256",)) or not valid_sha256(gates.get("release_gate_evidence_sha256")):
-        errors.append("schema-2 local gate binding is invalid")
-    snapshot = intent.get("remote_snapshot")
-    errors.extend(validate_v080_remote_snapshot(snapshot, intent))
-    snapshot_sha = intent.get("remote_snapshot_sha256")
+            if not exact_keys(item, ('name', 'role', 'size', 'sha256')) or expected_names_roles.get(item.get('name')) != item.get('role') or isinstance(item.get('size'), bool) or (not isinstance(item.get('size'), int)) or (item['size'] < 0) or (not valid_sha256(item.get('sha256'))):
+                errors.append('schema-2 publication asset identity is invalid')
+        if intent.get('asset_set_sha256') != canonical_json_sha256(assets):
+            errors.append('schema-2 publication asset-set digest is invalid')
+    if profile['schema'] == 3 and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
+        errors.append('publication requires each exact asset name once')
+    gates = intent.get('local_gates')
+    if not exact_keys(gates, ('release_gate_evidence_sha256',)) or not valid_sha256(gates.get('release_gate_evidence_sha256')):
+        errors.append('schema-2 local gate binding is invalid')
+    snapshot = intent.get('remote_snapshot')
+    errors.extend(validate_profile_remote_snapshot(snapshot, intent, profile=profile))
+    snapshot_sha = intent.get('remote_snapshot_sha256')
     if not valid_sha256(snapshot_sha) or snapshot_sha != canonical_json_sha256(snapshot):
-        errors.append("schema-2 remote snapshot digest is invalid")
-    operations = intent.get("operations")
+        errors.append('schema-2 remote snapshot digest is invalid')
+    operations = intent.get('operations')
     if not isinstance(operations, list) or len(operations) != 6:
-        errors.append("schema-2 publication operation graph is invalid")
+        errors.append('schema-2 publication operation graph is invalid')
         operations = []
     for index, operation in enumerate(operations):
-        fields = (
-            "sequence", "operation_id", "kind", "natural_key",
-            "expected_precondition", "max_write_attempts", "asset_operations",
-        )
+        fields = ('sequence', 'operation_id', 'kind', 'natural_key', 'expected_precondition', 'max_write_attempts', 'asset_operations')
         kind = V080_PUBLICATION_ALLOWED_OPERATIONS[index]
         if not exact_keys(operation, fields):
-            errors.append("schema-2 publication operation fields are invalid")
+            errors.append('schema-2 publication operation fields are invalid')
             continue
-        natural_key = operation.get("natural_key")
+        if profile['schema'] == 3:
+            exact_keys_by_operation = (
+                "mintgao/vibe-kit:main", f"mintgao/vibe-kit:tag:{profile['tag']}",
+                f"mintgao/vibe-kit:release:{profile['tag']}", f"mintgao/vibe-kit:release:{profile['tag']}:assets",
+                f"mintgao/vibe-kit:publication:{profile['tag']}:read-back", f"mintgao/vibe-kit:release:{profile['tag']}:public-assets",
+            )
+            if operation.get('operation_id') != f'publish-{index}' or operation.get('natural_key') != exact_keys_by_operation[index]:
+                errors.append('publication operation natural identity is invalid')
+        natural_key = operation.get('natural_key')
         expected_attempts = 0 if index >= 4 else 2
-        if (
-            operation.get("sequence") != index
-            or operation.get("kind") != kind
-            or not isinstance(operation.get("operation_id"), str)
-            or not operation.get("operation_id")
-            or not isinstance(natural_key, str)
-            or not natural_key
-            or operation.get("max_write_attempts") != expected_attempts
-        ):
-            errors.append("schema-2 publication operation ordering/policy is invalid")
-        precondition = operation.get("expected_precondition")
-        initial = v080_operation_initial_observation(snapshot if isinstance(snapshot, dict) else {}, kind)
-        identity = v080_operation_identity(kind, str(natural_key), str(snapshot_sha), initial)
-        if (
-            not exact_keys(precondition, ("kind", "remote_snapshot_sha256", "identity_sha256"))
-            or precondition.get("kind") != "exact-remote-snapshot"
-            or precondition.get("remote_snapshot_sha256") != snapshot_sha
-            or precondition.get("identity_sha256") != canonical_json_sha256(identity)
-        ):
-            errors.append("schema-2 publication operation precondition is invalid")
-        children = operation.get("asset_operations")
+        if operation.get('sequence') != index or operation.get('kind') != kind or (not isinstance(operation.get('operation_id'), str)) or (not operation.get('operation_id')) or (not isinstance(natural_key, str)) or (not natural_key) or (operation.get('max_write_attempts') != expected_attempts):
+            errors.append('schema-2 publication operation ordering/policy is invalid')
+        precondition = operation.get('expected_precondition')
+        initial = profile_operation_initial_observation(snapshot if isinstance(snapshot, dict) else {}, kind, profile=profile)
+        identity = profile_operation_identity(kind, str(natural_key), str(snapshot_sha), initial, profile=profile)
+        if not exact_keys(precondition, ('kind', 'remote_snapshot_sha256', 'identity_sha256')) or precondition.get('kind') != 'exact-remote-snapshot' or precondition.get('remote_snapshot_sha256') != snapshot_sha or (precondition.get('identity_sha256') != canonical_json_sha256(identity)):
+            errors.append('schema-2 publication operation precondition is invalid')
+        children = operation.get('asset_operations')
         if index != 3 and children != []:
-            errors.append("asset operations exist outside the upload operation")
+            errors.append('asset operations exist outside the upload operation')
         if index == 3:
             if not isinstance(children, list) or len(children) != 5:
-                errors.append("upload operation does not contain five asset operations")
+                errors.append('upload operation does not contain five asset operations')
                 continue
-            observed_assets = snapshot.get("assets", []) if isinstance(snapshot, dict) else []
-            observed_by_name = {
-                item.get("name"): item for item in observed_assets if isinstance(item, dict)
-            }
+            observed_assets = snapshot.get('assets', []) if isinstance(snapshot, dict) else []
+            observed_by_name = {item.get('name'): item for item in observed_assets if isinstance(item, dict)}
             for child_index, (child, asset) in enumerate(zip(children, assets)):
-                child_fields = (
-                    "sequence", "operation_id", "natural_key", "name", "role", "size",
-                    "sha256", "expected_precondition", "max_write_attempts",
-                )
-                child_natural_key = f"mintgao/vibe-kit:release:v0.8.0:asset:{asset.get('name')}"
-                if not exact_keys(child, child_fields) or any(
-                    child.get(key) != asset.get(key) for key in ("name", "role", "size", "sha256")
-                ) or (
-                    child.get("sequence") != child_index
-                    or child.get("operation_id") != f"asset-{child_index}"
-                    or child.get("natural_key") != child_natural_key
-                    or child.get("max_write_attempts") != 2
-                ):
-                    errors.append("schema-2 asset operation identity is invalid")
+                child_fields = ('sequence', 'operation_id', 'natural_key', 'name', 'role', 'size', 'sha256', 'expected_precondition', 'max_write_attempts')
+                child_natural_key = f"mintgao/vibe-kit:release:{profile['tag']}:asset:{asset.get('name')}"
+                if not exact_keys(child, child_fields) or any((child.get(key) != asset.get(key) for key in ('name', 'role', 'size', 'sha256'))) or (child.get('sequence') != child_index or child.get('operation_id') != f'asset-{child_index}' or child.get('natural_key') != child_natural_key or (child.get('max_write_attempts') != 2)):
+                    errors.append('schema-2 asset operation identity is invalid')
                     continue
-                initial_asset = observed_by_name.get(asset.get("name"), {
-                    "state": "absent", "id": None, "size": None,
-                    "sha256": None, "download_url": None,
-                })
-                child_identity = {
-                    "schema_version": 2,
-                    "profile": V080_PUBLICATION_PROFILE,
-                    "parent_operation_id": operation.get("operation_id"),
-                    "natural_key": child_natural_key,
-                    "remote_snapshot_sha256": snapshot_sha,
-                    "asset": asset,
-                    "initial_observation": initial_asset,
-                }
-                child_pre = child.get("expected_precondition")
-                if (
-                    not exact_keys(child_pre, ("kind", "remote_snapshot_sha256", "identity_sha256"))
-                    or child_pre.get("kind") != "exact-asset-snapshot"
-                    or child_pre.get("remote_snapshot_sha256") != snapshot_sha
-                    or child_pre.get("identity_sha256") != canonical_json_sha256(child_identity)
-                ):
-                    errors.append("schema-2 asset operation precondition is invalid")
-    expected_scope = {
-        "repository": "mintgao/vibe-kit", "version": "0.8.0",
-        "release_kind": "prerelease",
-        "allowed_operations": list(V080_PUBLICATION_ALLOWED_OPERATIONS),
-        "destructive_operations_allowed": False,
-    }
-    if intent.get("authorization_scope") != expected_scope:
-        errors.append("schema-2 publication authorization scope is invalid")
-    if intent.get("issue_closeout_policy") != {
-        "mode": "none", "issues": [], "allowed_operations": []
-    }:
-        errors.append("schema-2 publication must forbid Issue closeout")
-    if intent.get("recovery_policy") != {
-        "read_back_before_retry": True, "delete": False, "replace": False, "force": False
-    }:
-        errors.append("schema-2 publication recovery policy is invalid")
+                initial_asset = observed_by_name.get(asset.get('name'), {'state': 'absent', 'id': None, 'size': None, 'sha256': None, 'download_url': None})
+                child_identity = {'schema_version': profile['schema'], 'profile': profile['profile'], 'parent_operation_id': operation.get('operation_id'), 'natural_key': child_natural_key, 'remote_snapshot_sha256': snapshot_sha, 'asset': asset, 'initial_observation': initial_asset}
+                child_pre = child.get('expected_precondition')
+                if not exact_keys(child_pre, ('kind', 'remote_snapshot_sha256', 'identity_sha256')) or child_pre.get('kind') != 'exact-asset-snapshot' or child_pre.get('remote_snapshot_sha256') != snapshot_sha or (child_pre.get('identity_sha256') != canonical_json_sha256(child_identity)):
+                    errors.append('schema-2 asset operation precondition is invalid')
+    expected_scope = {'repository': 'mintgao/vibe-kit', 'version': profile['version'], 'release_kind': 'prerelease', 'allowed_operations': list(V080_PUBLICATION_ALLOWED_OPERATIONS), 'destructive_operations_allowed': False}
+    if intent.get('authorization_scope') != expected_scope:
+        errors.append('schema-2 publication authorization scope is invalid')
+    if intent.get('issue_closeout_policy') != profile['issue_policy']:
+        errors.append('schema-2 publication must forbid Issue closeout')
+    if intent.get('recovery_policy') != {'read_back_before_retry': True, 'delete': False, 'replace': False, 'force': False}:
+        errors.append('schema-2 publication recovery policy is invalid')
     return errors
 
 
 def validate_publication_intent(value: object) -> List[str]:
     if isinstance(value, dict) and value.get("schema_version") == 1:
         return validate_publication_intent_v1(value)
-    if isinstance(value, dict) and value.get("schema_version") == 2:
-        return validate_v080_intent(value)
+    if isinstance(value, dict) and value.get("schema_version") in (2, 3):
+        return validate_profile_intent(value, profile=PUBLICATION_PROFILES[value["schema_version"]])
     return ["publication intent schema/profile is unsupported"]
 
 
@@ -10658,7 +10427,7 @@ def publication_plan(
         request["asset_set_sha256"] = canonical_json_sha256(assets)
         errors = validate_publication_intent(request)
         schema = request.get("schema_version")
-        expected_version = "0.7.0" if schema == 1 else "0.8.0"
+        expected_version = "0.7.0" if schema == 1 else PUBLICATION_PROFILES.get(schema, {}).get("version")
         if manifest.get("kit_version") != expected_version or manifest.get("status") != "prerelease":
             errors.append(
                 f"publication candidate must be the exact {expected_version} prerelease"
@@ -10684,7 +10453,7 @@ def publication_plan(
             candidate_status = validate_release(release_dir, "json")
         if candidate_status != 0:
             errors.append("publication candidate does not pass validate-release")
-        if schema == 2:
+        if schema in (2, 3):
             if comparison_candidate is None:
                 errors.append("schema-2 publication planning requires --comparison-candidate")
             if release_gate_evidence is None:
@@ -10695,8 +10464,8 @@ def publication_plan(
                     gate_bundle = load_json_object_strict(release_gate_evidence)
                 except VibeError as error:
                     errors.append(str(error))
-            gate_errors, source_tree_oid, gate_assets = validate_v080_release_gate_bundle(
-                gate_bundle, str(request.get("source_commit", ""))
+            gate_errors, source_tree_oid, gate_assets = validate_profile_release_gate_bundle(
+                gate_bundle, str(request.get("source_commit", "")), profile=PUBLICATION_PROFILES[schema]
             )
             errors.extend(gate_errors)
             gates = request.get("local_gates")
@@ -10712,12 +10481,12 @@ def publication_plan(
                     comparison_manifest = load_json_object_strict(
                         comparison_dir / "release-manifest.json"
                     )
-                    comparison_assets = publication_assets(comparison_dir, "0.8.0")
+                    comparison_assets = publication_assets(comparison_dir, expected_version)
                 except VibeError as error:
                     comparison_manifest, comparison_assets = {}, []
                     errors.append(str(error))
                 if (
-                    comparison_manifest.get("kit_version") != "0.8.0"
+                    comparison_manifest.get("kit_version") != expected_version
                     or comparison_manifest.get("status") != "prerelease"
                     or not isinstance(comparison_manifest.get("source"), dict)
                     or comparison_manifest.get("source", {}).get("tree_state") != "clean"
@@ -10970,376 +10739,210 @@ V080_ATTEMPT_RESPONSES = (
 )
 
 
-def validate_v080_observation(value: object, kind: str) -> List[str]:
+def validate_profile_observation(value: object, kind: str, *, profile) -> List[str]:
     errors: List[str] = []
-    if kind == "main":
-        if not exact_keys(value, ("observed_at", "state", "oid")):
-            return ["main observation fields are invalid"]
-        if (
-            not is_iso8601(value.get("observed_at"))
-            or value.get("state") not in ("preimage", "target", "divergent", "unknown")
-            or ((value.get("oid") is None) != (value.get("state") == "unknown"))
-            or (value.get("oid") is not None and not valid_oid(value.get("oid")))
-        ):
-            errors.append("main observation value is invalid")
+    if kind == 'main':
+        if not exact_keys(value, ('observed_at', 'state', 'oid')):
+            return ['main observation fields are invalid']
+        if not is_iso8601(value.get('observed_at')) or value.get('state') not in ('preimage', 'target', 'divergent', 'unknown') or (value.get('oid') is None) != (value.get('state') == 'unknown') or (value.get('oid') is not None and (not valid_oid(value.get('oid')))):
+            errors.append('main observation value is invalid')
         return errors
-    if kind == "tag":
-        identity = (
-            "ref_oid", "object_type", "tag_object_oid", "peeled_commit", "tagger_name",
-            "tagger_email", "tagger_timestamp", "tagger_timezone", "message_sha256",
-        )
-        if not exact_keys(value, ("observed_at", "state") + identity):
-            return ["tag observation fields are invalid"]
-        if not is_iso8601(value.get("observed_at")) or value.get("state") not in (
-            "absent", "match", "divergent", "unknown"
-        ):
-            errors.append("tag observation state is invalid")
-        if value.get("state") in ("absent", "unknown"):
-            if any(value.get(key) is not None for key in identity):
-                errors.append("absent/unknown tag observation has non-null identity")
-        elif (
-            not valid_oid(value.get("ref_oid"))
-            or value.get("object_type") != "tag"
-            or not valid_oid(value.get("tag_object_oid"))
-            or not valid_oid(value.get("peeled_commit"))
-            or not isinstance(value.get("tagger_name"), str)
-            or not value.get("tagger_name")
-            or not isinstance(value.get("tagger_email"), str)
-            or not value.get("tagger_email")
-            or not is_iso8601(value.get("tagger_timestamp"))
-            or re.fullmatch(r"[+-][0-9]{4}", str(value.get("tagger_timezone", ""))) is None
-            or not valid_sha256(value.get("message_sha256"))
-        ):
-            errors.append("tag observation identity is invalid")
+    if kind == 'tag':
+        identity = ('ref_oid', 'object_type', 'tag_object_oid', 'peeled_commit', 'tagger_name', 'tagger_email', 'tagger_timestamp', 'tagger_timezone', 'message_sha256')
+        if not exact_keys(value, ('observed_at', 'state') + identity):
+            return ['tag observation fields are invalid']
+        if not is_iso8601(value.get('observed_at')) or value.get('state') not in ('absent', 'match', 'divergent', 'unknown'):
+            errors.append('tag observation state is invalid')
+        if value.get('state') in ('absent', 'unknown'):
+            if any((value.get(key) is not None for key in identity)):
+                errors.append('absent/unknown tag observation has non-null identity')
+        elif not valid_oid(value.get('ref_oid')) or value.get('object_type') != 'tag' or (not valid_oid(value.get('tag_object_oid'))) or (not valid_oid(value.get('peeled_commit'))) or (not isinstance(value.get('tagger_name'), str)) or (not value.get('tagger_name')) or (not isinstance(value.get('tagger_email'), str)) or (not value.get('tagger_email')) or (not is_iso8601(value.get('tagger_timestamp'))) or (re.fullmatch('[+-][0-9]{4}', str(value.get('tagger_timezone', ''))) is None) or (not valid_sha256(value.get('message_sha256'))):
+            errors.append('tag observation identity is invalid')
         return errors
-    if kind == "release":
-        identity = ("id", "url", "tag", "title", "body_sha256", "draft", "prerelease", "immutable")
-        if not exact_keys(value, ("observed_at", "state") + identity):
-            return ["Release observation fields are invalid"]
-        if not is_iso8601(value.get("observed_at")) or value.get("state") not in (
-            "absent", "match", "divergent", "unknown"
-        ):
-            errors.append("Release observation state is invalid")
-        if value.get("state") in ("absent", "unknown"):
-            if any(value.get(key) is not None for key in identity):
-                errors.append("absent/unknown Release observation has non-null identity")
-        elif (
-            not valid_positive_int(value.get("id"))
-            or not isinstance(value.get("url"), str)
-            or not value.get("url")
-            or value.get("tag") != "v0.8.0"
-            or not isinstance(value.get("title"), str)
-            or not value.get("title")
-            or not valid_sha256(value.get("body_sha256"))
-            or not isinstance(value.get("draft"), bool)
-            or not isinstance(value.get("prerelease"), bool)
-            or value.get("immutable") not in (True, False, "unknown")
-        ):
-            errors.append("Release observation identity is invalid")
+    if kind == 'release':
+        identity = ('id', 'url', 'tag', 'title', 'body_sha256', 'draft', 'prerelease', 'immutable')
+        if not exact_keys(value, ('observed_at', 'state') + identity):
+            return ['Release observation fields are invalid']
+        if not is_iso8601(value.get('observed_at')) or value.get('state') not in ('absent', 'match', 'divergent', 'unknown'):
+            errors.append('Release observation state is invalid')
+        if value.get('state') in ('absent', 'unknown'):
+            if any((value.get(key) is not None for key in identity)):
+                errors.append('absent/unknown Release observation has non-null identity')
+        elif not valid_positive_int(value.get('id')) or not isinstance(value.get('url'), str) or (not value.get('url')) or (value.get('tag') != profile['tag']) or (not isinstance(value.get('title'), str)) or (not value.get('title')) or (not valid_sha256(value.get('body_sha256'))) or (not isinstance(value.get('draft'), bool)) or (not isinstance(value.get('prerelease'), bool)) or (value.get('immutable') not in (True, False, 'unknown')):
+            errors.append('Release observation identity is invalid')
         return errors
-    identity = ("id", "size", "sha256", "download_url")
-    if not exact_keys(value, ("observed_at", "state") + identity):
-        return ["asset observation fields are invalid"]
-    if not is_iso8601(value.get("observed_at")) or value.get("state") not in (
-        "absent", "match", "divergent", "unknown"
-    ):
-        errors.append("asset observation state is invalid")
-    if value.get("state") in ("absent", "unknown"):
-        if any(value.get(key) is not None for key in identity):
-            errors.append("absent/unknown asset observation has non-null identity")
-    elif (
-        not valid_positive_int(value.get("id"))
-        or isinstance(value.get("size"), bool)
-        or not isinstance(value.get("size"), int)
-        or value["size"] < 0
-        or not valid_sha256(value.get("sha256"))
-        or not isinstance(value.get("download_url"), str)
-        or not value.get("download_url")
-    ):
-        errors.append("asset observation identity is invalid")
+    identity = ('id', 'size', 'sha256', 'download_url')
+    if not exact_keys(value, ('observed_at', 'state') + identity):
+        return ['asset observation fields are invalid']
+    if not is_iso8601(value.get('observed_at')) or value.get('state') not in ('absent', 'match', 'divergent', 'unknown'):
+        errors.append('asset observation state is invalid')
+    if value.get('state') in ('absent', 'unknown'):
+        if any((value.get(key) is not None for key in identity)):
+            errors.append('absent/unknown asset observation has non-null identity')
+    elif not valid_positive_int(value.get('id')) or isinstance(value.get('size'), bool) or (not isinstance(value.get('size'), int)) or (value['size'] < 0) or (not valid_sha256(value.get('sha256'))) or (not isinstance(value.get('download_url'), str)) or (not value.get('download_url')):
+        errors.append('asset observation identity is invalid')
     return errors
 
 
-def validate_v080_attempts(value: object, observation_kind: str) -> List[str]:
+def validate_profile_attempts(value: object, observation_kind: str, *, profile) -> List[str]:
     if not isinstance(value, list) or len(value) > 2:
-        return ["operation attempt ledger length is invalid"]
+        return ['operation attempt ledger length is invalid']
     errors: List[str] = []
     for index, attempt in enumerate(value, start=1):
-        if not exact_keys(
-            attempt,
-            ("attempt_number", "pre_write_observation", "response", "read_back_observation"),
-        ):
-            errors.append("operation attempt fields are invalid")
+        if not exact_keys(attempt, ('attempt_number', 'pre_write_observation', 'response', 'read_back_observation')):
+            errors.append('operation attempt fields are invalid')
             continue
-        if attempt.get("attempt_number") != index or attempt.get("response") not in V080_ATTEMPT_RESPONSES:
-            errors.append("operation attempt ordering/response is invalid")
-        errors.extend(validate_v080_observation(attempt.get("pre_write_observation"), observation_kind))
-        errors.extend(validate_v080_observation(attempt.get("read_back_observation"), observation_kind))
+        if attempt.get('attempt_number') != index or attempt.get('response') not in V080_ATTEMPT_RESPONSES:
+            errors.append('operation attempt ordering/response is invalid')
+        errors.extend(validate_profile_observation(attempt.get('pre_write_observation'), observation_kind, profile=profile))
+        errors.extend(validate_profile_observation(attempt.get('read_back_observation'), observation_kind, profile=profile))
     if len(value) == 2 and isinstance(value[0], dict):
-        first_read = value[0].get("read_back_observation")
-        expected_absence = "preimage" if observation_kind == "main" else "absent"
-        if not isinstance(first_read, dict) or first_read.get("state") != expected_absence:
-            errors.append("second write attempt lacks exact positive-absence proof")
-        if value[0].get("response") in (
-            "permission-denied", "definite-failure", "execution-error"
-        ):
-            errors.append("terminal attempt response cannot be retried")
+        first_read = value[0].get('read_back_observation')
+        expected_absence = 'preimage' if observation_kind == 'main' else 'absent'
+        if not isinstance(first_read, dict) or first_read.get('state') != expected_absence:
+            errors.append('second write attempt lacks exact positive-absence proof')
+        if value[0].get('response') in ('permission-denied', 'definite-failure', 'execution-error'):
+            errors.append('terminal attempt response cannot be retried')
     return errors
 
 
-def validate_v080_write_ledger(
-    value: object,
-    observation_kind: str,
-    allowed_successes: Sequence[str],
-    expected_precondition_sha: str,
-    asset: bool = False,
-) -> List[str]:
-    common = (
-        "sequence", "operation_id", "natural_key", "initial_observation", "attempts",
-        "final_observation", "outcome", "error",
-    )
-    fields = common + (
-        ("name", "role", "expected_size", "expected_sha256", "precondition_sha256", "remote_asset_id")
-        if asset
-        else ("kind", "precondition_sha256", "remote_object_id", "asset_receipts")
-    )
+def validate_profile_write_ledger(value: object, observation_kind: str, allowed_successes: Sequence[str], expected_precondition_sha: str, asset: bool=False, *, profile) -> List[str]:
+    common = ('sequence', 'operation_id', 'natural_key', 'initial_observation', 'attempts', 'final_observation', 'outcome', 'error')
+    fields = common + (('name', 'role', 'expected_size', 'expected_sha256', 'precondition_sha256', 'remote_asset_id') if asset else ('kind', 'precondition_sha256', 'remote_object_id', 'asset_receipts'))
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return ["write receipt ledger fields are unknown or incomplete"]
+        return ['write receipt ledger fields are unknown or incomplete']
     errors: List[str] = []
-    if value.get("precondition_sha256") != expected_precondition_sha:
-        errors.append("write receipt precondition digest is invalid")
-    errors.extend(validate_v080_observation(value.get("initial_observation"), observation_kind))
-    errors.extend(validate_v080_attempts(value.get("attempts"), observation_kind))
-    errors.extend(validate_v080_observation(value.get("final_observation"), observation_kind))
-    outcome = value.get("outcome")
-    error = value.get("error")
+    if value.get('precondition_sha256') != expected_precondition_sha:
+        errors.append('write receipt precondition digest is invalid')
+    errors.extend(validate_profile_observation(value.get('initial_observation'), observation_kind, profile=profile))
+    errors.extend(validate_profile_attempts(value.get('attempts'), observation_kind, profile=profile))
+    errors.extend(validate_profile_observation(value.get('final_observation'), observation_kind, profile=profile))
+    outcome = value.get('outcome')
+    error = value.get('error')
     if outcome not in V080_OPERATION_OUTCOMES:
-        errors.append("write receipt outcome is invalid")
+        errors.append('write receipt outcome is invalid')
     if (outcome in V080_SUCCESS_OUTCOMES) != (error is None):
-        errors.append("write receipt outcome/error nullability is invalid")
-    if error is not None and not valid_publication_error(error):
-        errors.append("write receipt error is invalid")
-    final = value.get("final_observation")
-    if outcome in allowed_successes and (not isinstance(final, dict) or final.get("state") not in ("target", "match")):
-        errors.append("successful write receipt lacks exact final match")
-    if outcome == "absent-after-bounded-retry" and (
-        not isinstance(value.get("attempts"), list)
-        or len(value["attempts"]) != 2
-        or not isinstance(final, dict)
-        or final.get("state") != ("preimage" if observation_kind == "main" else "absent")
-    ):
-        errors.append("bounded-absence outcome is not proven by two attempts")
-    attempts = value.get("attempts") if isinstance(value.get("attempts"), list) else []
-    if outcome == "confirmed-after-uncertain" and not any(
-        isinstance(attempt, dict) and attempt.get("response") in ("timeout", "transport-unknown")
-        for attempt in attempts
-    ):
-        errors.append("confirmed-after-uncertain lacks an uncertain response")
-    remote_id_key = "remote_asset_id" if asset else "remote_object_id"
+        errors.append('write receipt outcome/error nullability is invalid')
+    if error is not None and (not valid_publication_error(error)):
+        errors.append('write receipt error is invalid')
+    final = value.get('final_observation')
+    if outcome in allowed_successes and (not isinstance(final, dict) or final.get('state') not in ('target', 'match')):
+        errors.append('successful write receipt lacks exact final match')
+    if outcome == 'absent-after-bounded-retry' and (not isinstance(value.get('attempts'), list) or len(value['attempts']) != 2 or (not isinstance(final, dict)) or (final.get('state') != ('preimage' if observation_kind == 'main' else 'absent'))):
+        errors.append('bounded-absence outcome is not proven by two attempts')
+    attempts = value.get('attempts') if isinstance(value.get('attempts'), list) else []
+    if outcome == 'confirmed-after-uncertain' and (not any((isinstance(attempt, dict) and attempt.get('response') in ('timeout', 'transport-unknown') for attempt in attempts))):
+        errors.append('confirmed-after-uncertain lacks an uncertain response')
+    remote_id_key = 'remote_asset_id' if asset else 'remote_object_id'
     if outcome in allowed_successes and value.get(remote_id_key) is None:
-        errors.append("successful write receipt lacks a remote object identity")
+        errors.append('successful write receipt lacks a remote object identity')
     return errors
 
 
-def validate_v080_receipt(value: object, intent: Dict[str, object]) -> List[str]:
-    fields = (
-        "schema_version", "kind", "profile", "version", "intent_sha256",
-        "authorization_id", "host_operation_id", "repository", "remote_write_state",
-        "verification_state", "main", "tag", "release", "assets", "operations",
-        "downloads", "validate_release", "smokes", "limitations", "issue_closeout",
-        "error",
-    )
+def validate_profile_receipt(value: object, intent: Dict[str, object], *, profile) -> List[str]:
+    fields = ('schema_version', 'kind', 'profile', 'version', 'intent_sha256', 'authorization_id', 'host_operation_id', 'repository', 'remote_write_state', 'verification_state', 'main', 'tag', 'release', 'assets', 'operations', 'downloads', 'validate_release', 'smokes', 'limitations', 'issue_closeout', 'error')
     if not exact_keys(value, fields) or not isinstance(value, dict):
-        return ["schema-2 publication receipt fields are unknown or incomplete"]
+        return ['schema-2 publication receipt fields are unknown or incomplete']
     receipt = value
     errors: List[str] = []
-    if (
-        receipt.get("schema_version") != 2
-        or receipt.get("kind") != "vibe-kit-publication-receipt"
-        or receipt.get("profile") != V080_PUBLICATION_PROFILE
-        or receipt.get("version") != "0.8.0"
-        or receipt.get("repository") != "mintgao/vibe-kit"
-        or receipt.get("intent_sha256") != canonical_json_sha256(intent)
-        or any(
-            not isinstance(receipt.get(key), str) or not receipt.get(key) or len(receipt[key]) > 256
-            for key in ("authorization_id", "host_operation_id")
-        )
-    ):
-        errors.append("schema-2 publication receipt identity is invalid")
-    if receipt.get("remote_write_state") not in REMOTE_WRITE_STATES or receipt.get("verification_state") not in VERIFICATION_STATES:
-        errors.append("schema-2 publication receipt state is invalid")
-    if receipt.get("issue_closeout") is not None:
-        errors.append("schema-2 publication receipt must not contain Issue closeout")
-    if receipt.get("error") is not None and not valid_publication_error(receipt.get("error")):
-        errors.append("schema-2 publication receipt error is invalid")
-    intent_main = intent.get("main") if isinstance(intent.get("main"), dict) else {}
-    main = receipt.get("main")
-    if not exact_keys(main, ("branch", "expected_old_oid", "target_oid", "observed_oid", "write_state", "read_back")) or (
-        main.get("branch") != "main"
-        or main.get("expected_old_oid") != intent_main.get("expected_old_oid")
-        or main.get("target_oid") != intent_main.get("target_oid")
-        or not valid_oid(main.get("observed_oid"))
-        or main.get("write_state") not in REMOTE_WRITE_STATES
-        or not isinstance(main.get("read_back"), bool)
-    ):
-        errors.append("schema-2 final main identity is invalid")
-    intent_tag = intent.get("tag") if isinstance(intent.get("tag"), dict) else {}
-    tag = receipt.get("tag")
-    if not exact_keys(tag, ("name", "expected_tag_object_oid", "observed_ref_oid", "peeled_commit", "write_state", "read_back")) or (
-        tag.get("name") != "v0.8.0"
-        or tag.get("expected_tag_object_oid") != intent_tag.get("expected_tag_object_oid")
-        or not valid_oid(tag.get("observed_ref_oid"))
-        or not valid_oid(tag.get("peeled_commit"))
-        or tag.get("write_state") not in REMOTE_WRITE_STATES
-        or not isinstance(tag.get("read_back"), bool)
-    ):
-        errors.append("schema-2 final tag identity is invalid")
-    release = receipt.get("release")
-    if not exact_keys(release, ("id", "url", "tag", "title", "body_sha256", "draft", "prerelease", "immutable", "write_state", "read_back")) or (
-        not valid_positive_int(release.get("id"))
-        or release.get("url") != "https://github.com/mintgao/vibe-kit/releases/tag/v0.8.0"
-        or release.get("tag") != "v0.8.0"
-        or release.get("title") != "Vibe Kit v0.8.0"
-        or not valid_sha256(release.get("body_sha256"))
-        or release.get("draft") is not False
-        or release.get("prerelease") is not True
-        or release.get("immutable") not in (True, False, "unknown")
-        or release.get("write_state") not in REMOTE_WRITE_STATES
-        or not isinstance(release.get("read_back"), bool)
-    ):
-        errors.append("schema-2 final Release identity is invalid")
-    intended_assets = intent.get("assets") if isinstance(intent.get("assets"), list) else []
-    assets = receipt.get("assets")
+    if receipt.get('schema_version') != profile['schema'] or receipt.get('kind') != 'vibe-kit-publication-receipt' or receipt.get('profile') != profile['profile'] or (receipt.get('version') != profile['version']) or (receipt.get('repository') != 'mintgao/vibe-kit') or (receipt.get('intent_sha256') != canonical_json_sha256(intent)) or any((not isinstance(receipt.get(key), str) or not receipt.get(key) or len(receipt[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
+        errors.append('schema-2 publication receipt identity is invalid')
+    if receipt.get('remote_write_state') not in REMOTE_WRITE_STATES or receipt.get('verification_state') not in VERIFICATION_STATES:
+        errors.append('schema-2 publication receipt state is invalid')
+    if receipt.get('issue_closeout') is not None:
+        errors.append('schema-2 publication receipt must not contain Issue closeout')
+    if receipt.get('error') is not None and (not valid_publication_error(receipt.get('error'))):
+        errors.append('schema-2 publication receipt error is invalid')
+    intent_main = intent.get('main') if isinstance(intent.get('main'), dict) else {}
+    main = receipt.get('main')
+    if not exact_keys(main, ('branch', 'expected_old_oid', 'target_oid', 'observed_oid', 'write_state', 'read_back')) or (main.get('branch') != 'main' or main.get('expected_old_oid') != intent_main.get('expected_old_oid') or main.get('target_oid') != intent_main.get('target_oid') or (not valid_oid(main.get('observed_oid'))) or (main.get('write_state') not in REMOTE_WRITE_STATES) or (not isinstance(main.get('read_back'), bool))):
+        errors.append('schema-2 final main identity is invalid')
+    intent_tag = intent.get('tag') if isinstance(intent.get('tag'), dict) else {}
+    tag = receipt.get('tag')
+    if not exact_keys(tag, ('name', 'expected_tag_object_oid', 'observed_ref_oid', 'peeled_commit', 'write_state', 'read_back')) or (tag.get('name') != profile['tag'] or tag.get('expected_tag_object_oid') != intent_tag.get('expected_tag_object_oid') or (not valid_oid(tag.get('observed_ref_oid'))) or (not valid_oid(tag.get('peeled_commit'))) or (tag.get('write_state') not in REMOTE_WRITE_STATES) or (not isinstance(tag.get('read_back'), bool))):
+        errors.append('schema-2 final tag identity is invalid')
+    release = receipt.get('release')
+    if not exact_keys(release, ('id', 'url', 'tag', 'title', 'body_sha256', 'draft', 'prerelease', 'immutable', 'write_state', 'read_back')) or (not valid_positive_int(release.get('id')) or release.get('url') != ("https://github.com/mintgao/vibe-kit/releases/tag/" + str(profile["tag"])) or release.get('tag') != profile['tag'] or (release.get('title') != profile['title']) or (not valid_sha256(release.get('body_sha256'))) or (release.get('draft') is not False) or (release.get('prerelease') is not True) or (release.get('immutable') not in (True, False, 'unknown')) or (release.get('write_state') not in REMOTE_WRITE_STATES) or (not isinstance(release.get('read_back'), bool))):
+        errors.append('schema-2 final Release identity is invalid')
+    intended_assets = intent.get('assets') if isinstance(intent.get('assets'), list) else []
+    assets = receipt.get('assets')
     if not isinstance(assets, list) or len(assets) != 5:
-        errors.append("schema-2 final asset set is invalid")
+        errors.append('schema-2 final asset set is invalid')
         assets = []
     for item, intended in zip(assets, intended_assets):
-        if not exact_keys(item, ("name", "role", "size", "sha256", "id", "url", "write_state", "read_back")) or any(
-            item.get(key) != intended.get(key) for key in ("name", "role", "size", "sha256")
-        ) or (
-            not valid_positive_int(item.get("id"))
-            or item.get("url") != f"https://github.com/mintgao/vibe-kit/releases/download/v0.8.0/{item.get('name')}"
-            or item.get("write_state") not in REMOTE_WRITE_STATES
-            or not isinstance(item.get("read_back"), bool)
-        ):
-            errors.append("schema-2 final asset identity is invalid")
-    downloads = receipt.get("downloads")
+        if not exact_keys(item, ('name', 'role', 'size', 'sha256', 'id', 'url', 'write_state', 'read_back')) or any((item.get(key) != intended.get(key) for key in ('name', 'role', 'size', 'sha256'))) or (not valid_positive_int(item.get('id')) or item.get('url') != f"https://github.com/mintgao/vibe-kit/releases/download/{profile['tag']}/{item.get('name')}" or item.get('write_state') not in REMOTE_WRITE_STATES or (not isinstance(item.get('read_back'), bool))):
+            errors.append('schema-2 final asset identity is invalid')
+    downloads = receipt.get('downloads')
     if not isinstance(downloads, list) or len(downloads) != 5:
-        errors.append("schema-2 public download set is invalid")
+        errors.append('schema-2 public download set is invalid')
         downloads = []
     for item, intended in zip(downloads, intended_assets):
-        if not exact_keys(item, ("name", "size", "sha256", "matched")) or any(
-            item.get(key) != intended.get(key) for key in ("name", "size", "sha256")
-        ) or item.get("matched") is not True:
-            errors.append("schema-2 public download identity is invalid")
-    validate_release_value = receipt.get("validate_release")
-    if not exact_keys(validate_release_value, ("status", "receipt_sha256")) or (
-        validate_release_value.get("status") not in ("valid", "invalid", "error")
-        or not valid_sha256(validate_release_value.get("receipt_sha256"))
-    ):
-        errors.append("schema-2 validate-release evidence is invalid")
-    smokes = receipt.get("smokes")
-    if not isinstance(smokes, list) or len(smokes) != 6 or [
-        item.get("name") for item in smokes if isinstance(item, dict)
-    ] != list(V080_PUBLIC_SMOKES):
-        errors.append("schema-2 public smoke set is invalid")
+        if not exact_keys(item, ('name', 'size', 'sha256', 'matched')) or any((item.get(key) != intended.get(key) for key in ('name', 'size', 'sha256'))) or item.get('matched') is not True:
+            errors.append('schema-2 public download identity is invalid')
+    validate_release_value = receipt.get('validate_release')
+    if not exact_keys(validate_release_value, ('status', 'receipt_sha256')) or (validate_release_value.get('status') not in ('valid', 'invalid', 'error') or not valid_sha256(validate_release_value.get('receipt_sha256'))):
+        errors.append('schema-2 validate-release evidence is invalid')
+    smokes = receipt.get('smokes')
+    if not isinstance(smokes, list) or len(smokes) != len(profile['smokes']) or [item.get('name') for item in smokes if isinstance(item, dict)] != list(profile['smokes']):
+        errors.append('schema-2 public smoke set is invalid')
         smokes = []
     for item in smokes:
-        if not exact_keys(item, ("name", "status", "evidence_sha256")) or (
-            item.get("status") not in ("passed", "failed", "error")
-            or not valid_sha256(item.get("evidence_sha256"))
-        ):
-            errors.append("schema-2 public smoke evidence is invalid")
-    if not isinstance(receipt.get("limitations"), list) or any(
-        not isinstance(item, str) or not item or len(item) > 512
-        for item in receipt.get("limitations", [])
-    ):
-        errors.append("schema-2 publication limitations are invalid")
-    intent_operations = intent.get("operations") if isinstance(intent.get("operations"), list) else []
-    operations = receipt.get("operations")
+        if not exact_keys(item, ('name', 'status', 'evidence_sha256')) or (item.get('status') not in ('passed', 'failed', 'error') or not valid_sha256(item.get('evidence_sha256'))):
+            errors.append('schema-2 public smoke evidence is invalid')
+    if not isinstance(receipt.get('limitations'), list) or any((not isinstance(item, str) or not item or len(item) > 512 for item in receipt.get('limitations', []))):
+        errors.append('schema-2 publication limitations are invalid')
+    intent_operations = intent.get('operations') if isinstance(intent.get('operations'), list) else []
+    operations = receipt.get('operations')
     if not isinstance(operations, list) or len(operations) != 6:
-        errors.append("schema-2 operation receipt graph is invalid")
+        errors.append('schema-2 operation receipt graph is invalid')
         operations = []
     for index, (operation, planned) in enumerate(zip(operations, intent_operations)):
         kind = V080_PUBLICATION_ALLOWED_OPERATIONS[index]
-        pre_sha = canonical_json_sha256(planned.get("expected_precondition"))
+        pre_sha = canonical_json_sha256(planned.get('expected_precondition'))
         if index in (0, 1, 2):
-            observation_kind = ("main", "tag", "release")[index]
-            successes = (
-                ("read-matched", "updated", "confirmed-after-uncertain")
-                if index == 0 else ("read-matched", "created", "confirmed-after-uncertain")
-            )
-            errors.extend(validate_v080_write_ledger(operation, observation_kind, successes, pre_sha))
-            if isinstance(operation, dict) and operation.get("asset_receipts") != []:
-                errors.append("non-upload write receipt contains asset receipts")
+            observation_kind = ('main', 'tag', 'release')[index]
+            successes = ('read-matched', 'updated', 'confirmed-after-uncertain') if index == 0 else ('read-matched', 'created', 'confirmed-after-uncertain')
+            errors.extend(validate_profile_write_ledger(operation, observation_kind, successes, pre_sha, profile=profile))
+            if isinstance(operation, dict) and operation.get('asset_receipts') != []:
+                errors.append('non-upload write receipt contains asset receipts')
         elif index == 3:
-            required = (
-                "sequence", "operation_id", "kind", "natural_key", "precondition_sha256",
-                "initial_observation", "attempts", "final_observation", "outcome",
-                "remote_object_id", "asset_receipts", "error",
-            )
+            required = ('sequence', 'operation_id', 'kind', 'natural_key', 'precondition_sha256', 'initial_observation', 'attempts', 'final_observation', 'outcome', 'remote_object_id', 'asset_receipts', 'error')
             if not exact_keys(operation, required):
-                errors.append("upload receipt fields are unknown or incomplete")
+                errors.append('upload receipt fields are unknown or incomplete')
                 continue
-            if operation.get("initial_observation") is not None or operation.get("final_observation") is not None or operation.get("attempts") != [] or operation.get("remote_object_id") is not None:
-                errors.append("upload high-level receipt must use child ledgers only")
-            if operation.get("precondition_sha256") != pre_sha:
-                errors.append("upload receipt precondition digest is invalid")
-            children = operation.get("asset_receipts")
-            planned_children = planned.get("asset_operations") if isinstance(planned, dict) else []
+            if operation.get('initial_observation') is not None or operation.get('final_observation') is not None or operation.get('attempts') != [] or (operation.get('remote_object_id') is not None):
+                errors.append('upload high-level receipt must use child ledgers only')
+            if operation.get('precondition_sha256') != pre_sha:
+                errors.append('upload receipt precondition digest is invalid')
+            children = operation.get('asset_receipts')
+            planned_children = planned.get('asset_operations') if isinstance(planned, dict) else []
             if not isinstance(children, list) or len(children) != 5:
-                errors.append("upload receipt requires five asset ledgers")
+                errors.append('upload receipt requires five asset ledgers')
                 children = []
             child_outcomes = []
             for child, planned_child in zip(children, planned_children):
-                child_errors = validate_v080_write_ledger(
-                    child, "asset", ("read-matched", "uploaded", "confirmed-after-uncertain"),
-                    canonical_json_sha256(planned_child.get("expected_precondition")), True,
-                )
+                child_errors = validate_profile_write_ledger(child, 'asset', ('read-matched', 'uploaded', 'confirmed-after-uncertain'), canonical_json_sha256(planned_child.get('expected_precondition')), True, profile=profile)
                 errors.extend(child_errors)
                 if isinstance(child, dict):
-                    child_outcomes.append(child.get("outcome"))
-                    if any(child.get(target) != planned_child.get(source) for target, source in (
-                        ("sequence", "sequence"), ("operation_id", "operation_id"),
-                        ("natural_key", "natural_key"), ("name", "name"), ("role", "role"),
-                        ("expected_size", "size"), ("expected_sha256", "sha256"),
-                    )):
-                        errors.append("asset receipt does not bind its planned child")
-            if child_outcomes and all(item in ("read-matched", "uploaded", "confirmed-after-uncertain") for item in child_outcomes):
-                expected_high = (
-                    "confirmed-after-uncertain" if "confirmed-after-uncertain" in child_outcomes
-                    else "uploaded" if "uploaded" in child_outcomes else "read-matched"
-                )
+                    child_outcomes.append(child.get('outcome'))
+                    if any((child.get(target) != planned_child.get(source) for target, source in (('sequence', 'sequence'), ('operation_id', 'operation_id'), ('natural_key', 'natural_key'), ('name', 'name'), ('role', 'role'), ('expected_size', 'size'), ('expected_sha256', 'sha256')))):
+                        errors.append('asset receipt does not bind its planned child')
+            if child_outcomes and all((item in ('read-matched', 'uploaded', 'confirmed-after-uncertain') for item in child_outcomes)):
+                expected_high = 'confirmed-after-uncertain' if 'confirmed-after-uncertain' in child_outcomes else 'uploaded' if 'uploaded' in child_outcomes else 'read-matched'
             else:
                 expected_high = next((item for item in child_outcomes if item not in V080_SUCCESS_OUTCOMES), None)
-            if operation.get("outcome") != expected_high:
-                errors.append("upload high-level outcome is not derived from child ledgers")
-            if (operation.get("outcome") in V080_SUCCESS_OUTCOMES) != (operation.get("error") is None):
-                errors.append("upload receipt outcome/error nullability is invalid")
-            if operation.get("error") is not None and not valid_publication_error(operation.get("error")):
-                errors.append("upload receipt error is invalid")
+            if operation.get('outcome') != expected_high:
+                errors.append('upload high-level outcome is not derived from child ledgers')
+            if (operation.get('outcome') in V080_SUCCESS_OUTCOMES) != (operation.get('error') is None):
+                errors.append('upload receipt outcome/error nullability is invalid')
+            if operation.get('error') is not None and (not valid_publication_error(operation.get('error'))):
+                errors.append('upload receipt error is invalid')
         else:
-            required = (
-                "sequence", "operation_id", "kind", "natural_key", "precondition_sha256",
-                "initial_observation", "attempts", "final_observation", "outcome",
-                "remote_object_id", "asset_receipts", "error",
-            )
-            if not exact_keys(operation, required) or (
-                operation.get("precondition_sha256") != pre_sha
-                or operation.get("initial_observation") is not None
-                or operation.get("attempts") != []
-                or operation.get("final_observation") is not None
-                or operation.get("remote_object_id") is not None
-                or operation.get("asset_receipts") != []
-                or operation.get("outcome") not in ("verified", "not-attempted", "error")
-                or ((operation.get("outcome") == "verified") != (operation.get("error") is None))
-            ):
-                errors.append("read-only operation receipt is invalid")
-        if isinstance(operation, dict) and any(
-            operation.get(key) != planned.get(key)
-            for key in ("sequence", "operation_id", "kind", "natural_key")
-        ):
-            errors.append("operation receipt does not bind the planned operation")
+            required = ('sequence', 'operation_id', 'kind', 'natural_key', 'precondition_sha256', 'initial_observation', 'attempts', 'final_observation', 'outcome', 'remote_object_id', 'asset_receipts', 'error')
+            if not exact_keys(operation, required) or (operation.get('precondition_sha256') != pre_sha or operation.get('initial_observation') is not None or operation.get('attempts') != [] or (operation.get('final_observation') is not None) or (operation.get('remote_object_id') is not None) or (operation.get('asset_receipts') != []) or (operation.get('outcome') not in ('verified', 'not-attempted', 'error')) or ((operation.get('outcome') == 'verified') != (operation.get('error') is None))):
+                errors.append('read-only operation receipt is invalid')
+        if isinstance(operation, dict) and any((operation.get(key) != planned.get(key) for key in ('sequence', 'operation_id', 'kind', 'natural_key'))):
+            errors.append('operation receipt does not bind the planned operation')
     return errors
 
 
@@ -11348,8 +10951,8 @@ def validate_publication_receipt_shape(
 ) -> List[str]:
     if isinstance(receipt, dict) and receipt.get("schema_version") == 1:
         return validate_publication_receipt_shape_v1(receipt)
-    if isinstance(receipt, dict) and receipt.get("schema_version") == 2 and isinstance(intent, dict):
-        return validate_v080_receipt(receipt, intent)
+    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3) and isinstance(intent, dict):
+        return validate_profile_receipt(receipt, intent, profile=PUBLICATION_PROFILES[receipt["schema_version"]])
     return ["publication receipt schema/profile is unsupported"]
 
 
@@ -11490,125 +11093,80 @@ def validate_publication_v1(
     return 1 if errors else 0
 
 
-def validate_publication_v2(
-    intent_path: Path,
-    receipt_path: Path,
-    release_dir: Path,
-    authorization_path: Optional[Path],
-    output_format: str,
-) -> int:
+def validate_publication_profile(intent_path: Path, receipt_path: Path, release_dir: Path, authorization_path: Optional[Path], output_format: str, *, profile) -> int:
     intent = load_json_object_strict(intent_path)
     receipt = load_json_object_strict(receipt_path)
-    errors = validate_v080_intent(intent)
-    errors.extend(validate_v080_receipt(receipt, intent))
+    errors = validate_profile_intent(intent, profile=profile)
+    errors.extend(validate_profile_receipt(receipt, intent, profile=profile))
     authorization: object = {}
     if authorization_path is None:
-        errors.append("schema-2 publication validation requires --authorization")
+        errors.append('schema-2 publication validation requires --authorization')
     else:
         authorization = load_json_object_strict(authorization_path)
-        errors.extend(validate_v080_authorization(authorization, intent))
+        errors.extend(validate_profile_authorization(authorization, intent, profile=profile))
     if isinstance(authorization, dict):
-        if receipt.get("authorization_id") != authorization.get("authorization_id"):
-            errors.append("publication receipt authorization ID does not match")
-        if receipt.get("host_operation_id") != authorization.get("host_operation_id"):
-            errors.append("publication receipt host operation ID does not match")
-    local_assets = publication_assets(release_dir.resolve(), "0.8.0")
-    if intent.get("assets") != local_assets:
-        errors.append("schema-2 intent assets do not match the local candidate")
-    if receipt.get("remote_write_state") != "confirmed-complete":
-        errors.append("schema-2 remote writes are not confirmed complete")
-    if receipt.get("verification_state") != "passed":
-        errors.append("schema-2 public verification did not pass")
-    main = receipt.get("main") if isinstance(receipt.get("main"), dict) else {}
-    tag = receipt.get("tag") if isinstance(receipt.get("tag"), dict) else {}
-    release = receipt.get("release") if isinstance(receipt.get("release"), dict) else {}
-    intent_main = intent.get("main") if isinstance(intent.get("main"), dict) else {}
-    intent_tag = intent.get("tag") if isinstance(intent.get("tag"), dict) else {}
-    intent_release = intent.get("release") if isinstance(intent.get("release"), dict) else {}
-    if main.get("observed_oid") != intent_main.get("target_oid") or main.get("write_state") != "confirmed-complete" or main.get("read_back") is not True:
-        errors.append("schema-2 final main read-back does not match")
-    if tag.get("observed_ref_oid") != intent_tag.get("expected_tag_object_oid") or tag.get("peeled_commit") != intent.get("source_commit") or tag.get("write_state") != "confirmed-complete" or tag.get("read_back") is not True:
-        errors.append("schema-2 final tag read-back does not match")
-    if release.get("body_sha256") != intent_release.get("body_sha256") or release.get("write_state") != "confirmed-complete" or release.get("read_back") is not True:
-        errors.append("schema-2 final Release read-back does not match")
-    remote_assets = receipt.get("assets") if isinstance(receipt.get("assets"), list) else []
-    downloads = receipt.get("downloads") if isinstance(receipt.get("downloads"), list) else []
-    if [
-        {key: item.get(key) for key in ("name", "role", "size", "sha256")}
-        for item in remote_assets if isinstance(item, dict)
-    ] != local_assets:
-        errors.append("schema-2 final remote asset set does not match")
-    if any(
-        item.get("write_state") != "confirmed-complete" or item.get("read_back") is not True
-        for item in remote_assets if isinstance(item, dict)
-    ):
-        errors.append("schema-2 final remote assets are not confirmed")
-    if [
-        {key: item.get(key) for key in ("name", "size", "sha256")}
-        for item in downloads if isinstance(item, dict)
-    ] != [{key: item[key] for key in ("name", "size", "sha256")} for item in local_assets]:
-        errors.append("schema-2 public downloads do not match")
-    if any(item.get("matched") is not True for item in downloads if isinstance(item, dict)):
-        errors.append("schema-2 public download mismatch was reported")
-    validate_result = receipt.get("validate_release")
-    if not isinstance(validate_result, dict) or validate_result.get("status") != "valid":
-        errors.append("schema-2 target validate-release evidence is not valid")
-    smokes = receipt.get("smokes") if isinstance(receipt.get("smokes"), list) else []
-    if any(item.get("status") != "passed" for item in smokes if isinstance(item, dict)):
-        errors.append("schema-2 public smoke evidence did not pass")
-    operations = receipt.get("operations") if isinstance(receipt.get("operations"), list) else []
-    if len(operations) == 6 and any(
-        item.get("outcome") not in V080_SUCCESS_OUTCOMES or item.get("error") is not None
-        for item in operations if isinstance(item, dict)
-    ):
-        errors.append("schema-2 publication operation graph is not terminal")
-    if receipt.get("error") is not None:
-        errors.append("schema-2 publication receipt contains an error")
+        if receipt.get('authorization_id') != authorization.get('authorization_id'):
+            errors.append('publication receipt authorization ID does not match')
+        if receipt.get('host_operation_id') != authorization.get('host_operation_id'):
+            errors.append('publication receipt host operation ID does not match')
+    local_assets = publication_assets(release_dir.resolve(), profile['version'])
+    if intent.get('assets') != local_assets:
+        errors.append('schema-2 intent assets do not match the local candidate')
+    if receipt.get('remote_write_state') != 'confirmed-complete':
+        errors.append('schema-2 remote writes are not confirmed complete')
+    if receipt.get('verification_state') != 'passed':
+        errors.append('schema-2 public verification did not pass')
+    main = receipt.get('main') if isinstance(receipt.get('main'), dict) else {}
+    tag = receipt.get('tag') if isinstance(receipt.get('tag'), dict) else {}
+    release = receipt.get('release') if isinstance(receipt.get('release'), dict) else {}
+    intent_main = intent.get('main') if isinstance(intent.get('main'), dict) else {}
+    intent_tag = intent.get('tag') if isinstance(intent.get('tag'), dict) else {}
+    intent_release = intent.get('release') if isinstance(intent.get('release'), dict) else {}
+    if main.get('observed_oid') != intent_main.get('target_oid') or main.get('write_state') != 'confirmed-complete' or main.get('read_back') is not True:
+        errors.append('schema-2 final main read-back does not match')
+    if tag.get('observed_ref_oid') != intent_tag.get('expected_tag_object_oid') or tag.get('peeled_commit') != intent.get('source_commit') or tag.get('write_state') != 'confirmed-complete' or (tag.get('read_back') is not True):
+        errors.append('schema-2 final tag read-back does not match')
+    if release.get('body_sha256') != intent_release.get('body_sha256') or release.get('write_state') != 'confirmed-complete' or release.get('read_back') is not True:
+        errors.append('schema-2 final Release read-back does not match')
+    remote_assets = receipt.get('assets') if isinstance(receipt.get('assets'), list) else []
+    downloads = receipt.get('downloads') if isinstance(receipt.get('downloads'), list) else []
+    if [{key: item.get(key) for key in ('name', 'role', 'size', 'sha256')} for item in remote_assets if isinstance(item, dict)] != local_assets:
+        errors.append('schema-2 final remote asset set does not match')
+    if any((item.get('write_state') != 'confirmed-complete' or item.get('read_back') is not True for item in remote_assets if isinstance(item, dict))):
+        errors.append('schema-2 final remote assets are not confirmed')
+    if [{key: item.get(key) for key in ('name', 'size', 'sha256')} for item in downloads if isinstance(item, dict)] != [{key: item[key] for key in ('name', 'size', 'sha256')} for item in local_assets]:
+        errors.append('schema-2 public downloads do not match')
+    if any((item.get('matched') is not True for item in downloads if isinstance(item, dict))):
+        errors.append('schema-2 public download mismatch was reported')
+    validate_result = receipt.get('validate_release')
+    if not isinstance(validate_result, dict) or validate_result.get('status') != 'valid':
+        errors.append('schema-2 target validate-release evidence is not valid')
+    smokes = receipt.get('smokes') if isinstance(receipt.get('smokes'), list) else []
+    if any((item.get('status') != 'passed' for item in smokes if isinstance(item, dict))):
+        errors.append('schema-2 public smoke evidence did not pass')
+    operations = receipt.get('operations') if isinstance(receipt.get('operations'), list) else []
+    if len(operations) == 6 and any((item.get('outcome') not in V080_SUCCESS_OUTCOMES or item.get('error') is not None for item in operations if isinstance(item, dict))):
+        errors.append('schema-2 publication operation graph is not terminal')
+    if receipt.get('error') is not None:
+        errors.append('schema-2 publication receipt contains an error')
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        local_release_status = validate_release(release_dir.resolve(), "json")
+        local_release_status = validate_release(release_dir.resolve(), 'json')
     if local_release_status != 0:
-        errors.append("local v0.8 release directory does not pass validate-release")
-    if platform.python_implementation() != "CPython" or sys.version_info[:2] != (3, 9):
-        errors.append("schema-2 final publication validation must execute on CPython 3.9")
-    serialized = json.dumps(
-        {"intent": intent, "receipt": receipt, "authorization": authorization},
-        ensure_ascii=False,
-    )
+        errors.append('local v0.8 release directory does not pass validate-release')
+    if platform.python_implementation() != 'CPython' or sys.version_info[:2] != (3, 9):
+        errors.append('schema-2 final publication validation must execute on CPython 3.9')
+    serialized = json.dumps({'intent': intent, 'receipt': receipt, 'authorization': authorization}, ensure_ascii=False)
     if contains_secret(serialized):
-        errors.append("schema-2 publication evidence contains credential-like material")
-    status = "invalid" if errors else "valid"
-    if output_format == "json":
-        print_json(result_envelope(
-            "validate-publication", status,
-            profile=V080_PUBLICATION_PROFILE,
-            version="0.8.0",
-            intent_sha256=canonical_json_sha256(intent),
-            authorization_id=(authorization.get("authorization_id") if isinstance(authorization, dict) else None),
-            host_operation_id=receipt.get("host_operation_id"),
-            release_directory=str(release_dir.resolve()),
-            errors=errors,
-            remote_write_state=receipt.get("remote_write_state"),
-            verification_state=receipt.get("verification_state"),
-            execution={
-                "observed_at": utc_now(),
-                "interpreter": {
-                    "implementation": platform.python_implementation(),
-                    "major": sys.version_info.major,
-                    "minor": sys.version_info.minor,
-                    "patch": sys.version_info.micro,
-                    "platform": platform.platform(),
-                    "executable_name": Path(sys.executable).name,
-                },
-            },
-            host_evidence_authenticated=False,
-            network_used=False,
-        ))
+        errors.append('schema-2 publication evidence contains credential-like material')
+    status = 'invalid' if errors else 'valid'
+    if output_format == 'json':
+        print_json(result_envelope('validate-publication', status, profile=profile['profile'], version=profile['version'], intent_sha256=canonical_json_sha256(intent), authorization_id=authorization.get('authorization_id') if isinstance(authorization, dict) else None, host_operation_id=receipt.get('host_operation_id'), release_directory=str(release_dir.resolve()), errors=errors, remote_write_state=receipt.get('remote_write_state'), verification_state=receipt.get('verification_state'), execution={'observed_at': utc_now(), 'interpreter': {'implementation': platform.python_implementation(), 'major': sys.version_info.major, 'minor': sys.version_info.minor, 'patch': sys.version_info.micro, 'platform': platform.platform(), 'executable_name': Path(sys.executable).name}}, host_evidence_authenticated=False, network_used=False))
     elif errors:
         for error in errors:
-            print(f"ERROR: {error}", file=sys.stderr)
+            print(f'ERROR: {error}', file=sys.stderr)
     else:
-        print("Vibe Kit v0.8.0 publication validation passed.")
-        print("Host evidence is structurally consistent; GitHub authenticity remains a live-host fact.")
+        print(f"Vibe Kit {profile['tag']} publication validation passed.")
+        print('Host evidence is structurally consistent; GitHub authenticity remains a live-host fact.')
     return 1 if errors else 0
 
 
@@ -11625,12 +11183,115 @@ def validate_publication(
         if authorization_path is not None:
             raise VibeError("historical schema-1 validation does not accept --authorization")
         return validate_publication_v1(intent_path, receipt_path, release_dir, output_format)
-    if schema == 2:
-        return validate_publication_v2(
-            intent_path, receipt_path, release_dir, authorization_path, output_format
+    if schema in (2, 3):
+        return validate_publication_profile(
+            intent_path, receipt_path, release_dir, authorization_path, output_format, profile=PUBLICATION_PROFILES[schema]
         )
     raise VibeError("publication intent schema/profile is unsupported")
 
+
+
+def valid_receipt_header(
+    value: Dict[str, object], kind: str, source_commit: str, source_tree_oid: str
+) -> bool:
+    return valid_profile_receipt_header(value, kind, source_commit, source_tree_oid, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_qa_receipt(
+    value: object, source_commit: str, source_tree_oid: str
+) -> List[str]:
+    return validate_profile_qa_receipt(value, source_commit, source_tree_oid, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_configured_receipt(
+    value: object, source_commit: str, source_tree_oid: str
+) -> List[str]:
+    return validate_profile_configured_receipt(value, source_commit, source_tree_oid, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_python_receipt(
+    value: object, source_commit: str, source_tree_oid: str
+) -> List[str]:
+    return validate_profile_python_receipt(value, source_commit, source_tree_oid, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_build_receipt(
+    value: object, source_commit: str, source_tree_oid: str, build_id: str
+) -> List[str]:
+    return validate_profile_build_receipt(value, source_commit, source_tree_oid, build_id, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_release_gate_bundle(
+    value: object, source_commit: str
+) -> Tuple[List[str], Optional[str], Optional[List[Dict[str, object]]]]:
+    return validate_profile_release_gate_bundle(value, source_commit, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_authorization(value: object, intent: Dict[str, object]) -> List[str]:
+    return validate_profile_authorization(value, intent, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_postpublication_acceptance(
+    value: object,
+    intent: Dict[str, object],
+    authorization: Dict[str, object],
+    source_tree_oid: str,
+) -> List[str]:
+    return validate_profile_postpublication_acceptance(value, intent, authorization, source_tree_oid, profile=PUBLICATION_PROFILES[2])
+
+
+def v080_operation_initial_observation(
+    snapshot: Dict[str, object], kind: str
+) -> object:
+    return profile_operation_initial_observation(snapshot, kind, profile=PUBLICATION_PROFILES[2])
+
+
+def v080_operation_identity(
+    kind: str, natural_key: str, snapshot_sha: str, initial: object
+) -> Dict[str, object]:
+    return profile_operation_identity(kind, natural_key, snapshot_sha, initial, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_remote_snapshot(
+    snapshot: object, intent: Dict[str, object]
+) -> List[str]:
+    return validate_profile_remote_snapshot(snapshot, intent, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_intent(value: object) -> List[str]:
+    return validate_profile_intent(value, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_observation(value: object, kind: str) -> List[str]:
+    return validate_profile_observation(value, kind, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_attempts(value: object, observation_kind: str) -> List[str]:
+    return validate_profile_attempts(value, observation_kind, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_write_ledger(
+    value: object,
+    observation_kind: str,
+    allowed_successes: Sequence[str],
+    expected_precondition_sha: str,
+    asset: bool = False,
+) -> List[str]:
+    return validate_profile_write_ledger(value, observation_kind, allowed_successes, expected_precondition_sha, asset, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_v080_receipt(value: object, intent: Dict[str, object]) -> List[str]:
+    return validate_profile_receipt(value, intent, profile=PUBLICATION_PROFILES[2])
+
+
+def validate_publication_v2(
+    intent_path: Path,
+    receipt_path: Path,
+    release_dir: Path,
+    authorization_path: Optional[Path],
+    output_format: str,
+) -> int:
+    return validate_publication_profile(intent_path, receipt_path, release_dir, authorization_path, output_format, profile=PUBLICATION_PROFILES[2])
 
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace(
@@ -12701,6 +12362,194 @@ def add_source_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+
+READINESS_FIELDS = (
+    "Outcome", "Trigger evidence", "Decision owner", "Governing decision",
+    "No-new-decision rationale", "Review mode", "Review result", "Review evidence",
+    "Material product decisions", "Open blockers", "Gate", "Gate owner",
+    "Confirmed at", "Confirmation basis", "Readiness history",
+)
+
+
+def evidence_file(target: Path, relative: str) -> Path:
+    """Narrow repository-relative, regular, component-wise symlink-free evidence."""
+    parts = relative.split("/")
+    if not relative or relative.startswith("/") or any(part in ("", ".", "..") for part in parts) or "\\" in relative:
+        raise VibeError("evidence.path-unsafe: " + relative)
+    current = target
+    for part in parts:
+        current = current / part
+        if current.is_symlink():
+            raise VibeError("evidence.path-symlink: " + relative)
+    if not current.is_file():
+        raise VibeError("evidence.file-missing-or-nonregular: " + relative)
+    return current
+
+
+def unfenced_markdown(text: str) -> List[str]:
+    lines = []
+    fence = None
+    for line in text.splitlines():
+        match = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
+        if match:
+            token = match.group(1)
+            if fence is None:
+                fence = token
+            elif token[0] == fence[0] and len(token) >= len(fence):
+                fence = None
+            lines.append("")
+        else:
+            lines.append(line if fence is None else "")
+    if fence is not None:
+        raise VibeError("readiness.markdown-unclosed-fence")
+    return lines
+
+
+def readiness_findings(target: Path, brief: str) -> List[Dict[str, str]]:
+    findings: List[Dict[str, str]] = []
+    def fail(rule: str, location: str) -> None:
+        findings.append({"rule": rule, "path": brief, "location": location})
+    try:
+        lines = unfenced_markdown(evidence_file(target, brief).read_text(encoding="utf-8"))
+        top = [i for i, line in enumerate(lines) if line.startswith("# ")]
+        sections = [i for i, line in enumerate(lines) if line.startswith("## ")]
+        ready = [i for i, line in enumerate(lines) if line == "## Technical decision readiness"]
+        if len(top) != 1 or not sections or top[0] >= sections[0] or len(ready) != 1:
+            fail("readiness.section-shape", "headings")
+            return findings
+        sizes = [line[8:].strip().strip("`") for line in lines[top[0]+1:sections[0]] if line.startswith("- Size: ")]
+        if len(sizes) != 1 or sizes[0] not in ("M", "L"):
+            fail("readiness.size", "Size")
+        stop = next((i for i in sections if i > ready[0]), len(lines))
+        fields: Dict[str, str] = {}
+        for line in lines[ready[0]+1:stop]:
+            if not line.strip():
+                continue
+            match = re.fullmatch(r"- ([A-Za-z][A-Za-z -]*): (.*)", line)
+            if not match or match[1] not in READINESS_FIELDS:
+                fail("readiness.field-format", line)
+                continue
+            key, value = match.groups()
+            if key in fields or not value.strip():
+                fail("readiness.field-duplicate-or-empty", key)
+            fields[key] = value.strip()
+        for key in READINESS_FIELDS:
+            if key not in fields:
+                fail("readiness.field-missing", key)
+        if findings:
+            return findings
+        literal = lambda key: fields[key][1:-1] if re.fullmatch(r"`[^`]+`", fields[key]) else fields[key]
+        enums = {
+            "Outcome": ("not-assessed", "decision-required", "covered-by-accepted-decision", "no-new-durable-decision", "decision-accepted"),
+            "Gate": ("blocked", "implementation-ready"),
+            "Review mode": ("not-required", "independent-agent", "sequential-perspective"),
+            "Review result": ("not-required", "pending", "changes-required", "approved"),
+        }
+        for key, values in enums.items():
+            if literal(key) not in values:
+                fail("readiness.enum", key)
+        outcome = literal("Outcome")
+        if literal("Gate") != "implementation-ready" or outcome in ("not-assessed", "decision-required"):
+            fail("readiness.gate-blocked", "Gate")
+        governing = fields["Governing decision"]
+        adr_based = outcome in ("covered-by-accepted-decision", "decision-accepted")
+        if adr_based:
+            if not re.fullmatch(r"`docs/decisions/\d{4}-[a-z0-9-]+\.md`(?:, `docs/decisions/\d{4}-[a-z0-9-]+\.md`)*", governing):
+                fail("readiness.adr-reference", "Governing decision")
+            else:
+                for reference in governing.split(", "):
+                    relative = reference[1:-1]
+                    adr = unfenced_markdown(evidence_file(target, relative).read_text(encoding="utf-8"))
+                    end = next((i for i, line in enumerate(adr) if line.startswith("## ")), len(adr))
+                    headings = [line for line in adr if line.startswith("# ")]
+                    statuses = [line for line in adr[:end] if line.startswith("- Status:")]
+                    if len(headings) != 1 or not headings[0].startswith("# " + Path(relative).name[:4] + ": ") or statuses != ["- Status: Accepted"]:
+                        fail("readiness.adr-not-accepted", relative)
+            if fields["Decision owner"] == "none":
+                fail("readiness.decision-owner", "Decision owner")
+        elif governing != "none":
+            fail("readiness.governing-none-required", "Governing decision")
+        rationale = fields["No-new-decision rationale"]
+        if (outcome == "no-new-durable-decision") != (rationale != "none"):
+            fail("readiness.rationale", "No-new-decision rationale")
+        triggered = sizes == ["L"] or fields["Trigger evidence"] != "none"
+        if not triggered and outcome != "no-new-durable-decision":
+            fail("readiness.untriggered-outcome", "Outcome")
+        if triggered or literal("Review result") == "approved":
+            if literal("Review mode") not in ("independent-agent", "sequential-perspective") or literal("Review result") != "approved":
+                fail("readiness.review-required", "Review result")
+            reference = re.fullmatch(r"`([^`#]+)(?:#[^`]+)?`", fields["Review evidence"])
+            if not reference:
+                fail("readiness.review-evidence", "Review evidence")
+            else:
+                evidence_file(target, reference[1])
+        elif literal("Review mode") != "not-required" or literal("Review result") != "not-required" or fields["Review evidence"] != "none":
+            fail("readiness.review-inconsistent", "Review mode")
+        if fields["Open blockers"] != "none":
+            fail("readiness.open-blockers", "Open blockers")
+        for key in ("Gate owner", "Confirmation basis"):
+            if fields[key] == "none":
+                fail("readiness.confirmation-missing", key)
+        if not is_iso8601(literal("Confirmed at")):
+            fail("readiness.confirmation-time", "Confirmed at")
+    except (VibeError, OSError, UnicodeError) as error:
+        fail("readiness.evidence-invalid", str(error))
+    return findings
+
+
+def validate_readiness(target: Path, brief: str, output_format: str) -> int:
+    findings = readiness_findings(target.resolve(), brief)
+    result = {"schema_version": 1, "command": "validate-readiness", "status": "blocked" if findings else "valid", "brief": brief, "findings": findings, "writes_performed": False, "limitations": ["Structural evidence only; human applicability, review independence and resolved product choices remain required. No file-write enforcement."]}
+    if output_format == "json":
+        print_json(result)
+    else:
+        print(result["status"])
+        for finding in findings:
+            print(f"{finding['rule']}: {finding['path']}:{finding['location']}")
+    return 1 if findings else 0
+
+
+def inspect_managed_agents(target: Path, word_policy: Optional[str], max_words: Optional[int], output_format: str) -> int:
+    target = target.resolve()
+    if (word_policy is None) != (max_words is None) or (max_words is not None and max_words < 0):
+        raise VibeError("agents.word-policy: select both unicode-whitespace-v1 and a nonnegative maximum; other policies require the actual project checker")
+    raw = evidence_file(target, "AGENTS.md").read_bytes()
+    text = raw.decode("utf-8")
+    if text.count(AGENTS_START) != 1 or text.count(AGENTS_END) != 1 or text.index(AGENTS_START) >= text.index(AGENTS_END):
+        raise VibeError("agents.markers: require exactly one ordered managed marker pair")
+    block = extract_agents_block(text)
+    manifest = load_json_object_strict(evidence_file(target, ".vibe/manifest.json"))
+    expected = manifest.get("agents_block_hash")
+    if manifest.get("schema_version") != 1 or not isinstance(manifest.get("framework_version"), str) or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", manifest["framework_version"]) is None or not isinstance(manifest.get("managed_files"), dict) or any(not isinstance(key, str) or not valid_sha256(value) for key, value in manifest["managed_files"].items()) or not valid_sha256(expected) or sha256_text(block) != expected:
+        raise VibeError("agents.authentication: invalid manifest or managed region hash mismatch")
+    start = raw.index(AGENTS_START.encode("utf-8"))
+    end = raw.index(AGENTS_END.encode("utf-8")) + len(AGENTS_END.encode("utf-8"))
+    count = len(text.split())
+    passed = max_words is None or count <= max_words
+    result = {"schema_version": 1, "command": "inspect-managed-agents", "status": "valid" if passed else "blocked", "file_sha256": hashlib.sha256(raw).hexdigest(), "managed_region_sha256": expected, "byte_span": {"start": start, "end": end}, "authentication_basis": ".vibe/manifest.json#agents_block_hash", "word_check": None if max_words is None else {"policy": word_policy, "scope": "whole-file", "actual": count, "maximum": max_words, "passed": passed, "managed_words": len(block.split())}, "writes_performed": False, "limitations": ["Manifest correspondence is not a publisher signature.", "Whole-file unicode-whitespace-v1 uses Python str.split(), including markers and project-owned text. Other policies require the actual project checker."]}
+    if output_format == "json":
+        print_json(result)
+    else:
+        print(json.dumps(result, ensure_ascii=False))
+    return 0 if passed else 1
+
+
+def v090_closeout_command(args: argparse.Namespace) -> int:
+    packet = load_json_object_strict(Path(args.packet))
+    required = ("request", "parent_intent", "publication_receipt", "publication_authorization", "acceptance_receipt", "validation_result")
+    optional = ("closeout_authorization", "closeout_receipt")
+    if set(packet) not in (set(required), set(required + optional)) or any(not isinstance(value, str) for value in packet.values()):
+        raise VibeError("closeout packet requires the exact six plan or eight validation file references")
+    root = Path(args.packet).resolve().parent
+    values = {key: load_json_object_strict(evidence_file(root, path)) for key, path in packet.items()}
+    intent, bodies = build_v090_closeout_intent(*(values[key] for key in required))
+    errors = []
+    if "closeout_receipt" in values:
+        errors = validate_v090_closeout_receipt(values["closeout_receipt"], intent, values["closeout_authorization"])
+    result = {"schema_version": 1, "command": "issue-closeout", "status": "invalid" if errors else "valid", "intent": intent, "intent_sha256": canonical_json_sha256(intent), "comment_bodies": bodies, "errors": errors, "writes_performed": False, "network_used": False, "host_evidence_authenticated": False}
+    print_json(result)
+    return 1 if errors else 0
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vibe", description="Install and operate the Vibe Kit development workflow."
@@ -12724,6 +12573,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     recovery_parser.add_argument("target", nargs="?", default=".")
     add_format_argument(recovery_parser)
+
+    closeout_parser = subparsers.add_parser("issue-closeout")
+    closeout_parser.add_argument("--packet", required=True)
+    add_format_argument(closeout_parser)
+    readiness_parser = subparsers.add_parser("validate-readiness")
+    readiness_parser.add_argument("target")
+    readiness_parser.add_argument("--brief", required=True)
+    add_format_argument(readiness_parser)
+    agents_parser = subparsers.add_parser("inspect-managed-agents")
+    agents_parser.add_argument("target", nargs="?", default=".")
+    agents_parser.add_argument("--word-policy", choices=("unicode-whitespace-v1",))
+    agents_parser.add_argument("--max-words", type=int)
+    add_format_argument(agents_parser)
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("target", nargs="?", default=".")
@@ -12899,6 +12761,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return doctor(Path(args.target), args.output_format)
         if args.command == "validate-takeover":
             return validate_takeover(source_root(), args.output_format)
+        if args.command == "issue-closeout":
+            return v090_closeout_command(args)
+        if args.command == "validate-readiness":
+            return validate_readiness(Path(args.target), args.brief, args.output_format)
+        if args.command == "inspect-managed-agents":
+            return inspect_managed_agents(Path(args.target), args.word_policy, args.max_words, args.output_format)
         if args.command == "verify":
             return verify(Path(args.target), args.only, args.output_format)
         if args.command == "work-item":

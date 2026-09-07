@@ -43,10 +43,11 @@ Provide a project-pinned development system that lets coding Agents carry truste
 
 ## Non-goals and boundaries
 
-- The source/package/Plugin tree is an unpublished v0.8.0 candidate; v0.7.0
-  remains the latest GitHub Pre-release. No tag, GitHub Release, Plugin
-  publication, stable promotion, public Plugin Directory entry, or automatic
-  network update is authorized by the candidate identity.
+- Vibe Kit v0.8.0 was published as a non-draft GitHub Pre-release on
+  2026-09-02. Publication evidence is recorded in
+  `docs/work-items/20260902-v0-8-publication/verification.md`. This does not
+  imply stable promotion, public Plugin Directory publication, or automatic
+  network updates. The README still advertises v0.7.0 and needs synchronization.
 - Current repository/Plugin activation is manual-fallback-only unless a running host supplies positive conformance receipts. Static prompts, controlled fixtures and tool presence do not establish live same-task reload or automatic successor handoff.
 - It does not collect telemetry or silently submit feedback. The central feedback repository is configured, but every outbound payload still requires adjacent, unambiguous approval bound to its report, repository and current hash.
 - The accepted distribution uses channel-neutral releases, repository-pinned installations, a bootstrap-only Codex Plugin, generated thin adapters, and a validated GitHub Release bundle.
@@ -65,3 +66,5 @@ Provide a project-pinned development system that lets coding Agents carry truste
 - Framework-owned and project-owned files remain distinguishable.
 - Verification results must distinguish executed evidence from assumptions or skipped checks.
 - Upgrade completion language must distinguish installed files, active target rules, adapted context, configured-check coverage, and original-goal routability.
+
+The v0.9.0 source candidate adds bounded preimplementation evidence validation and authenticated AGENTS-region integration without changing project word budgets. Both release homepages are reviewed and synchronized; publication completion awaits host evidence.

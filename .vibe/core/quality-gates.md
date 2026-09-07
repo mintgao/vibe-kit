@@ -54,3 +54,8 @@ replace it.
 - Only the activated task may adapt project context, run final default verification, re-evaluate target rules, resume the original goal, or announce completion.
 - A default structured verify receipt must cover every configured check. Failed, skipped, malformed, unknown, or partial coverage blocks readiness.
 - Unconditional “ready to continue development” language requires upgraded, activated, adapted, verified, re-evaluated/no-goal-applicable, and no blocker.
+
+
+## Release homepage review
+
+Every release reviews README.md and README.zh-CN.md version, links, installation commands, capabilities and limitations. Synchronize changed facts; record a reasoned review for unchanged sections. Freeze both homepage files before final candidate QA. Public completion evidence belongs after publication without moving the release tag.

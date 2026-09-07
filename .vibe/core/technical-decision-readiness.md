@@ -65,6 +65,7 @@ New M/L work items start with this project-owned block:
 - Trigger evidence: none
 - Decision owner: none
 - Governing decision: none
+- No-new-decision rationale: none
 - Review mode: `not-required`
 - Review result: `not-required`
 - Review evidence: none
@@ -204,3 +205,14 @@ durable/high-risk boundary. Completed historical work is not retrofitted.
 This is a workflow and evidence contract, not a CLI-owned state machine. Core
 protocol metadata declares adapter conformance; it does not mechanically prove
 that a host or Agent followed the gate.
+
+
+## Bounded preimplementation evidence check
+
+For each newly adopted M/L work item, run `./bin/vibe validate-readiness . --brief docs/work-items/<id>/brief.md --format json` before releasing implementation and after referenced evidence changes. A nonzero result blocks release. QA checks the actual release evidence. Completed historical briefs are not retrofitted.
+
+The supported Markdown grammar has one top-level heading, one Size bullet (M or L, optionally backtick-quoted) in its preamble before the first second-level heading, and exactly one unfenced `## Technical decision readiness` section. Each required field is exactly one single-line bullet; duplicate, empty, unknown or continued fields fail. Enums may be backtick-quoted. `Governing decision` is `none` or comma-space-separated backtick-quoted `docs/decisions/NNNN-slug.md` paths. Each ADR must have one matching numbered top-level heading and exactly one unfenced `- Status: Accepted` metadata bullet before its first second-level heading. Implemented project notes, fenced examples and non-Accepted ADRs never qualify.
+
+ADR-based outcomes require at least one ADR and a decision owner. `no-new-durable-decision` requires `Governing decision: none` and an explicit non-none `No-new-decision rationale`; all other outcomes use rationale `none`. An M declaration `Trigger evidence: none` may release only through no-new-durable-decision. All other M and all L records require approved review, a permitted review mode and one backtick-quoted repository-relative review-file reference with an optional #heading inside the backticks. Referenced files must be regular and symlink-free within the project. A released record has no blockers, a non-none gate owner and confirmation basis, and an ISO-8601 confirmation time.
+
+This is a read-only structural check, not a file-write lock or gate mutation. Human assessment still owns applicability, reviewer independence, rationale truth and resolved material product decisions. Unsupported formatting must be corrected explicitly, not guessed.

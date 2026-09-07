@@ -39,3 +39,5 @@ Use the smallest viable/no-history fork when supported. If transport bounding is
 absent or uncertain, preserve QA independence and record
 `transport context bounding unavailable`; do not claim prompt isolation or token
 reduction.
+
+For newly adopted applicable M/L work, the orchestrator runs `./bin/vibe validate-readiness . --brief docs/work-items/<id>/brief.md --format json` before implementation release and after referenced evidence changes. Nonzero blocks release. QA verifies the persisted release evidence; a passed structural check does not establish human applicability, independence or product acceptance. Implemented notes do not replace Accepted ADRs.

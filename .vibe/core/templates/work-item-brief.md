@@ -11,6 +11,7 @@
 - Trigger evidence: none
 - Decision owner: none
 - Governing decision: none
+- No-new-decision rationale: none
 - Review mode: `not-required`
 - Review result: `not-required`
 - Review evidence: none

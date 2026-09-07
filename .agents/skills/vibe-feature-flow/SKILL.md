@@ -53,3 +53,5 @@ invalid prior receipt, changed candidate state, or a distinct specialized gate;
 record the reason and candidate state.
 
 Close with changed behavior, evidence, skipped checks, risks, and follow-ups. Update durable context only if the project truth changed.
+
+For newly adopted applicable M/L work, the orchestrator runs `./bin/vibe validate-readiness . --brief docs/work-items/<id>/brief.md --format json` before implementation release and after referenced evidence changes. Nonzero blocks release. QA verifies the persisted release evidence; a passed structural check does not establish human applicability, independence or product acceptance. Implemented notes do not replace Accepted ADRs.

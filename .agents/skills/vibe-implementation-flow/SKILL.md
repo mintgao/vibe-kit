@@ -43,3 +43,5 @@ reason and candidate state. Static prompt/distribution checks do not prove live
 host behavior or measured token savings.
 
 Report files changed, important decisions, verification evidence, checks not run, and remaining risks. Do not broaden the feature to satisfy unrelated cleanup preferences.
+
+For newly adopted applicable M/L work, the orchestrator runs `./bin/vibe validate-readiness . --brief docs/work-items/<id>/brief.md --format json` before implementation release and after referenced evidence changes. Nonzero blocks release. QA verifies the persisted release evidence; a passed structural check does not establish human applicability, independence or product acceptance. Implemented notes do not replace Accepted ADRs.
