@@ -56,7 +56,7 @@ Final `git diff --check` passed. The actual work-item `validate-readiness` resul
 
 ## Identity generation
 
-Recomputed the migration-registry canonical digest from the compiled declaration. Computed the Agent-install activation digest using `source_activation_identity(ROOT)`, then Plugin payload identity using `payload_tree_sha256(ROOT)`. Generated installation metadata through the production `init --source-type local-payload --source-ref 0.9.0` process in a disposable directory and copied its generated manifest/version into the source checkout. No hashes were fabricated. Final Plugin payload-tree SHA-256: `6a21d1a371370e7ffb9ffb066fbaf98c263e31aedba8d08cf626a86f1546d4e3`.
+Recomputed the migration-registry canonical digest from the compiled declaration. Computed the Agent-install activation digest using `source_activation_identity(ROOT)`, then Plugin payload identity using `payload_tree_sha256(ROOT)`. Generated installation metadata through the production `init --source-type local-payload --source-ref 0.9.0` process in a disposable directory and copied its generated manifest/version into the source checkout. No hashes were fabricated. Initial candidate Plugin payload-tree SHA-256: `6a21d1a371370e7ffb9ffb066fbaf98c263e31aedba8d08cf626a86f1546d4e3` (superseded by the QA fix below).
 
 ## QA handoff and skipped checks
 
@@ -71,3 +71,12 @@ Use `PUBLICATION_PROFILES[3]` with `validate_profile_intent`, `validate_profile_
 `issue-closeout --packet <json> --format json` reads exactly six repository-relative evidence paths from the packet directory: `request`, `parent_intent`, `publication_receipt`, `publication_authorization`, `acceptance_receipt`, `validation_result`. For standalone receipt validation add exactly `closeout_authorization` and `closeout_receipt`. It returns the exact intent/digest and comment bodies, never writes remotely. Programmatic entry points are `build_v090_closeout_intent(...)`, `validate_v090_closeout_parent(...)`, and `validate_v090_closeout_receipt(...)`.
 
 Closeout `overall_state` retains `not-run|confirmed-partial|confirmed-complete|uncertain|conflict`; operation states retain ADR0011's historical enum, without v0.8's `updated` extension. Live host observation and consent authenticity remain host responsibilities, not guarantees from static contracts.
+
+
+## QA correction: exact Size quoting
+
+Independent QA reproduced malformed `- Size: `L` (unclosed quote) and doubled-backtick Size acceptance on frozen candidate `f6ab721`; its evidence is `/private/tmp/vibe-v09-qa/independent-size-negative.json`. The parser had used a stripping operation that removed any number of edge backticks. RD replaced it with one shared exact-pair literal helper: plain values pass through, exactly one complete pair is unwrapped, malformed quoting remains invalid. Existing outcome/gate/review enum parsing already used the exact-pair rule; it now shares the helper and has explicit malformed-quote regressions.
+
+The focused regression verifies plain and singly paired M/L positives; unclosed, doubled, uneven and internally spaced Size negatives; and unclosed/doubled outcome, gate, review-mode and review-result negatives. Actual CPython 3.9.25 ran all 15 `tests.test_readiness_doc_gates` tests successfully in 1.486s. Current work-item readiness passes; source doctor is healthy; `git diff --check` passes. No full default verification was run by RD.
+
+Canonical activation, Plugin and production-init installation identities were regenerated after the code edit. Updated Plugin payload-tree SHA-256: `0251f492a32334507a50411ec7460465350e36098397694da453c9a1aa89f5f3`. The old QA full run overlapped the authorized shared edit and must be recorded as mixed/stale, never valid final-candidate evidence. Root will commit the new candidate and independent QA must run the complete default gate on that changed state. No ADR reopening is needed: this fixes conformance to ADR0014's existing exact grammar.

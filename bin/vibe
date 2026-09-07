@@ -12405,6 +12405,11 @@ def unfenced_markdown(text: str) -> List[str]:
     return lines
 
 
+
+def readiness_literal(value: str) -> str:
+    """Unwrap exactly one complete inline-code pair; malformed quoting stays invalid."""
+    return value[1:-1] if re.fullmatch(r"`[^`]+`", value) else value
+
 def readiness_findings(target: Path, brief: str) -> List[Dict[str, str]]:
     findings: List[Dict[str, str]] = []
     def fail(rule: str, location: str) -> None:
@@ -12417,7 +12422,7 @@ def readiness_findings(target: Path, brief: str) -> List[Dict[str, str]]:
         if len(top) != 1 or not sections or top[0] >= sections[0] or len(ready) != 1:
             fail("readiness.section-shape", "headings")
             return findings
-        sizes = [line[8:].strip().strip("`") for line in lines[top[0]+1:sections[0]] if line.startswith("- Size: ")]
+        sizes = [readiness_literal(line[8:].strip()) for line in lines[top[0]+1:sections[0]] if line.startswith("- Size: ")]
         if len(sizes) != 1 or sizes[0] not in ("M", "L"):
             fail("readiness.size", "Size")
         stop = next((i for i in sections if i > ready[0]), len(lines))
@@ -12438,7 +12443,7 @@ def readiness_findings(target: Path, brief: str) -> List[Dict[str, str]]:
                 fail("readiness.field-missing", key)
         if findings:
             return findings
-        literal = lambda key: fields[key][1:-1] if re.fullmatch(r"`[^`]+`", fields[key]) else fields[key]
+        literal = lambda key: readiness_literal(fields[key])
         enums = {
             "Outcome": ("not-assessed", "decision-required", "covered-by-accepted-decision", "no-new-durable-decision", "decision-accepted"),
             "Gate": ("blocked", "implementation-ready"),

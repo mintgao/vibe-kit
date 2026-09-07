@@ -219,3 +219,18 @@ class ReadinessDocGateTests(unittest.TestCase):
             self.assertTrue(self.m.validate_v090_closeout_parent(intent,bad,auth,acceptance,validation))
         bad=copy.deepcopy(acceptance);bad['criteria'].append({'criterion_id':'AC-CLOSE.1','state':'passed','evidence_refs':[]})
         self.assertTrue(self.m.validate_v090_closeout_parent(intent,receipt,auth,bad,validation))
+
+
+    def test_readiness_literals_require_plain_or_exactly_one_paired_backtick(self):
+        for size in ('M', 'L', '`M`', '`L`'):
+            with self.subTest(size=size):
+                self.assertEqual(self.findings(self.original.replace('- Size: `L`', '- Size: ' + size)), [])
+        for size in ('`L', 'L`', '``L``', '``L`', '`L``', '` M`', '`L `', 'M L'):
+            with self.subTest(size=size):
+                findings = self.findings(self.original.replace('- Size: `L`', '- Size: ' + size))
+                self.assertTrue(any(item['rule'] == 'readiness.size' for item in findings))
+        for field, value in (('Outcome', 'decision-accepted'), ('Gate', 'implementation-ready'), ('Review mode', 'independent-agent'), ('Review result', 'approved')):
+            for malformed in ('`' + value, value + '`', '``' + value + '``'):
+                with self.subTest(field=field, malformed=malformed):
+                    findings = self.findings(self.original.replace(f'- {field}: `{value}`', f'- {field}: {malformed}'))
+                    self.assertTrue(any(item['rule'] == 'readiness.enum' and item['location'] == field for item in findings))

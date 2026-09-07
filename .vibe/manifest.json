@@ -26,15 +26,15 @@
     ".vibe/core/templates/work-item-verification.md": "f6b0b9f58aeb911180ffaa366e5c976c48348df616d3adb8ada882b111a530ec",
     ".vibe/core/version": "9d8c94f1ad3ea96b1e2ac4914fda4cb93c76b4a3e0d8cc6dd8976d6c0b227d15",
     "AGENT_INSTALL.md": "216dda1f5a761ca7b3908e6046ba8e0b573eab6dc599ca2c9aef1c1bc561114e",
-    "agent-install.json": "83cd573dc849eeffefe773de9e5c996b06cd4bf6f1299ad12719c8af69839b5c",
-    "bin/vibe": "c7556489b475e146b0ccd73ac4c286b8cf8014b23878ac58da2ee22cc12f6191"
+    "agent-install.json": "c6c849f80fc1f96c1dbb508d8b5c6d66a5d6f8256e83f8e5a3cb5b7dc9384627",
+    "bin/vibe": "4882ca4a537d0f98a5c1dc5a54705b2f5f77d51614f4a7e104c6c9aadb95a138"
   },
   "agents_block_hash": "2d60860700a8ed2bda709259e63e5e7834ab5c638849c3d2564ff0b529d0447e",
   "source": {
     "type": "local-payload",
     "ref": "0.9.0",
     "artifact_sha256": null,
-    "payload_tree_sha256": "6a21d1a371370e7ffb9ffb066fbaf98c263e31aedba8d08cf626a86f1546d4e3"
+    "payload_tree_sha256": "0251f492a32334507a50411ec7460465350e36098397694da453c9a1aa89f5f3"
   },
   "target_fingerprint": {
     "kit_version": "0.9.0",
@@ -44,7 +44,7 @@
     "adapter_name": "codex",
     "adapter_protocol": 7,
     "manifest_sha256": null,
-    "activation_set_sha256": "d91f49123bf160e3b0f26a0f10cf10605e439d4c43b1e18de734169b443cb199"
+    "activation_set_sha256": "ba3491c13759649f917938bee0259a43906fd0a63aad653dbf5e21f01c1c081a"
   },
   "activation": {
     "algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
@@ -104,9 +104,9 @@
       "AGENTS.md#managed-block": "2d60860700a8ed2bda709259e63e5e7834ab5c638849c3d2564ff0b529d0447e",
       "AGENT_INSTALL.md": "216dda1f5a761ca7b3908e6046ba8e0b573eab6dc599ca2c9aef1c1bc561114e",
       "agent-install.json": "5866bbfd4d7cab7931d6b6c11f6e67683fd55c500ce7be2b1eef5f1d71c18a3e",
-      "bin/vibe": "c7556489b475e146b0ccd73ac4c286b8cf8014b23878ac58da2ee22cc12f6191"
+      "bin/vibe": "4882ca4a537d0f98a5c1dc5a54705b2f5f77d51614f4a7e104c6c9aadb95a138"
     },
-    "activation_set_sha256": "d91f49123bf160e3b0f26a0f10cf10605e439d4c43b1e18de734169b443cb199",
+    "activation_set_sha256": "ba3491c13759649f917938bee0259a43906fd0a63aad653dbf5e21f01c1c081a",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",
