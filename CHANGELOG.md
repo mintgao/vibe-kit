@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.0 — 2026-09-07
+
+- Added read-only `validate-readiness`, which checks newly adopted M/L briefs and
+  real Accepted ADR/review evidence before implementation release. Implemented
+  notes and malformed or unsafe evidence fail closed.
+- Added read-only `inspect-managed-agents`, which authenticates the managed
+  `AGENTS.md` byte span and optionally counts the whole merged file under an
+  explicitly selected unicode-whitespace-v1 ceiling.
+- Every release reviews both GitHub homepages for changed version, links,
+  commands, capabilities and limitations.
+- Added publication schema 3, binding v0.9.0 to six operations and five assets,
+  with a separate closeout schema 2 that permits only #6/#7 after public
+  verification; historical v0.7/v0.8 profiles keep their boundaries.
+- Kit 0.9.0 uses core/Codex protocol 7 and requires Python 3.9 or later.
+
 ## 0.8.0 — 2026-09-02
 
 - Made task sizing risk-first: multiple tightly coupled files do not by

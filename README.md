@@ -54,7 +54,7 @@ After adoption, requests look like normal development work.
 
 > Verify whether the current version is ready to release and show the evidence for each criterion.
 
-Codex should report the selected version and source, installation health, target-rule activation, project-understanding readiness, configured checks, and the next action. The 0.9.0 repository contract defines live reload and automatic successor receipts, but the current Codex/Plugin integration claims neither without positive host evidence. Its guaranteed fallback is one action: open a new Codex task in the same project. The source task can prefill or provide one copyable original-goal sentence; the activated task continues without another upgrade confirmation or internal command.
+Codex should report the selected version and source, installation health, target-rule activation, project-understanding readiness, configured checks, and the next action. The 0.9.0 repository contract defines live reload and automatic successor receipts, but the current Codex/Plugin integration claims neither without positive host evidence. Its guaranteed fallback is one action: open a new task in the same project — any host that can start one may own it, including a host without a kit adapter. The source task can prefill or provide one copyable original-goal sentence; the activated task continues without another upgrade confirmation or internal command.
 
 ## Appendix for professional developers and maintainers
 

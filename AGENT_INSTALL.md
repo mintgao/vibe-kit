@@ -1,7 +1,7 @@
 # Agent installation and takeover contract
 
-This document is the Codex-facing adoption and maintenance entry point for Vibe
-Kit 0.9.0. The machine-readable source of truth is `agent-install.json`. Keep
+This document is the Agent-host-facing adoption and maintenance entry point for
+Vibe Kit 0.9.0. The machine-readable source of truth is `agent-install.json`. Keep
 CLI commands, JSON receipts, hashes and archive details internal during a healthy
 flow; report them only when they establish evidence or explain a blocker.
 
@@ -111,7 +111,7 @@ installation remains upgraded when activation, adaptation, verification or goal
 routing later blocks; do not misreport those later failures as an automatic
 rollback.
 
-## Activation and current Codex capability
+## Activation and current adapter capability
 
 Bind activation to actual installed content. Recompute the manifest SHA-256 and
 activation-set SHA-256 from the declared paths, target fingerprint and managed
@@ -137,16 +137,25 @@ The contract defines three paths:
   `manual-task-start` receipt that recomputes the installed identities and validates
   any transfer identifier.
 
+The manual new-task path is host-neutral. Any host that can start a new task in
+the same project may own the successor task and supply `manual-task-start`,
+including a host that has no kit adapter of its own, such as a new Hermes session.
+The `adapter` metadata and the activation fingerprint describe the host that
+installed or adopted this version; they never restrict which host owns the
+successor task. The receipt requirements above are unchanged, and a host that
+cannot recompute the installed identities must take the degraded stop below
+rather than supply a receipt.
+
 This repository and the bootstrap-only Plugin currently claim only the manual
 fallback. Same-task reload and automatic successor handoff remain conditional
 until a running host supplies positive live conformance receipts. Do not infer
-them from the current Codex tool surface.
+them from the current Codex tool surface or from any other host's tool surface.
 
 Without a live receipt, stop the source task after upgrade/doctor with
 `overall_status=degraded`, `reason_code=manual-new-task-required`, and exactly one
-action: create a new Codex task in the same project. Say:
+action: create a new task in the same project. Say:
 
-> Vibe Kit 文件已升级到 0.9.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个 Codex 任务。
+> Vibe Kit 文件已升级到 0.9.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个任务（Codex、Hermes 或任何能新建任务的宿主均可）。
 
 Use a host-prefilled continuation when available. Otherwise include one copyable
 sentence containing the active objective. Do not require a CLI command, Skill name

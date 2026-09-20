@@ -16,3 +16,4 @@ Record durable architectural choices here when the tradeoff matters beyond one w
 - [0012: Make workflow execution risk-adaptive, artifact-first, and capability-honest](0012-token-efficient-adaptive-workflow.md)
 - [0013: Publish v0.8.0 through a closed schema-2 profile without Issue closeout](0013-v0-8-publication-profile.md)
 - [0014: Readiness evidence, managed documentation boundaries, and exact v0.9 publication](0014-readiness-doc-gates-v09-publication.md)
+- [0015: The manual new-task activation path is host-neutral, and managed contract text follows the installed contract](0015-host-neutral-manual-activation.md)

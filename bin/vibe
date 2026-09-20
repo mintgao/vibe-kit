@@ -1962,7 +1962,7 @@ def install(
                 handoff={
                     "required": True,
                     "action": "create-new-project-task",
-                    "instruction": "Open one new Codex task in this project; the new task loads the installed rules.",
+                    "instruction": "Open one new task in this project; the new task loads the installed rules.",
                 },
             )
         )
@@ -1970,7 +1970,7 @@ def install(
     print(f"Vibe Kit {version} {command} complete: {target}")
     print(f"Managed files installed: {len(managed_hashes)}")
     print(f"Project-owned files created: {len(created)}")
-    print("Start a new Codex task so AGENTS.md and repository skills are loaded.")
+    print("Start a new task in this project so AGENTS.md and repository skills are loaded.")
     print("In the new task, state the development goal normally; onboarding is automatic.")
     return 0
 

@@ -159,7 +159,7 @@
       "bin/vibe"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "ba3491c13759649f917938bee0259a43906fd0a63aad653dbf5e21f01c1c081a",
+    "activation_set_sha256": "5993719ca50d11c75c7850e4d5680615052a84c3a9efb15c451340d4d502b9b0",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",
