@@ -3,12 +3,16 @@
 import copy
 import importlib.machinery
 import importlib.util
+import io
 import json
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+
+from tests.fake_takeover_host import FakeTakeoverHost
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "bin/vibe"
@@ -133,6 +137,160 @@ class HostAdapterTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unknown host", result.stdout + result.stderr)
             self.assertFalse((Path(directory) / "bogus").exists())
+
+    def source_arguments(self):
+        return [
+            "--source-type", "local-payload",
+            "--source-ref", MODULE.framework_version(ROOT),
+        ]
+
+    def test_takeover_validation_accepts_registered_hosts_and_fails_closed(self):
+        for hosts, expected in ((None, "codex"), ("hermes", "hermes")):
+            with self.subTest(hosts=hosts):
+                with tempfile.TemporaryDirectory() as directory:
+                    target = self.install(directory, hosts=hosts)
+                    host = FakeTakeoverHost(target)
+                    fingerprint = host.context["target_fingerprint"]
+                    self.assertEqual(fingerprint["adapter_name"], expected)
+                    self.assertEqual(
+                        fingerprint["adapter_protocol"],
+                        MODULE.HOST_REGISTRY[expected]["protocol"],
+                    )
+                    code, receipt, _ = host.validate(host.ready("manual-new-task"))
+                    self.assertEqual(code, 0, json.dumps(receipt, ensure_ascii=False)[:400])
+                    self.assertEqual(receipt["status"], "valid")
+                    for label, mutate in (
+                        (
+                            "unknown host",
+                            lambda value: value["target_fingerprint"].update(
+                                adapter_name="bogus"
+                            ),
+                        ),
+                        (
+                            "unknown protocol",
+                            lambda value: value["target_fingerprint"].update(
+                                adapter_protocol=99
+                            ),
+                        ),
+                        (
+                            "absent host",
+                            lambda value: value["target_fingerprint"].update(
+                                adapter_name=None
+                            ),
+                        ),
+                    ):
+                        with self.subTest(hosts=hosts, mutation=label):
+                            value = copy.deepcopy(host.ready("manual-new-task"))
+                            mutate(value)
+                            code, receipt, _ = host.validate(value)
+                            self.assertNotEqual(code, 0)
+                            self.assertEqual(receipt["status"], "invalid")
+                            errors = receipt["errors"]
+                            self.assertIsInstance(errors, list)
+                            codes = [
+                                str(item.get("code"))
+                                for item in errors
+                                if isinstance(item, dict)
+                            ]
+                            self.assertIn("activation-identities-match-target", codes)
+
+    def test_upgrade_from_pre_change_install_maps_to_codex_additively(self):
+        with tempfile.TemporaryDirectory() as directory:
+            predecessor = Path(directory) / "predecessor"
+            predecessor.mkdir()
+            archive = subprocess.run(
+                ["git", "archive", "--format=tar", "v0.8.0"],
+                cwd=str(ROOT), check=True, capture_output=True,
+            ).stdout
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+                bundle.extractall(predecessor)
+            target = Path(directory) / "target"
+            installed = subprocess.run(
+                [sys.executable, str(predecessor / "bin/vibe"), "init", str(target), "--format", "json"],
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(installed.returncode, 0, installed.stdout + installed.stderr)
+            before_manifest = json.loads(
+                (target / ".vibe/manifest.json").read_text(encoding="utf-8")
+            )
+            before_contract = json.loads(
+                (target / "agent-install.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(before_manifest.get("hosts"))
+            self.assertNotIn("selected_hosts", before_contract["activation"])
+
+            owned = "\n<!-- owner -->\nProject policy stays: café 中文.\n"
+            with (target / "AGENTS.md").open("a") as stream:
+                stream.write(owned)
+            upgraded = self.run_cli(
+                "upgrade", str(target), "--format", "json", *self.source_arguments()
+            )
+            self.assertEqual(upgraded.returncode, 0, upgraded.stdout + upgraded.stderr)
+            manifest = json.loads(
+                (target / ".vibe/manifest.json").read_text(encoding="utf-8")
+            )
+            contract = json.loads(
+                (target / "agent-install.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["hosts"], ["codex"])
+            self.assertEqual(contract["activation"]["selected_hosts"], ["codex"])
+            self.assertEqual(contract["adapter"], {"name": "codex", "protocol": 7})
+            self.assertTrue((target / ".codex/agents/vibe-tech-lead.toml").is_file())
+            self.assertTrue(
+                (target / "AGENTS.md").read_text(encoding="utf-8").endswith(owned)
+            )
+            doctor = self.run_cli("doctor", str(target))
+            self.assertEqual(doctor.returncode, 0, doctor.stdout)
+
+    def test_stale_deselected_payload_and_incoherent_selection_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = self.install(directory, hosts="hermes")
+            stray = target / ".codex/agents"
+            stray.mkdir(parents=True)
+            (stray / "vibe-tech-lead.toml").write_bytes(
+                (ROOT / ".codex/agents/vibe-tech-lead.toml").read_bytes()
+            )
+            doctor = self.run_cli("doctor", str(target), "--format", "json")
+            receipt = json.loads(doctor.stdout)
+            self.assertEqual(receipt["status"], "warning")
+            stale = [
+                item
+                for item in receipt["diagnostics"]
+                if item["code"] == "stale-runtime-path-preserved"
+            ]
+            self.assertEqual(
+                [item["path"] for item in stale], [".codex/agents/vibe-tech-lead.toml"]
+            )
+            self.assertEqual(stale[0]["readiness_effect"], "blocking")
+            (stray / "vibe-tech-lead.toml").unlink()
+
+            manifest_path = target / ".vibe/manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for recorded, message in ((["codex"], "incoherent"), (["bogus"], "unknown host")):
+                with self.subTest(recorded=recorded):
+                    manifest["hosts"] = recorded
+                    manifest_path.write_text(
+                        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8",
+                    )
+                    doctor = self.run_cli("doctor", str(target), "--format", "json")
+                    self.assertNotEqual(doctor.returncode, 0)
+                    self.assertIn(
+                        "host-selection-incoherent",
+                        {item["code"] for item in json.loads(doctor.stdout)["diagnostics"]},
+                    )
+                    refused = self.run_cli(
+                        "upgrade", str(target), "--format", "json", *self.source_arguments()
+                    )
+                    self.assertNotEqual(refused.returncode, 0)
+                    self.assertIn(message, refused.stdout + refused.stderr)
+                    manifest["hosts"] = ["hermes"]
+                    manifest_path.write_text(
+                        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8",
+                    )
+            restored = self.run_cli("doctor", str(target))
+            self.assertEqual(restored.returncode, 0, restored.stdout)
 
 
 if __name__ == "__main__":

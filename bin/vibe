@@ -698,6 +698,7 @@ DIAGNOSTIC_REGISTRY = {
     "agent-contract-invalid": ("error", "blocking"),
     "agent-install-guide-invalid": ("error", "blocking"),
     "agent-install-contract-invalid": ("error", "blocking"),
+    "host-selection-incoherent": ("error", "blocking"),
     "diagnostic-internal-error": ("error", "blocking"),
 }
 DOCTOR_NON_BLOCKING_WARNING_CODES = ("stale-nonruntime-path-preserved",)
@@ -1773,6 +1774,32 @@ def selection_from_manifest(manifest: Dict[str, object]) -> List[str]:
     ):
         raise VibeError("installed host selection is invalid")
     return validate_host_selection(raw)
+
+
+def installed_contract_or_none(target: Path) -> Optional[Dict[str, object]]:
+    try:
+        return load_agent_install_contract(target)
+    except VibeError:
+        return None
+
+
+def installed_selection(
+    manifest: Dict[str, object], contract: Optional[Dict[str, object]]
+) -> List[str]:
+    """The recorded selection: the manifest and the installed contract must agree."""
+    selection = selection_from_manifest(manifest)
+    if isinstance(contract, dict):
+        activation = contract.get("activation")
+        recorded = (
+            activation.get("selected_hosts") if isinstance(activation, dict) else None
+        )
+        if recorded is not None and recorded != selection:
+            raise VibeError(
+                "installed host selection is incoherent: the manifest records "
+                f"{selection} while the installed contract records {recorded}; "
+                "restore one recorded selection before continuing"
+            )
+    return selection
 
 
 def target_contract_bytes(
@@ -5621,7 +5648,7 @@ def upgrade_plan(
             ONBOARDING_PATH.as_posix(), "project-owned onboarding state",
         )
     previous = {str(key): str(value) for key, value in manifest["managed_files"].items()}
-    selection = selection_from_manifest(manifest)
+    selection = installed_selection(manifest, installed_contract_or_none(target))
     incoming_files = managed_source_files(source, selection)
     incoming_by_relative = {
         path.relative_to(source).as_posix(): path for path in incoming_files
@@ -6072,7 +6099,7 @@ def upgrade(
             "predecessor", bridge, "resolve-project-context", output_format,
         )
     previous = {str(key): str(value) for key, value in manifest["managed_files"].items()}
-    selection = selection_from_manifest(manifest)
+    selection = installed_selection(manifest, installed_contract_or_none(target))
     incoming_files = managed_source_files(source, selection)
     incoming_by_relative = {
         path.relative_to(source).as_posix(): path for path in incoming_files
@@ -6933,6 +6960,32 @@ def doctor(target: Path, output_format: str) -> int:
                 "installed Agent-install machine contract is missing, modified, or inconsistent",
                 "agent-install.json",
             )
+
+        recorded_selection = (
+            contract_activation.get("selected_hosts")
+            if isinstance(contract_activation, dict)
+            else None
+        )
+        if isinstance(recorded_selection, list):
+            try:
+                declared_selection: Optional[List[str]] = selection_from_manifest(
+                    manifest
+                )
+            except VibeError:
+                declared_selection = None
+            if declared_selection != recorded_selection:
+                add(
+                    "host-selection-incoherent",
+                    (
+                        "installed host selection is incoherent: the manifest records "
+                        f"{declared_selection} while the installed contract records "
+                        f"{recorded_selection}"
+                        if declared_selection is not None
+                        else "installed host selection is invalid: the manifest records "
+                        "an unknown or malformed host selection"
+                    ),
+                    MANIFEST_PATH.as_posix(),
+                )
 
         activation = manifest.get("activation")
         fingerprint_value = manifest.get("target_fingerprint")

@@ -1107,6 +1107,20 @@ class VibeCliTests(unittest.TestCase):
                 with self.subTest(mutation=name):
                     project = official_v050_source_fixture(base / name)
                     mutate(project)
+                    if name == "mixed-target-agent-json":
+                        # A modern contract recording a selection the legacy manifest
+                        # does not carry is an incoherent recorded selection: the plan
+                        # fails closed before any migration entry is computed.
+                        before = file_snapshot(project)
+                        result = run_cli(
+                            CLI, "plan", "upgrade", str(project), "--format", "json"
+                        )
+                        self.assertEqual(result.returncode, 2, result.stderr)
+                        self.assertEqual(file_snapshot(project), before)
+                        receipt = json.loads(result.stdout)
+                        self.assertEqual(receipt["error"]["code"], "operation_error")
+                        self.assertIn("incoherent", receipt["error"]["message"])
+                        continue
                     assert_paired_conflict(project)
 
     def test_predecessor_intermediate_symlinks_and_apply_races_fail_closed(self) -> None:

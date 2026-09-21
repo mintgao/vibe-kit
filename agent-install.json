@@ -203,7 +203,7 @@
       "hermes"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "b048e9751647124a9e7d0cb0f10048430cd83b983a3bbcddf55e7ffc3beedf70",
+    "activation_set_sha256": "bb9b484933f3a3d82fcc23bfd8e28cc7e387e6c6805ce85b2913513a7abc8c7a",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",
@@ -1042,6 +1042,7 @@
         "agent-contract-invalid",
         "agent-install-guide-invalid",
         "agent-install-contract-invalid",
+        "host-selection-incoherent",
         "diagnostic-internal-error"
       ],
       "non_blocking_warning_allowlist": [

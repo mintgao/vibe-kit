@@ -22,3 +22,14 @@ Plan, explicit before any edit (single writer, this work item). Frozen decisions
 - Whether `CORE_PROTOCOL` moves: only if `.vibe/core/**` semantics change materially; the current plan keeps 7 and argues the choice.
 - `--host` argument spelling and help text finalized against existing argument conventions.
 - The `codex` conformance label's evidence references cite the existing verified basis (bootstrap plugin and its release records); confirm the exact refs while writing the registry.
+
+## Follow-on: recorded-selection coherence (2026-09-22)
+
+Checking the shipped candidate against the acceptance criteria before the verification record found two coverage gaps, closed here before the freeze:
+
+- AC-1's takeover clause had no regression test. The behavior exists (`valid_host_adapter` judges the target fingerprint's host against the compiled registry) but nothing pinned it.
+- AC-3's "incoherent selections fail closed" clause was only half true. Plan and upgrade read the selection from `.vibe/manifest.json#hosts` and never cross-checked the contract's recorded `activation.selected_hosts`, so an edited manifest silently re-selected the host on the next upgrade; and `doctor` reported a healthy installation for an unknown recorded host.
+
+Changes: `bin/vibe` gains `installed_selection()`, which requires the manifest's recorded selection and the installed contract's `activation.selected_hosts` to agree before plan or upgrade computes the incoming file set; `doctor` reports the new blocking diagnostic `host-selection-incoherent` when the two recorded selections disagree or the manifest records an unknown host; the closed doctor contract in `agent-install.json` lists the new code. `tests/test_host_adapters.py` adds three regressions: registered-host takeover acceptance with unknown-host, unknown-protocol and absent-host rejection; a v0.8.0 predecessor install (no recorded selection) upgrading additively to `codex` with project-owned bytes preserved; stale deselected payload and incoherent or unknown recorded selections failing closed. `tests/test_cli.py`'s mixed-contract predecessor fixture now expects the earlier fail-closed error instead of migration entries, because a modern contract recording a selection the legacy manifest does not carry is exactly that incoherence.
+
+Evidence: 106 tests green on CPython 3.13.9 and 3.9.6; 63/63 mirrors equal a fresh recomputation; `doctor` healthy; `validate-readiness` valid. The candidate moved, so the verification record carries a repeated independent run and its reason.
