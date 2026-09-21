@@ -31,3 +31,4 @@ Each generated folder contains a brief and verification record. Add design or im
 - [Readiness decision-naming grammar and tooling fixes](20260921-readiness-naming-grammar/brief.md)
 - [Verification contract closure: declared check order, preserved failure output, constrained-QA evidence and environment-limited states](20260921-verify-contract-closure/brief.md)
 - [Takeover admission: the public takeover object, CLI receipts and the minimal manual-transfer payload](20260921-takeover-admission/brief.md)
+- [Host adapters: per-host capability declarations, on-demand host payloads, a first-class Hermes entry and per-host conformance evidence](20260921-host-adapters/brief.md)
