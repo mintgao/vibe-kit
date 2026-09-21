@@ -1,25 +1,65 @@
 {
-  "schema_version": 3,
-  "protocol_version": 3,
+  "schema_version": 4,
+  "protocol_version": 4,
   "kit_version": "0.9.0",
   "adapter": {
     "name": "codex",
-    "protocol": 7,
-    "capabilities": {
-      "same_task_reload": {
-        "status": "conditional",
-        "current_claim": false,
-        "required_receipt": "host-reload"
+    "protocol": 7
+  },
+  "hosts": {
+    "codex": {
+      "protocol": 7,
+      "capabilities": {
+        "same_task_reload": {
+          "status": "conditional",
+          "current_claim": false,
+          "required_receipt": "host-reload"
+        },
+        "automatic_successor_handoff": {
+          "status": "conditional",
+          "current_claim": false,
+          "required_receipt": "host-successor-start"
+        },
+        "manual_new_task": {
+          "status": "supported",
+          "required_receipt": "manual-task-start"
+        }
       },
-      "automatic_successor_handoff": {
-        "status": "conditional",
-        "current_claim": false,
-        "required_receipt": "host-successor-start"
+      "conformance": {
+        "label": "verified",
+        "evidence": [
+          "docs/decisions/0005-bootstrap-plugin-capabilities.md",
+          "docs/releases/0.9.0.md"
+        ]
       },
-      "manual_new_task": {
-        "status": "supported",
-        "required_receipt": "manual-task-start"
-      }
+      "payload": [
+        ".codex/agents/vibe-*.toml",
+        ".agents/skills/vibe-*/agents/**"
+      ]
+    },
+    "hermes": {
+      "protocol": 1,
+      "capabilities": {
+        "same_task_reload": {
+          "status": "conditional",
+          "current_claim": false,
+          "required_receipt": "host-reload"
+        },
+        "automatic_successor_handoff": {
+          "status": "conditional",
+          "current_claim": false,
+          "required_receipt": "host-successor-start"
+        },
+        "manual_new_task": {
+          "status": "supported",
+          "required_receipt": "manual-task-start"
+        }
+      },
+      "conformance": {
+        "label": "supported-unverified",
+        "evidence": []
+      },
+      "payload": []
     }
   },
   "maintenance_bridge": {
@@ -35,8 +75,8 @@
     ],
     "minimum_installed_kit_version": "0.2.0",
     "maximum_installed_kit_version_exclusive": "0.9.0",
-    "target_agent_install_schema": 3,
-    "target_agent_install_protocol": 3,
+    "target_agent_install_schema": 4,
+    "target_agent_install_protocol": 4,
     "target_cli_result_schema": 2,
     "predecessor_migrations": {
       "schema_version": 2,
@@ -158,8 +198,12 @@
       "agent-install.json",
       "bin/vibe"
     ],
+    "selected_hosts": [
+      "codex",
+      "hermes"
+    ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "3b6864a69d181a787272b2fd38b6428dd458178c3444e2494d7816fdec09d3f1",
+    "activation_set_sha256": "c071f8b901f92cd71c4a927fd2de0f6e8b4ce7739582613ccd03222e4986436f",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",

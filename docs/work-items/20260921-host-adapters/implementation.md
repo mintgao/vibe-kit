@@ -1,0 +1,24 @@
+# Implementation: Host adapters
+
+Plan, explicit before any edit (single writer, this work item). Frozen decisions: `docs/decisions/0019-host-adapters.md` (revision 2, approved); review notes carried: the core-protocol re-check, the managed-text sweep, and the minimal Hermes entry.
+
+## Edit sequence (one change; mirrors last)
+
+1. Constants and vocabularies (`bin/vibe` head): `AGENT_INSTALL_SCHEMA` and `AGENT_INSTALL_PROTOCOL` 3 → 4; `MAINTENANCE_BRIDGE_SCHEMA_VERSION` stays 2; add the host registry constants — `codex` (adapter protocol 7) and `hermes` (protocol 1), each with the three claim objects (reload and successor handoff conditional and unclaimed; manual new task supported), a conformance label (`codex: verified` citing its existing verification basis; `hermes: supported-unverified`) with evidence references, and payload selectors (Codex: `.codex/agents/vibe-*.toml` plus the skill-local `agents/openai.yaml` files; Hermes: the entry — registry and documentation only this iteration).
+2. Managed set (`managed_source_files`): gain a host-selection parameter; per-host files filter by the selection; every caller threads it — install (from `--host`, default `codex`), plan and upgrade (from the recorded selection), doctor (from the recorded selection), release payload (all declared hosts).
+3. Contract (`agent-install.json`): `adapter` reduced to `{name, protocol}`; new `hosts` registry (protocol, the three claims, conformance label with evidence references, payload selectors); the activation block records the selection; schema and protocol 4; maintenance-bridge targets → 4 with older installed protocols still supported; every mirror regenerated in the same change.
+4. Activation identity: fingerprint fields keep their names; the selected-set computation threads through `activation_paths` / `activation_path_hashes` / `source_activation_identity` and the installed-side recomputation so `doctor` stays coherent.
+5. Install, plan, upgrade: `--host` selection on `init`/`adopt` (comma list, default `codex`; the installed copy records it in the contract and the manifest); upgrade reads and preserves the recorded selection; an absent selection maps to `codex`; unknown or incoherent selections, and stale payload of a deselected host, fail closed with actionable diagnostics.
+6. Validator (`validate_agent_install_contract_shape`): pin the new top-level shape, the `hosts` registry (claims exact, labels an enum, evidence-reference shape, payload selectors), the recorded selection field and the version bump; unknown hosts, claims or labels fail.
+7. Docs (`AGENT_INSTALL.md`): a host-registry section carrying the capability table (approval prompts, subagent budgets), the selection and recorded-selection semantics, and the per-host label rule; sweep requirement-implying copy (including the plugin `interface` copy — the plugin remains the Codex channel); the Hermes role mapping (the six specialist roles → delegation/subagents).
+8. Tests (`tests/`, standard-library `unittest`): validator shape accept/reject; per-selection fixture installs (Hermes: no Codex payload, coherent contract/manifest/identity/doctor; Codex: the same managed file set as today's default install, content differences limited to the versioned contract change); an upgrade fixture from a pre-change install with no recorded selection → `codex` additively; the fail-closed matrix (unknown selection, incoherent selection, stale deselected payload, unknown host); a drift test binding the published capability table to the compiled registry; release-payload completeness (every declared host's files present).
+9. Mirrors: run the `rebuild-mirrors.py` skill script after edits; update the manual registry digest copies as needed; `doctor` healthy.
+10. Conformance evidence: the Hermes-side record (five stages; real runs on this repository and on a throwaway install upgraded to the candidate; limitations recorded rather than invented); the Codex-side attempt (detect the CLI, else deliver a runbook and record the capability limitation); both stored under this work item; labels updated only to the evidence grade that exists.
+11. Records and commits: `implementation.md` (this file) → implementation commit → conformance commit(s) → verification record after independent QA.
+
+## Open items to settle inside implementation
+
+- The Hermes entry's exact shape stays registry entry plus documentation; no new managed surfaces beyond the role mapping.
+- Whether `CORE_PROTOCOL` moves: only if `.vibe/core/**` semantics change materially; the current plan keeps 7 and argues the choice.
+- `--host` argument spelling and help text finalized against existing argument conventions.
+- The `codex` conformance label's evidence references cite the existing verified basis (bootstrap plugin and its release records); confirm the exact refs while writing the registry.

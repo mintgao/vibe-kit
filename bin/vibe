@@ -40,8 +40,8 @@ FEEDBACK_MODES = ("ask", "local", "off")
 RELEASE_MANIFEST_SCHEMA = 2
 RELEASE_STATUSES = ("release-candidate-unpublished", "prerelease", "stable")
 AGENT_RESULT_SCHEMA = 2
-AGENT_INSTALL_SCHEMA = 3
-AGENT_INSTALL_PROTOCOL = 3
+AGENT_INSTALL_SCHEMA = 4
+AGENT_INSTALL_PROTOCOL = 4
 SOURCE_TYPES = ("local-payload", "github-release", "plugin-bundled", "offline-bundle")
 ONBOARDING_STATUSES = ("pending", "complete", "refresh-needed")
 DERIVED_ONBOARDING_STATUSES = ("review-required", "invalid")
@@ -69,6 +69,7 @@ AGENT_COMMAND_STATUSES = {
 }
 CORE_PROTOCOL = 7
 CODEX_ADAPTER_PROTOCOL = 7
+HERMES_ADAPTER_PROTOCOL = 1
 TAKEOVER_SCHEMA_VERSION = 2
 MAINTENANCE_BRIDGE_SCHEMA_VERSION = 2
 COMPATIBILITY_MIGRATION_REGISTRY_SCHEMA = 2
@@ -92,6 +93,75 @@ ACTIVATION_SET_ALGORITHM = (
     "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2"
 )
 ACTIVATION_DIGEST_SENTINEL = "0" * 64
+
+
+HOST_PAYLOAD_SELECTORS = {
+    "codex": (".codex/agents/vibe-*.toml", ".agents/skills/vibe-*/agents/**"),
+    "hermes": (),
+}
+HOST_CAPABILITY_CLAIMS = {
+    "same_task_reload": {
+        "status": "conditional",
+        "current_claim": False,
+        "required_receipt": "host-reload",
+    },
+    "automatic_successor_handoff": {
+        "status": "conditional",
+        "current_claim": False,
+        "required_receipt": "host-successor-start",
+    },
+    "manual_new_task": {
+        "status": "supported",
+        "required_receipt": "manual-task-start",
+    },
+}
+HOST_CONFORMANCE_LABELS = ("verified", "supported-unverified")
+HOST_REGISTRY = {
+    "codex": {
+        "protocol": CODEX_ADAPTER_PROTOCOL,
+        "capabilities": HOST_CAPABILITY_CLAIMS,
+        "conformance": {
+            "label": "verified",
+            "evidence": [
+                "docs/decisions/0005-bootstrap-plugin-capabilities.md",
+                "docs/releases/0.9.0.md",
+            ],
+        },
+        "payload": list(HOST_PAYLOAD_SELECTORS["codex"]),
+    },
+    "hermes": {
+        "protocol": HERMES_ADAPTER_PROTOCOL,
+        "capabilities": HOST_CAPABILITY_CLAIMS,
+        "conformance": {
+            "label": "supported-unverified",
+            "evidence": [],
+        },
+        "payload": list(HOST_PAYLOAD_SELECTORS["hermes"]),
+    },
+}
+
+
+def host_payload_owner(relative: str) -> Optional[str]:
+    """Return the host that owns a payload path, or None when it is host-neutral."""
+    if relative.startswith(".codex/agents/vibe-"):
+        return "codex"
+    if relative.startswith(".agents/skills/vibe-") and "/agents/" in relative:
+        return "codex"
+    return None
+
+
+def parse_host_argument(value: str) -> List[str]:
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def validate_host_selection(hosts: Sequence[str]) -> List[str]:
+    value = list(dict.fromkeys(str(item) for item in hosts))
+    if not value:
+        raise VibeError("host selection must name at least one declared host")
+    for host in value:
+        if host not in HOST_REGISTRY:
+            raise VibeError(f"unknown host in selection: {host}")
+    return value
 LEGACY_030_MANAGED_FILES = {
     ".agents/skills/vibe-debug-flow/SKILL.md": "d8749aa5494266dbafab5caeec6626451f4e7f3359e2886b3becd2e4fa4f7019",
     ".agents/skills/vibe-design-flow/SKILL.md": "1fe7c5ddbca5c124986086dcbfb54f94c1efd990bd303d346312925f59623502",
@@ -1060,7 +1130,10 @@ def onboarding_result(target: Path) -> Dict[str, object]:
     return {"status": status, "kind": kind}
 
 
-def managed_source_files(root: Path) -> List[Path]:
+def managed_source_files(
+    root: Path, hosts: Optional[Sequence[str]] = None
+) -> List[Path]:
+    selection = None if hosts is None else set(validate_host_selection(hosts))
     files: List[Path] = []
     for relative in ("AGENT_INSTALL.md", "agent-install.json", "bin/vibe"):
         explicit = root / relative
@@ -1082,7 +1155,17 @@ def managed_source_files(root: Path) -> List[Path]:
                 files.extend(path for path in directory.rglob("*") if path.is_file())
 
     unique = {path.relative_to(root): path for path in files}
-    return [unique[key] for key in sorted(unique, key=lambda item: item.as_posix())]
+    result = [unique[key] for key in sorted(unique, key=lambda item: item.as_posix())]
+    if selection is not None:
+        result = [
+            path
+            for path in result
+            if (
+                host_payload_owner(path.relative_to(root).as_posix()) is None
+                or host_payload_owner(path.relative_to(root).as_posix()) in selection
+            )
+        ]
+    return result
 
 
 def extract_agents_block(text: str) -> Optional[str]:
@@ -1612,10 +1695,10 @@ def reference_activation_identity_from_entries(
     return paths, dict(sorted(hashes.items())), hashlib.sha256(canonical).hexdigest()
 
 
-def activation_paths(root: Path) -> List[str]:
+def activation_paths(root: Path, hosts: Optional[Sequence[str]] = None) -> List[str]:
     paths = [
         path.relative_to(root).as_posix()
-        for path in managed_source_files(root)
+        for path in managed_source_files(root, hosts)
     ]
     paths.append("AGENTS.md#managed-block")
     return sorted(paths)
@@ -1677,6 +1760,114 @@ def source_activation_identity(root: Path) -> Dict[str, object]:
         "path_hashes": path_hashes,
         "activation_set_sha256": digest,
     }
+
+
+def selection_from_manifest(manifest: Dict[str, object]) -> List[str]:
+    raw = manifest.get("hosts")
+    if raw is None:
+        return ["codex"]
+    if (
+        not isinstance(raw, list)
+        or not raw
+        or any(not isinstance(item, str) for item in raw)
+    ):
+        raise VibeError("installed host selection is invalid")
+    return validate_host_selection(raw)
+
+
+def target_contract_bytes(
+    contract: Dict[str, object],
+    selection: Sequence[str],
+    paths: Sequence[str],
+    digest: str,
+) -> bytes:
+    """The contract as an installation must carry it: host provenance and selection recorded."""
+    value = copy.deepcopy(contract)
+    adapter = value.get("adapter")
+    activation = value.get("activation")
+    if not isinstance(adapter, dict) or not isinstance(activation, dict):
+        raise VibeError("Agent-install contract is missing its adapter or activation block")
+    host = selection[0]
+    adapter["name"] = host
+    adapter["protocol"] = HOST_REGISTRY[host]["protocol"]
+    activation["selected_hosts"] = list(selection)
+    activation["activation_paths"] = list(paths)
+    activation["activation_set_sha256"] = digest
+    return (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def installed_contract_and_activation(
+    contract: Dict[str, object],
+    selection: Sequence[str],
+    managed_hashes: Dict[str, str],
+    agents_block_hash: str,
+    kit_version: str,
+) -> Tuple[bytes, Dict[str, object]]:
+    """Derive the installed contract bytes and activation identity for one selection.
+
+    The contract's own normalized hash zeroes its activation-set digest, so the
+    placeholder pass converges: the digest computed over the placeholder is the
+    digest the final file carries.
+    """
+    paths = sorted(
+        set(managed_hashes) | {"agent-install.json", "AGENTS.md#managed-block"}
+    )
+    base = {
+        key: value
+        for key, value in managed_hashes.items()
+        if key != "agent-install.json"
+    }
+    base["AGENTS.md#managed-block"] = agents_block_hash
+    placeholder = target_contract_bytes(
+        contract, selection, paths, ACTIVATION_DIGEST_SENTINEL
+    )
+    base["agent-install.json"] = normalized_agent_install_bytes_sha256(placeholder)
+    path_hashes = dict(sorted(base.items()))
+    host = selection[0]
+    fingerprint: Dict[str, object] = {
+        "kit_version": kit_version,
+        "core_protocol": CORE_PROTOCOL,
+        "agent_install_schema": AGENT_INSTALL_SCHEMA,
+        "agent_install_protocol": AGENT_INSTALL_PROTOCOL,
+        "adapter_name": host,
+        "adapter_protocol": HOST_REGISTRY[host]["protocol"],
+    }
+    digest = activation_set_digest(fingerprint, path_hashes)
+    contract_bytes = target_contract_bytes(contract, selection, paths, digest)
+    identity: Dict[str, object] = {
+        "fingerprint": {
+            **fingerprint,
+            "manifest_sha256": None,
+            "activation_set_sha256": digest,
+        },
+        "paths": paths,
+        "path_hashes": path_hashes,
+        "activation_set_sha256": digest,
+    }
+    return contract_bytes, identity
+
+
+def valid_host_adapter(adapter: object) -> bool:
+    if not isinstance(adapter, dict) or set(adapter) != {"name", "protocol"}:
+        return False
+    host = adapter.get("name")
+    if not isinstance(host, str) or host not in HOST_REGISTRY:
+        return False
+    return adapter.get("protocol") == HOST_REGISTRY[host]["protocol"]
+
+
+def valid_protocol_adapters_mirror(adapters: object) -> bool:
+    if not isinstance(adapters, dict):
+        return False
+    for host, entry in HOST_REGISTRY.items():
+        mirror = adapters.get(host)
+        if not isinstance(mirror, dict):
+            return False
+        if mirror.get("version") != entry["protocol"]:
+            return False
+        if mirror.get("core_protocol") != CORE_PROTOCOL:
+            return False
+    return True
 
 
 def merge_agents_text(current: str, incoming_block: str) -> str:
@@ -1893,14 +2084,16 @@ def manifest_value(
     managed_hashes: Dict[str, str],
     agents_block_hash: str,
     provenance: Dict[str, object],
+    hosts: Sequence[str],
+    activation: Dict[str, object],
 ) -> Dict[str, object]:
-    activation = source_activation_identity(source_root())
     return {
         "schema_version": 1,
         "framework_version": version,
         "managed_files": dict(sorted(managed_hashes.items())),
         "agents_block_hash": agents_block_hash,
         "source": provenance,
+        "hosts": list(hosts),
         "target_fingerprint": activation["fingerprint"],
         "activation": {
             "algorithm": ACTIVATION_SET_ALGORITHM,
@@ -1918,9 +2111,11 @@ def write_manifest(
     managed_hashes: Dict[str, str],
     agents_block_hash: str,
     provenance: Dict[str, object],
+    hosts: Sequence[str],
+    activation: Dict[str, object],
 ) -> None:
     manifest = manifest_value(
-        version, managed_hashes, agents_block_hash, provenance
+        version, managed_hashes, agents_block_hash, provenance, hosts, activation
     )
     atomic_write_text(
         target / MANIFEST_PATH,
@@ -2009,6 +2204,7 @@ def install(
     source_type: str,
     source_ref: Optional[str],
     artifact_sha256: Optional[str],
+    hosts: str = "codex",
 ) -> int:
     source = source_root()
     version = framework_version(source)
@@ -2021,7 +2217,8 @@ def install(
     if (target / MANIFEST_PATH).exists():
         raise VibeError("Vibe Kit is already installed; use upgrade instead.")
 
-    files = managed_source_files(source)
+    selection = validate_host_selection(parse_host_argument(hosts))
+    files = managed_source_files(source, selection)
     if not files:
         raise VibeError("No managed framework files were found in the source checkout.")
     collisions: List[str] = []
@@ -2046,25 +2243,37 @@ def install(
     block = incoming_agents_block(source)
     try:
         target.mkdir(parents=True, exist_ok=True)
+        contract_relative = "agent-install.json"
         for incoming in files:
+            if incoming.relative_to(source).as_posix() == contract_relative:
+                continue
             atomic_copy(incoming, target / incoming.relative_to(source))
+
+        managed_hashes = {
+            incoming.relative_to(source).as_posix(): sha256(incoming)
+            for incoming in files
+            if incoming.relative_to(source).as_posix() != contract_relative
+        }
+        contract = load_agent_install_contract(source)
+        contract_bytes, identity = installed_contract_and_activation(
+            contract, selection, managed_hashes, sha256_text(block), version
+        )
+        atomic_write_bytes(target / contract_relative, contract_bytes, 0o644)
+        managed_hashes[contract_relative] = sha256(target / contract_relative)
 
         atomic_write_text(agents_path, merge_agents_text(current_agents, block))
         lifecycle = "new" if command == "init" else "existing"
         created = ensure_project_owned_files(source, target, lifecycle, name)
 
-        managed_hashes = {
-            incoming.relative_to(source).as_posix(): sha256(
-                target / incoming.relative_to(source)
-            )
-            for incoming in files
-        }
-        write_manifest(target, version, managed_hashes, sha256_text(block), provenance)
+        write_manifest(
+            target, version, managed_hashes, sha256_text(block), provenance,
+            selection, identity,
+        )
     except (OSError, UnicodeError) as error:
         raise mutation_filesystem_error(command, target, error) from error
     if output_format == "json":
         write_state = "project-files-written"
-        activation = source_activation_identity(source)
+        activation = identity
         print_json(
             result_envelope(
                 command,
@@ -5294,7 +5503,9 @@ def execute_upgrade_transaction(
         }
 
 
-def install_plan(operation: str, target: Path) -> Tuple[List[Dict[str, str]], str, str]:
+def install_plan(
+    operation: str, target: Path, hosts: str = "codex"
+) -> Tuple[List[Dict[str, str]], str, str]:
     source = source_root()
     target = target.resolve()
     version = framework_version(source)
@@ -5307,8 +5518,9 @@ def install_plan(operation: str, target: Path) -> Tuple[List[Dict[str, str]], st
     if (target / MANIFEST_PATH).exists():
         raise VibeError("Vibe Kit is already installed; use plan upgrade instead.")
 
+    selection = validate_host_selection(parse_host_argument(hosts))
     entries: List[Dict[str, str]] = []
-    for incoming in managed_source_files(source):
+    for incoming in managed_source_files(source, selection):
         relative = incoming.relative_to(source).as_posix()
         existing = target / relative
         if not existing.exists():
@@ -5409,7 +5621,8 @@ def upgrade_plan(
             ONBOARDING_PATH.as_posix(), "project-owned onboarding state",
         )
     previous = {str(key): str(value) for key, value in manifest["managed_files"].items()}
-    incoming_files = managed_source_files(source)
+    selection = selection_from_manifest(manifest)
+    incoming_files = managed_source_files(source, selection)
     incoming_by_relative = {
         path.relative_to(source).as_posix(): path for path in incoming_files
     }
@@ -5619,13 +5832,14 @@ def plan(
     source_type: str,
     source_ref: Optional[str],
     artifact_sha256: Optional[str],
+    hosts: str = "codex",
 ) -> int:
     version = framework_version(source_root())
     provenance = validate_source_provenance(
         source_type, source_ref, artifact_sha256, version
     )
     if operation in ("init", "adopt"):
-        entries, current, target_version = install_plan(operation, target)
+        entries, current, target_version = install_plan(operation, target, hosts)
         compatibility_migrations: List[Dict[str, object]] = []
         onboarding_bridge = None
     else:
@@ -5858,7 +6072,8 @@ def upgrade(
             "predecessor", bridge, "resolve-project-context", output_format,
         )
     previous = {str(key): str(value) for key, value in manifest["managed_files"].items()}
-    incoming_files = managed_source_files(source)
+    selection = selection_from_manifest(manifest)
+    incoming_files = managed_source_files(source, selection)
     incoming_by_relative = {
         path.relative_to(source).as_posix(): path for path in incoming_files
     }
@@ -5961,6 +6176,11 @@ def upgrade(
                 for relative in ordered_relatives
                 if relative not in PREDECESSOR_MIGRATION_PATHS
             ]
+        ordered_relatives = [
+            relative
+            for relative in ordered_relatives
+            if relative != "agent-install.json"
+        ]
         with ProjectRootFD(target) as project:
             for relative in ordered_relatives:
                 incoming = incoming_by_relative[relative]
@@ -6018,9 +6238,23 @@ def upgrade(
                     project, len(changes), ONBOARDING_PATH.as_posix(),
                     ONBOARDING_PENDING_BYTES, 0o644,
                 ))
+            contract = load_agent_install_contract(source)
+            contract_bytes, identity = installed_contract_and_activation(
+                contract, selection, new_hashes, new_block_hash, version
+            )
+            contract_state, current_contract_bytes, _ = project.read("agent-install.json")
+            new_hashes["agent-install.json"] = hashlib.sha256(contract_bytes).hexdigest()
+            if contract_state != "regular" or current_contract_bytes != contract_bytes:
+                changes.append(upgrade_change(
+                    project, len(changes), "agent-install.json", contract_bytes, 0o644
+                ))
+                updated += 1
             manifest_bytes = (
                 json.dumps(
-                    manifest_value(version, new_hashes, new_block_hash, provenance),
+                    manifest_value(
+                        version, new_hashes, new_block_hash, provenance,
+                        selection, identity,
+                    ),
                     ensure_ascii=False, indent=2,
                 ) + "\n"
             ).encode("utf-8")
@@ -6044,7 +6278,7 @@ def upgrade(
     if bridge["state"] == "planned" and transaction_result["installation_state"] == "target":
         bridge = {**bridge, "state": "applied"}
     if output_format == "json":
-        activation = source_activation_identity(source)
+        activation = identity
         values: Dict[str, object] = {
             "operation": "upgrade",
             "target": str(target),
@@ -6672,6 +6906,9 @@ def doctor(target: Path, output_format: str) -> int:
         contract_activation = (
             contract_value.get("activation") if isinstance(contract_value, dict) else None
         )
+        installed_adapter = (
+            contract_value.get("adapter") if isinstance(contract_value, dict) else None
+        )
         contract_expected = managed_files.get("agent-install.json")
         contract_valid = (
             isinstance(contract_value, dict)
@@ -6733,14 +6970,15 @@ def doctor(target: Path, output_format: str) -> int:
                 and re.fullmatch(r"[0-9a-f]{64}", expected_digest) is not None
                 and activation.get("algorithm") == ACTIVATION_SET_ALGORITHM
                 and roots == list(RUNTIME_DISCOVERY_ROOTS)
+                and isinstance(installed_adapter, dict)
                 and base_fingerprint
                 == {
                     "kit_version": manifest_version,
                     "core_protocol": CORE_PROTOCOL,
                     "agent_install_schema": AGENT_INSTALL_SCHEMA,
                     "agent_install_protocol": AGENT_INSTALL_PROTOCOL,
-                    "adapter_name": "codex",
-                    "adapter_protocol": CODEX_ADAPTER_PROTOCOL,
+                    "adapter_name": installed_adapter.get("name"),
+                    "adapter_protocol": installed_adapter.get("protocol"),
                 }
                 and activation_set_digest(base_fingerprint, expected_hashes)
                 == expected_digest
@@ -7937,6 +8175,7 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
         "protocol_version",
         "kit_version",
         "adapter",
+        "hosts",
         "maintenance_bridge",
         "canonical_source",
         "release_channels",
@@ -7955,24 +8194,25 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
     if set(contract) != expected_top_level:
         errors.append("agent install contract top-level fields are unknown or incomplete")
     adapter = contract.get("adapter")
-    expected_capabilities = {
-        "same_task_reload": {
-            "status": "conditional",
-            "current_claim": False,
-            "required_receipt": "host-reload",
-        },
-        "automatic_successor_handoff": {
-            "status": "conditional",
-            "current_claim": False,
-            "required_receipt": "host-successor-start",
-        },
-        "manual_new_task": {
-            "status": "supported",
-            "required_receipt": "manual-task-start",
-        },
-    }
-    if not isinstance(adapter, dict) or adapter.get("capabilities") != expected_capabilities:
-        errors.append("agent install adapter capability claims are unsupported")
+    if not valid_host_adapter(adapter):
+        errors.append("agent install adapter provenance is unsupported")
+    hosts = contract.get("hosts")
+    if not isinstance(hosts, dict) or set(hosts) != set(HOST_REGISTRY):
+        errors.append("agent install host registry is unsupported")
+    else:
+        for host_name, expected_entry in HOST_REGISTRY.items():
+            entry = hosts.get(host_name)
+            if (
+                not isinstance(entry, dict)
+                or set(entry) != {"protocol", "capabilities", "conformance", "payload"}
+                or entry.get("protocol") != expected_entry["protocol"]
+                or entry.get("capabilities") != expected_entry["capabilities"]
+                or entry.get("conformance") != expected_entry["conformance"]
+                or entry.get("payload") != expected_entry["payload"]
+            ):
+                errors.append(
+                    f"agent install host registry entry is unsupported: {host_name}"
+                )
 
     bridge = contract.get("maintenance_bridge")
     expected_bridge = {
@@ -8073,6 +8313,18 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
             set(declared_paths)
         ):
             errors.append("agent install activation paths are invalid")
+        selected_hosts = activation.get("selected_hosts")
+        if (
+            not isinstance(selected_hosts, list)
+            or not selected_hosts
+            or any(
+                not isinstance(item, str) or item not in HOST_REGISTRY
+                for item in selected_hosts
+            )
+            or len(set(selected_hosts)) != len(selected_hosts)
+            or selected_hosts != sorted(selected_hosts)
+        ):
+            errors.append("agent install activation host selection is invalid")
         if not re.fullmatch(
             r"[0-9a-f]{64}", str(activation.get("activation_set_sha256", ""))
         ):
@@ -8341,9 +8593,6 @@ def installed_takeover_contract_context(
     except VibeError:
         protocol = {}
     adapter = contract.get("adapter")
-    codex = protocol.get("adapters", {}).get("codex", {}) if isinstance(
-        protocol.get("adapters"), dict
-    ) else {}
     if (
         protocol.get("core_protocol") != CORE_PROTOCOL
         or protocol.get("agent_install_protocol") != AGENT_INSTALL_PROTOCOL
@@ -8352,12 +8601,8 @@ def installed_takeover_contract_context(
         or not valid_predecessor_migration_mirror(
             protocol.get("predecessor_migrations")
         )
-        or not isinstance(adapter, dict)
-        or adapter.get("name") != "codex"
-        or adapter.get("protocol") != CODEX_ADAPTER_PROTOCOL
-        or not isinstance(codex, dict)
-        or codex.get("version") != CODEX_ADAPTER_PROTOCOL
-        or codex.get("core_protocol") != CORE_PROTOCOL
+        or not valid_host_adapter(adapter)
+        or not valid_protocol_adapters_mirror(protocol.get("adapters"))
     ):
         add("installed-core-contract-mismatch", ".vibe/core/protocol.json")
 
@@ -8413,6 +8658,8 @@ def installed_takeover_contract_context(
     if errors:
         return None, errors
     raw_manifest_sha256 = sha256(root / MANIFEST_PATH)
+    adapter_value = contract.get("adapter") if isinstance(contract, dict) else None
+    adapter_value = adapter_value if isinstance(adapter_value, dict) else {}
     context = {
         "project_root": str(root),
         "manifest_sha256": raw_manifest_sha256,
@@ -8422,8 +8669,8 @@ def installed_takeover_contract_context(
             "core_protocol": CORE_PROTOCOL,
             "agent_install_schema": AGENT_INSTALL_SCHEMA,
             "agent_install_protocol": AGENT_INSTALL_PROTOCOL,
-            "adapter_name": "codex",
-            "adapter_protocol": CODEX_ADAPTER_PROTOCOL,
+            "adapter_name": adapter_value.get("name"),
+            "adapter_protocol": adapter_value.get("protocol"),
             "manifest_sha256": raw_manifest_sha256,
             "activation_set_sha256": actual_digest,
         },
@@ -8590,14 +8837,19 @@ def validate_takeover_object(
             "core_protocol": CORE_PROTOCOL,
             "agent_install_schema": AGENT_INSTALL_SCHEMA,
             "agent_install_protocol": AGENT_INSTALL_PROTOCOL,
-            "adapter_name": "codex",
-            "adapter_protocol": CODEX_ADAPTER_PROTOCOL,
         }
         if not strict_semver(fingerprint.get("kit_version")):
             add("exact-result-shape", "$.target_fingerprint.kit_version")
         for key, expected in expected_static.items():
             if fingerprint.get(key) != expected:
                 add("activation-identities-match-target", f"$.target_fingerprint.{key}")
+        if not valid_host_adapter(
+            {
+                "name": fingerprint.get("adapter_name"),
+                "protocol": fingerprint.get("adapter_protocol"),
+            }
+        ):
+            add("activation-identities-match-target", "$.target_fingerprint.adapter_name")
         if not nullable_digest(fingerprint.get("manifest_sha256")):
             add("exact-result-shape", "$.target_fingerprint.manifest_sha256")
         if not nullable_digest(fingerprint.get("activation_set_sha256")):
@@ -9561,6 +9813,29 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
         }
     ):
         errors.append("release Codex adapter activation capability is unsupported")
+    release_adapters = (
+        release_protocol_value.get("adapters", {})
+        if isinstance(release_protocol_value.get("adapters"), dict)
+        else {}
+    )
+    for host_name in HOST_REGISTRY:
+        if host_name == "codex":
+            continue
+        host_mirror = release_adapters.get(host_name)
+        if (
+            not isinstance(host_mirror, dict)
+            or host_mirror.get("version") != HOST_REGISTRY[host_name]["protocol"]
+            or host_mirror.get("core_protocol") != CORE_PROTOCOL
+            or host_mirror.get("upgrade_activation")
+            != {
+                "same_task_reload": "conditional-unclaimed",
+                "automatic_successor_handoff": "conditional-unclaimed",
+                "manual_new_task": "supported",
+            }
+        ):
+            errors.append(
+                f"release host adapter activation capability is unsupported: {host_name}"
+            )
     for required in (
         "bin/vibe",
         "AGENTS.md",
@@ -9607,12 +9882,20 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
         ):
             errors.append("agent install contract canonical source is invalid")
         adapter = install_contract.get("adapter")
-        codex = release_protocol_value.get("adapters", {}).get("codex", {}) if isinstance(
-            release_protocol_value.get("adapters"), dict
-        ) else {}
-        if not isinstance(adapter, dict) or (
-            adapter.get("name") != "codex"
-            or adapter.get("protocol") != codex.get("version")
+        release_adapters = (
+            release_protocol_value.get("adapters", {})
+            if isinstance(release_protocol_value.get("adapters"), dict)
+            else {}
+        )
+        adapter_mirror = (
+            release_adapters.get(adapter.get("name"))
+            if isinstance(adapter, dict) and isinstance(adapter.get("name"), str)
+            else None
+        )
+        if (
+            not valid_host_adapter(adapter)
+            or not isinstance(adapter_mirror, dict)
+            or adapter.get("protocol") != adapter_mirror.get("version")
         ):
             errors.append("agent install contract adapter does not match payload protocol")
         channels = install_contract.get("release_channels")
@@ -9679,8 +9962,12 @@ def validate_release(release_dir: Path, output_format: str = "text") -> int:
                 "core_protocol": CORE_PROTOCOL,
                 "agent_install_schema": AGENT_INSTALL_SCHEMA,
                 "agent_install_protocol": AGENT_INSTALL_PROTOCOL,
-                "adapter_name": "codex",
-                "adapter_protocol": CODEX_ADAPTER_PROTOCOL,
+                "adapter_name": adapter.get("name") if isinstance(adapter, dict) else "codex",
+                "adapter_protocol": (
+                    adapter.get("protocol")
+                    if isinstance(adapter, dict)
+                    else CODEX_ADAPTER_PROTOCOL
+                ),
                 "manifest_sha256": "1" * 64,
                 "activation_set_sha256": actual_activation_digest,
             },
@@ -13042,6 +13329,14 @@ def build_parser() -> argparse.ArgumentParser:
         child = subparsers.add_parser(command)
         child.add_argument("target", nargs="?", default=".")
         child.add_argument("--name", help="Project name written during first installation")
+        child.add_argument(
+            "--host",
+            default="codex",
+            help=(
+                "Comma-separated host selection for the installed payload "
+                "(declared hosts: codex, hermes; default codex)."
+            ),
+        )
         add_format_argument(child)
         add_source_arguments(child)
 
@@ -13105,6 +13400,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plan_parser.add_argument("operation", choices=("init", "adopt", "upgrade"))
     plan_parser.add_argument("target", nargs="?", default=".")
+    plan_parser.add_argument(
+        "--host",
+        default="codex",
+        help=(
+            "Comma-separated host selection for init or adopt plans "
+            "(declared hosts: codex, hermes)."
+        ),
+    )
     plan_parser.add_argument(
         "--receipt",
         type=Path,
@@ -13232,6 +13535,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 args.source_type,
                 args.source_ref,
                 args.artifact_sha256,
+                args.host,
             )
         receipt_option = getattr(args, "receipt", None)
         if receipt_option is not None:
@@ -13259,6 +13563,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 args.source_type,
                 args.source_ref,
                 args.artifact_sha256,
+                args.host,
             )
         if args.command == "package":
             return package_release(args.output, args.status)

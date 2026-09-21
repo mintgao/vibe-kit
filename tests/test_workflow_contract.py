@@ -286,10 +286,17 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_post_upgrade_takeover_contract_is_closed_and_manual_fallback_only(self) -> None:
         contract = json.loads((ROOT / "agent-install.json").read_text())
-        self.assertEqual(contract["schema_version"], 3)
-        self.assertEqual(contract["protocol_version"], 3)
+        self.assertEqual(contract["schema_version"], 4)
+        self.assertEqual(contract["protocol_version"], 4)
         self.assertEqual(contract["kit_version"], "0.9.0")
         self.assertEqual(contract["adapter"]["protocol"], 7)
+        self.assertEqual(contract["adapter"]["name"], "codex")
+        self.assertEqual(set(contract["hosts"]), {"codex", "hermes"})
+        self.assertEqual(contract["hosts"]["hermes"]["protocol"], 1)
+        self.assertEqual(
+            contract["hosts"]["hermes"]["conformance"]["label"], "supported-unverified"
+        )
+        self.assertEqual(contract["activation"]["selected_hosts"], ["codex", "hermes"])
         self.assertEqual(
             contract["maintenance_bridge"]["supported_installed_agent_protocols"],
             [0, 1, 2, 3],
@@ -312,7 +319,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "ready",
             ],
         )
-        capabilities = contract["adapter"]["capabilities"]
+        capabilities = contract["hosts"]["codex"]["capabilities"]
         self.assertFalse(capabilities["same_task_reload"]["current_claim"])
         self.assertFalse(
             capabilities["automatic_successor_handoff"]["current_claim"]
@@ -341,8 +348,9 @@ class WorkflowContractTests(unittest.TestCase):
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
         self.assertEqual(protocol["core_protocol"], 7)
         self.assertEqual(protocol["adapters"]["codex"]["version"], 7)
-        self.assertEqual(protocol["agent_install_schema"], 3)
-        self.assertEqual(protocol["agent_install_protocol"], 3)
+        self.assertEqual(protocol["agent_install_schema"], 4)
+        self.assertEqual(protocol["agent_install_protocol"], 4)
+        self.assertEqual(protocol["adapters"]["hermes"]["version"], 1)
         self.assertEqual(protocol["takeover_schema"], 2)
         self.assertEqual(protocol["maintenance_bridge_schema"], 2)
         self.assertEqual(protocol["release_manifest_schema"], 2)

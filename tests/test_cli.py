@@ -899,11 +899,12 @@ class VibeCliTests(unittest.TestCase):
             }
             self.assertEqual(preserved_after, preserved_before)
             manifest = json.loads((project / ".vibe/manifest.json").read_text())
-            contract = json.loads((ROOT / "agent-install.json").read_text())
+            contract = json.loads((project / "agent-install.json").read_text())
+            self.assertEqual(contract["activation"]["selected_hosts"], ["codex"])
             for relative in expected_paths:
                 self.assertEqual(
                     manifest["managed_files"][relative],
-                    hashlib.sha256((ROOT / relative).read_bytes()).hexdigest(),
+                    hashlib.sha256((project / relative).read_bytes()).hexdigest(),
                 )
                 self.assertIn(relative, manifest["activation"]["paths"])
             self.assertEqual(
@@ -1269,14 +1270,14 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(validated_json.returncode, 0, validated_json.stderr)
             validation_receipt = json.loads(validated_json.stdout)
             self.assertEqual(validation_receipt["status"], "valid")
-            self.assertEqual(validation_receipt["agent_install_protocol"], 3)
+            self.assertEqual(validation_receipt["agent_install_protocol"], 4)
             release_metadata = json.loads((first / "release-manifest.json").read_text())
             self.assertEqual(release_metadata["status"], "release-candidate-unpublished")
             self.assertEqual(release_metadata["kit_version"], KIT_VERSION)
             self.assertEqual(release_metadata["core_protocol"], 7)
             self.assertEqual(release_metadata["feedback_protocol"], 2)
-            self.assertEqual(release_metadata["agent_install_schema"], 3)
-            self.assertEqual(release_metadata["agent_install_protocol"], 3)
+            self.assertEqual(release_metadata["agent_install_schema"], 4)
+            self.assertEqual(release_metadata["agent_install_protocol"], 4)
             self.assertEqual(release_metadata["takeover_schema"], 2)
             self.assertEqual(release_metadata["maintenance_bridge_schema"], 2)
             self.assertEqual(
@@ -1308,8 +1309,8 @@ class VibeCliTests(unittest.TestCase):
                 (release_root / ".codex/agents/vibe-tech-lead.toml").is_file()
             )
             install_contract = json.loads((release_root / "agent-install.json").read_text())
-            self.assertEqual(install_contract["schema_version"], 3)
-            self.assertEqual(install_contract["protocol_version"], 3)
+            self.assertEqual(install_contract["schema_version"], 4)
+            self.assertEqual(install_contract["protocol_version"], 4)
             self.assertEqual(install_contract["kit_version"], KIT_VERSION)
             self.assertEqual(install_contract["adapter"]["protocol"], 7)
             self.assertEqual(
@@ -2086,7 +2087,7 @@ class VibeCliTests(unittest.TestCase):
             self.assertRegex(receipt["manifest_sha256"], r"^[0-9a-f]{64}$")
             self.assertEqual(receipt["target_fingerprint"]["kit_version"], KIT_VERSION)
             self.assertEqual(receipt["target_fingerprint"]["core_protocol"], 7)
-            self.assertEqual(receipt["target_fingerprint"]["agent_install_schema"], 3)
+            self.assertEqual(receipt["target_fingerprint"]["agent_install_schema"], 4)
             self.assertEqual(receipt["target_fingerprint"]["manifest_sha256"], receipt["manifest_sha256"])
 
             quality = target / ".vibe/core/quality-gates.md"
