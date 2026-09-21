@@ -20,3 +20,4 @@ Record durable architectural choices here when the tradeoff matters beyond one w
 - [0016: Readiness accepts both NNNN-slug and YYYYMMDD-slug decision records, and reads a record's heading and status from its own grammar](0016-readiness-decision-naming-grammar.md)
 - [0017: Verification contract closure — declared check order, diagnostic receipts, an environment-limited verdict, and a sanctioned path for hosts whose subagent budget is smaller than the lane](0017-verification-contract-closure.md)
 - [0018: Takeover admission — existing-install receipts, a published takeover contract, receipt artifacts, and a host-neutral transfer payload](0018-takeover-admission.md)
+- [0019: Host adapters — per-host capability declarations, on-demand host payloads, a first-class Hermes entry, and per-host conformance evidence](0019-host-adapters.md)

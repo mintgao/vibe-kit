@@ -7,21 +7,21 @@
 
 ## Technical decision readiness
 
-- Outcome: `decision-required`
+- Outcome: `decision-accepted`
 - Trigger evidence: this change restructures the closed agent-install contract at a cross-system boundary — the single global adapter capability object becomes a per-host registry with conformance labels, the managed set gains a host partition so installed payloads and activation identities differ per host, and the installed copy starts recording a host selection — so it is compatibility-relevant at size L
-- Decision owner: none — Tech Lead author (`vibe_tech_lead` perspective, Hermes subagent) pending dispatch, 2026-09-21
-- Governing decision: none
+- Decision owner: Tech Lead author, `vibe_tech_lead` perspective (Hermes subagent, dispatched 2026-09-21), which authored `docs/decisions/0019-host-adapters.md`
+- Governing decision: `docs/decisions/0019-host-adapters.md`
 - No-new-decision rationale: none
 - Review mode: `sequential-perspective`
-- Review result: `pending`
-- Review evidence: none
+- Review result: `approved`
+- Review evidence: `docs/work-items/20260921-host-adapters/technical-review.md#Pass 2 — approved`
 - Material product decisions: resolved by the product owner on 2026-09-21 (iteration 0.10.0): (a) on-demand host payloads ship with this work item — the footprint concern merges here, while moving the CLI into `.vibe/bin/` stays in the boundary work item; (b) splitting the single-file CLI is deferred to a later iteration; (c) "verified integration" is labeled per host — Hermes only after the dual-host conformance evidence lands; until then it reads "supported, unverified" and unverified hosts stay fail closed
 - Open blockers: none
-- Gate: `blocked`
-- Gate owner: Workflow orchestrator
-- Confirmed at: none
-- Confirmation basis: none
-- Readiness history: 2026-09-21 the trigger scan found the closed-contract and compatibility trigger above; the record started `decision-required + blocked` with no application or shared implementation code edited
+- Gate: `implementation-ready`
+- Gate owner: Workflow orchestrator, Hermes session 2026-09-21
+- Confirmed at: 2026-09-21T22:12:57+08:00
+- Confirmation basis: ADR 0019 at revision 2 was reviewed against the brief's acceptance criteria; Pass 1 returned changes-required on two blocking precision defects (an unprovable byte-for-byte install claim and a release-payload filtering misstatement), the author's narrow revision corrected them, and Pass 2 approved with three non-blocking notes carried into `implementation.md` (the core-protocol re-check, the managed-text sweep, and the minimal Hermes entry); the review ran as a separate sequential pass because the host's subagent channel times out on analysis-shaped review tasks at its 600 s budget
+- Readiness history: 2026-09-21 the trigger scan found the closed-contract and compatibility trigger above; the record started `decision-required + blocked` with no application or shared implementation code edited; the Tech Lead author (subagent) then wrote `docs/decisions/0019-host-adapters.md`; review Pass 1 required two precision fixes, revision 2 landed, and Pass 2 approved it as `docs/work-items/20260921-host-adapters/technical-review.md#Pass 2 — approved` recording `Capability limitation: identity-isolated independent reviewer unavailable`; the gate then moved to `implementation-ready`
 
 ## Goal
 
