@@ -187,6 +187,31 @@ and payload that does not match the recorded selection fail closed with
 actionable diagnostics. The source repository and the release payload always
 carry every declared host's files — a selection never shrinks the release.
 
+### Hermes entry: specialist-role mapping and host differences
+
+`hermes` is a first-class entry: it is registered above with protocol 1, the same
+three capability claims and the same manual new-task fallback, so a Hermes-owned
+task can install, upgrade, verify and activate an installation exactly as a
+Codex-owned task does. The kit's specialist roles map to Hermes delegation and
+subagents:
+
+| Kit role | Hermes mapping |
+| --- | --- |
+| `vibe_pm`, `vibe_ux` | delegated subagents for shaping and design work |
+| `vibe_tech_lead` | a delegated subagent for decision evidence and review, or a separate recorded `sequential-perspective` pass when identity-isolated delegation is unavailable |
+| `vibe_rd` | one writer — the running task or a single delegated subagent — for the implementation |
+| `vibe_qa` | a delegated subagent that executes the pre-written verification harness once against the frozen candidate |
+| `vibe_investigator` | a delegated subagent for reproduction and root-cause evidence |
+
+Host differences that change how those roles are exercised are recorded here
+rather than assumed:
+
+| Host difference | Hermes behavior |
+| --- | --- |
+| Approval prompts | A write to a host-protected agent instruction file (for example `AGENTS.md`) raises a host approval prompt; a timeout is not consent, so the affected surface stays partial instead of being claimed |
+| Subagent budget | Subagent sessions are bounded; analysis-shaped review packets can exhaust that budget, so reviews may run as recorded `sequential-perspective` passes and verification runs are pre-written run-shaped harnesses |
+| Context bounding | Delegation context bounding and live host isolation are host capabilities, not kit guarantees; where they are unavailable the record states so instead of claiming isolation |
+
 ## Goal custody and privacy
 
 Keep the takeover object and transfer in host task state only. Never persist them

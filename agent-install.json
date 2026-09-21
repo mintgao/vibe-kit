@@ -203,7 +203,7 @@
       "hermes"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "bb9b484933f3a3d82fcc23bfd8e28cc7e387e6c6805ce85b2913513a7abc8c7a",
+    "activation_set_sha256": "0b96b87397219eaffbb3e1e6ff700fca14dad67ef5f831fb20d42dc30c57cfaa",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",

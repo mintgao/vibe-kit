@@ -5,6 +5,7 @@ import importlib.machinery
 import importlib.util
 import io
 import json
+import re
 import subprocess
 import sys
 import tarfile
@@ -97,6 +98,31 @@ class HostAdapterTests(unittest.TestCase):
         for selector in MODULE.HOST_PAYLOAD_SELECTORS["codex"]:
             self.assertIn(selector, guide)
         self.assertIn("declared per host in the host registry", guide)
+
+    def test_guide_publishes_the_hermes_role_mapping_and_host_differences(self):
+        guide = " ".join((ROOT / "AGENT_INSTALL.md").read_text(encoding="utf-8").split())
+        roles = sorted(
+            match.group(1)
+            for path in sorted((ROOT / ".codex/agents").glob("vibe-*.toml"))
+            for match in [re.match(r'name = "([a-z_]+)"', path.read_text(encoding="utf-8"))]
+            if match
+        )
+        self.assertEqual(len(roles), 6)
+        self.assertIn("Kit role | Hermes mapping", guide)
+        mapping = guide.split("Kit role | Hermes mapping", 1)[1].split(
+            "Host differences that change", 1
+        )[0]
+        for role in roles:
+            self.assertIn(f"`{role}`", mapping)
+        differences = guide.split("Host differences that change", 1)[1]
+        self.assertIn("Approval prompts", differences)
+        self.assertIn("Subagent budget", differences)
+        self.assertIn("host approval prompt", differences)
+        self.assertIn("sequential-perspective", differences)
+        self.assertIn(
+            "Any host that can start a new task in the same project may own the successor task",
+            guide,
+        )
 
     def test_install_selection_matrix_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
