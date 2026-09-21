@@ -617,5 +617,142 @@ class WorkflowContractTests(unittest.TestCase):
                     self.assertEqual(host.validate(dependency)[0], 1)
 
 
+    def test_existing_install_admission_receipts_and_manual_transfer(self) -> None:
+            with tempfile.TemporaryDirectory() as directory:
+                project = Path(directory) / "project"
+                installed = subprocess.run(
+                    [str(ROOT / "bin/vibe"), "init", str(project), "--format", "json"],
+                    text=True, capture_output=True, check=False,
+                )
+                self.assertEqual(installed.returncode, 0, installed.stderr)
+                host = FakeTakeoverHost(project)
+
+                code, receipt, stderr = host.validate(host.admitted())
+                self.assertEqual(code, 0, (receipt, stderr))
+                self.assertEqual(receipt["status"], "valid")
+
+                claimed = host.admitted()
+                claimed["write_state"] = "project-files-written"
+                claimed["upgrade_transaction"] = {
+                    "schema_version": 1,
+                    "transaction_id": "claimed-transaction",
+                    "outcome": "committed",
+                    "commit_marker": "valid",
+                    "installation_state": "target",
+                    "active_state_present": False,
+                }
+                self.assertEqual(host.validate(claimed)[0], 1)
+
+                no_history = host.admitted()
+                for stage in ("applied", "upgraded"):
+                    for item in no_history["stages"][stage]["evidence"]:
+                        item["sha256"] = None
+                self.assertEqual(host.validate(no_history)[0], 1)
+
+                forged = host.admitted()
+                forged["activation"]["observed_manifest_sha256"] = "9" * 64
+                self.assertEqual(host.validate(forged)[0], 1)
+
+                receipt_first = Path(directory) / "receipt-first.json"
+                receipt_rerun = Path(directory) / "receipt-rerun.json"
+                receipt_other = Path(directory) / "receipt-other.json"
+                other = Path(directory) / "other-project"
+                second = subprocess.run(
+                    [str(ROOT / "bin/vibe"), "init", str(other), "--format", "json"],
+                    text=True, capture_output=True, check=False,
+                )
+                self.assertEqual(second.returncode, 0, second.stderr)
+                cli = project / "bin/vibe"
+                for target, receipt_path in (
+                    (project, receipt_first),
+                    (project, receipt_rerun),
+                    (other, receipt_other),
+                ):
+                    done = subprocess.run(
+                        [str(cli), "doctor", str(target), "--receipt", str(receipt_path)],
+                        text=True, capture_output=True, check=False,
+                    )
+                    self.assertEqual(done.returncode, 0, done.stderr)
+                first_bytes = receipt_first.read_bytes()
+                self.assertEqual(first_bytes, receipt_rerun.read_bytes())
+                self.assertEqual(first_bytes, receipt_other.read_bytes())
+                artifact = json.loads(first_bytes)
+                self.assertEqual(artifact["target"], ".")
+                self.assertEqual(artifact["status"], "healthy")
+
+                payload = {
+                    "transfer_schema_version": 1,
+                    "transfer_id": "transfer-id",
+                    "goal": "Continue the recorded goal.",
+                    "decisions": ["Keep the accepted decision record."],
+                    "unfinished": ["Finish the remaining checks."],
+                    "evidence": [
+                        {
+                            "ref": "./agent-install.json",
+                            "sha256": hashlib.sha256(
+                                (project / "agent-install.json").read_bytes()
+                            ).hexdigest(),
+                        }
+                    ],
+                }
+                payload_path = Path(directory) / "manual-transfer.json"
+                payload_path.write_text(json.dumps(payload), encoding="utf-8")
+                via_payload = subprocess.run(
+                    [
+                        str(cli),
+                        "validate-takeover",
+                        "--manual-transfer",
+                        str(payload_path),
+                        "--format",
+                        "json",
+                    ],
+                    input=json.dumps(host.ready("manual-new-task")),
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(via_payload.returncode, 0, via_payload.stdout)
+                self.assertEqual(
+                    json.loads(via_payload.stdout)["manual_transfer_status"], "valid"
+                )
+
+                payload["evidence"][0]["sha256"] = "0" * 64
+                payload_path.write_text(json.dumps(payload), encoding="utf-8")
+                stale = subprocess.run(
+                    [
+                        str(cli),
+                        "validate-takeover",
+                        "--manual-transfer",
+                        str(payload_path),
+                        "--format",
+                        "json",
+                    ],
+                    input=json.dumps(host.ready("manual-new-task")),
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(stale.returncode, 1)
+                self.assertEqual(
+                    json.loads(stale.stdout)["manual_transfer_status"], "invalid"
+                )
+
+    def test_agent_install_guide_publishes_the_takeover_contract(self) -> None:
+        guide = (ROOT / "AGENT_INSTALL.md").read_text()
+        contract = json.loads((ROOT / "agent-install.json").read_text())
+        registry = contract["takeover"]["contract_registry"]
+        published = section(guide, "Takeover object contract")
+        for name, values in sorted(registry["enums"].items()):
+            for value in values:
+                if isinstance(value, str):
+                    self.assertIn(f"`{value}`", published, f"{name}: {value}")
+        kinds = ", ".join(
+            f"`{value}`" for value in registry["enums"]["receipt_kinds"]
+        )
+        self.assertIn(kinds, published)
+        for stage in registry["result_shape"]["required_stage_keys"]:
+            self.assertIn(f"`{stage}`", published, stage)
+
+
 if __name__ == "__main__":
     unittest.main()

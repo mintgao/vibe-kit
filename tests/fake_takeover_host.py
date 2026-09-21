@@ -181,6 +181,27 @@ class FakeTakeoverHost:
             "next_action": None,
         }
 
+    def admitted(self) -> Dict[str, object]:
+        value = self.ready("manual-new-task", "unfinished")
+        value["activation"]["receipt_kind"] = "existing-install-admission"
+        for stage, kind, digest in (
+            ("applied", "apply-receipt", "3" * 64),
+            ("upgraded", "doctor-receipt", "4" * 64),
+        ):
+            for item in value["stages"][stage]["evidence"]:
+                if item["kind"] == kind:
+                    item["sha256"] = digest
+        value["write_state"] = "none"
+        value["upgrade_transaction"] = {
+            "schema_version": 1,
+            "transaction_id": None,
+            "outcome": "not-started",
+            "commit_marker": "not-applicable",
+            "installation_state": "target",
+            "active_state_present": False,
+        }
+        return value
+
     def degraded_manual(self, unfinished: bool = True) -> Dict[str, object]:
         value = self.ready("manual-new-task", "unfinished" if unfinished else "maintenance-only")
         source_task = value["activation"]["source_task_id"]

@@ -4,7 +4,7 @@
   "core_protocol": 7,
   "feedback_protocol": 2,
   "agent_install_protocol": 3,
-  "takeover_contract_registry_sha256": "4ecfb5e8932122654c13dce8ea2e78c17b5beced35c6b2dfd669f68b5d708d7b",
+  "takeover_contract_registry_sha256": "6697a332b7f7200c1fdf04828b97878e6c1c99e39910e283c5ade87f6219821f",
   "predecessor_migrations": {
     "schema_version": 2,
     "registry_sha256": "42b28f7e13a86b39b2a88136613cdcbeed62b3302ae0a7ba3238612114c11314",

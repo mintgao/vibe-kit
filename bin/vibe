@@ -498,7 +498,7 @@ def build_takeover_contract_registry() -> Dict[str, object]:
             "stage_states": list(TAKEOVER_STAGE_STATES),
             "evidence_kinds": list(TAKEOVER_EVIDENCE_KINDS),
             "activation_paths": ["none", "same-task-reload", "automatic-successor-handoff", "manual-new-task"],
-            "receipt_kinds": ["host-reload", "host-successor-start", "manual-task-start"],
+            "receipt_kinds": ["host-reload", "host-successor-start", "manual-task-start", "existing-install-admission"],
             "goal_kinds": ["maintenance-only", "unfinished"],
             "goal_custody": list(TAKEOVER_GOAL_CUSTODY),
             "goal_continuation": ["not-applicable", "paused", "ready-to-resume", "resumed", "blocked"],
@@ -582,6 +582,12 @@ def build_takeover_contract_registry() -> Dict[str, object]:
                 "required_custody_at_ready": "automatic-successor-owned",
             },
             "manual-task-start": {
+                "path": "manual-new-task", "active_task_relation": "differs-from-source-task",
+                "handoff_idempotency_key": "must-be-null",
+                "required_evidence": ["manual-task-start"],
+                "required_custody_at_ready": "manual-successor-owned",
+            },
+            "existing-install-admission": {
                 "path": "manual-new-task", "active_task_relation": "differs-from-source-task",
                 "handoff_idempotency_key": "must-be-null",
                 "required_evidence": ["manual-task-start"],
@@ -756,7 +762,128 @@ def atomic_write_json(path: Path, value: object) -> None:
     )
 
 
+RECEIPT_CONTEXT: List[Optional[Tuple[Path, Path]]] = [None]
+
+MANUAL_TRANSFER_SCHEMA_VERSION = 1
+MANUAL_TRANSFER_LIMITS = {"decisions": 16, "unfinished": 16, "evidence": 32}
+
+
+def root_relative_receipt(value: object, root: Path) -> object:
+    """Rewrite strings rooted at the resolved project root to root-relative form."""
+    root_text = str(root)
+
+    def rewrite(item: object) -> object:
+        if isinstance(item, str):
+            if item == root_text:
+                return "."
+            if item.startswith(root_text + "/"):
+                return item[len(root_text) + 1 :]
+            return item
+        if isinstance(item, dict):
+            return {key: rewrite(sub) for key, sub in item.items()}
+        if isinstance(item, list):
+            return [rewrite(sub) for sub in item]
+        return item
+
+    return rewrite(value)
+
+
+def write_receipt_artifact(value: object, receipt_path: Path, root: Path) -> None:
+    """Write the exact result envelope as a byte-stable root-relative receipt."""
+    payload = root_relative_receipt(value, root)
+    data = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    try:
+        receipt_path.write_text(data, encoding="utf-8")
+    except OSError as error:
+        print(f"error: could not write receipt artifact: {error}", file=sys.stderr)
+        sys.exit(2)
+
+
+def validate_manual_transfer_payload(value: object, root: Path) -> List[Dict[str, str]]:
+    """Validate the host-neutral minimal manual-transfer payload (schema 1)."""
+    findings: List[Dict[str, str]] = []
+
+    def add(code: str, path: str) -> None:
+        item = takeover_validation_error(code, path)
+        if item not in findings:
+            findings.append(item)
+
+    def opaque(value: object, maximum: int, allow_newlines: bool = False) -> bool:
+        if not isinstance(value, str) or not 1 <= len(value) <= maximum:
+            return False
+        for character in value:
+            code = ord(character)
+            if code >= 32 and character != "\x7f":
+                continue
+            if allow_newlines and character in "\r\n\t":
+                continue
+            return False
+        return True
+
+    shape = [
+        "transfer_schema_version",
+        "transfer_id",
+        "goal",
+        "decisions",
+        "unfinished",
+        "evidence",
+    ]
+    if not isinstance(value, dict) or set(value) != set(shape):
+        add("manual-transfer-shape", "$")
+        return findings
+    if value.get("transfer_schema_version") != MANUAL_TRANSFER_SCHEMA_VERSION:
+        add("manual-transfer-shape", "$.transfer_schema_version")
+    if not opaque(value.get("transfer_id"), 256):
+        add("manual-transfer-shape", "$.transfer_id")
+    if not opaque(value.get("goal"), 4096, allow_newlines=True):
+        add("manual-transfer-shape", "$.goal")
+    for key in ("decisions", "unfinished"):
+        items = value.get(key)
+        if not isinstance(items, list) or len(items) > int(MANUAL_TRANSFER_LIMITS[key]):
+            add("manual-transfer-shape", f"$.{key}")
+            continue
+        for index, item in enumerate(items):
+            if not opaque(item, 512):
+                add("manual-transfer-shape", f"$.{key}[{index}]")
+    evidence = value.get("evidence")
+    if not isinstance(evidence, list) or len(evidence) > int(MANUAL_TRANSFER_LIMITS["evidence"]):
+        add("manual-transfer-shape", "$.evidence")
+        return findings
+    resolved_root = root.resolve()
+    for index, item in enumerate(evidence):
+        item_path = f"$.evidence[{index}]"
+        if not isinstance(item, dict) or set(item) != {"ref", "sha256"}:
+            add("manual-transfer-shape", item_path)
+            continue
+        ref = item.get("ref")
+        digest_value = item.get("sha256")
+        if not opaque(ref, 4096):
+            add("manual-transfer-shape", f"{item_path}.ref")
+            continue
+        if not isinstance(digest_value, str) or re.fullmatch(
+            r"[0-9a-f]{64}", digest_value
+        ) is None:
+            add("manual-transfer-shape", f"{item_path}.sha256")
+            continue
+        if ref.startswith("./"):
+            candidate_path = (resolved_root / ref[2:]).resolve()
+            try:
+                candidate_path.relative_to(resolved_root)
+            except ValueError:
+                add("manual-transfer-evidence", f"{item_path}.ref")
+                continue
+            if not candidate_path.is_file():
+                add("manual-transfer-evidence", f"{item_path}.ref")
+                continue
+            if sha256(candidate_path) != digest_value:
+                add("manual-transfer-evidence", f"{item_path}.sha256")
+    return findings
+
+
 def print_json(value: object) -> None:
+    if RECEIPT_CONTEXT[0] is not None:
+        receipt_path, receipt_root = RECEIPT_CONTEXT[0]
+        write_receipt_artifact(value, receipt_path, receipt_root)
     print(json.dumps(value, ensure_ascii=False, sort_keys=True))
 
 
@@ -7932,6 +8059,7 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
                 "host-reload",
                 "host-successor-start",
                 "manual-task-start",
+                "existing-install-admission",
             ],
             "stale_runtime_diagnostic": "stale-runtime-path-preserved",
             "stale_nonruntime_diagnostic": "stale-nonruntime-path-preserved",
@@ -8690,6 +8818,44 @@ def validate_takeover_object(
     ):
         add("custody-history-strictly-increasing", "$.goal.custody_history")
 
+    # Existing-install admission (ADR 0018): a distinct receipt kind that claims
+    # no transaction in this directory and cites the historical one as evidence.
+    is_admission = isinstance(activation, dict) and activation.get(
+        "receipt_kind"
+    ) == "existing-install-admission"
+    if is_admission:
+        transaction = upgrade_transaction if isinstance(upgrade_transaction, dict) else {}
+        if (
+            transaction.get("transaction_id") is not None
+            or transaction.get("outcome") not in ("not-started", "not-applied")
+            or transaction.get("commit_marker") not in ("not-applicable", "invalid")
+        ):
+            add("admission-claims-no-transaction", "$.upgrade_transaction")
+        if activation.get("observed_manifest_sha256") != context.get("manifest_sha256"):
+            add(
+                "admission-identities-recomputed",
+                "$.activation.observed_manifest_sha256",
+            )
+        if activation.get("observed_activation_set_sha256") != context.get(
+            "activation_set_sha256"
+        ):
+            add(
+                "admission-identities-recomputed",
+                "$.activation.observed_activation_set_sha256",
+            )
+        referenced_history = [
+            item
+            for stage_name in ("applied", "upgraded")
+            for item in evidence_by_stage.get(stage_name, [])
+            if item.get("kind") in ("apply-receipt", "doctor-receipt")
+            and item.get("ref") is not None
+            and item.get("sha256") is not None
+        ]
+        if not referenced_history:
+            add("admission-references-historical-upgrade", "$.stages.applied")
+        if result.get("write_state") != "none":
+            add("admission-writes-nothing", "$.write_state")
+
     source_task = activation.get("source_task_id") if isinstance(activation, dict) else None
     active_task = activation.get("active_task_id") if isinstance(activation, dict) else None
     if isinstance(goal, dict):
@@ -8848,17 +9014,22 @@ def validate_takeover_object(
                     ):
                         add("successor-custody-terminal", "$.goal.custody_history")
 
-    if stage_values.get("applied", {}).get("state") == "satisfied" and result.get(
-        "write_state"
-    ) != "project-files-written":
+    if (
+        stage_values.get("applied", {}).get("state") == "satisfied"
+        and result.get("write_state") != "project-files-written"
+        and not is_admission
+    ):
         add("write-state-project-files-written", "$.write_state")
-    if stage_values.get("applied", {}).get("state") == "satisfied" and isinstance(
-        upgrade_transaction, dict
-    ) and not (
-        upgrade_transaction.get("outcome") == "committed"
-        and upgrade_transaction.get("commit_marker") == "valid"
-        and upgrade_transaction.get("installation_state") == "target"
-        and upgrade_transaction.get("active_state_present") is False
+    if (
+        stage_values.get("applied", {}).get("state") == "satisfied"
+        and isinstance(upgrade_transaction, dict)
+        and not is_admission
+        and not (
+            upgrade_transaction.get("outcome") == "committed"
+            and upgrade_transaction.get("commit_marker") == "valid"
+            and upgrade_transaction.get("installation_state") == "target"
+            and upgrade_transaction.get("active_state_present") is False
+        )
     ):
         add("upgrade-transaction-outcome-committed", "$.upgrade_transaction")
     if result.get("write_state") in ("rolled-back", "recovery-required", "unknown-partial"):
@@ -8893,7 +9064,9 @@ def validate_takeover_object(
     if (overall == "ready") != ready_satisfied:
         add("overall-ready-iff-ready-stage-satisfied", "$.overall_status")
     if ready_satisfied:
-        if blocked_stages or result.get("write_state") != "project-files-written":
+        if blocked_stages or (
+            result.get("write_state") != "project-files-written" and not is_admission
+        ):
             add("no-blocking-diagnostic", "$.stages.ready")
         if result.get("completion_owner_task_id") != active_task or active_task is None:
             add("completion-owner-is-active-task", "$.completion_owner_task_id")
@@ -8926,7 +9099,9 @@ def validate_takeover_object(
     return errors
 
 
-def validate_takeover(root: Path, output_format: str) -> int:
+def validate_takeover(
+    root: Path, output_format: str, transfer_path: Optional[Path] = None
+) -> int:
     try:
         context, authentication_errors = installed_takeover_contract_context(root)
     except (OSError, UnicodeError, VibeError):
@@ -8958,6 +9133,35 @@ def validate_takeover(root: Path, output_format: str) -> int:
         validation_errors = [takeover_validation_error("exact-result-shape", "$")]
     else:
         validation_errors = validate_takeover_object(candidate, context)
+    if transfer_path is not None:
+        try:
+            payload = json.loads(
+                transfer_path.read_text(encoding="utf-8"),
+                object_pairs_hook=reject_duplicate_json_keys,
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            payload = None
+            validation_errors.append(
+                takeover_validation_error("manual-transfer-shape", "$")
+            )
+        else:
+            validation_errors.extend(validate_manual_transfer_payload(payload, root))
+            if isinstance(payload, dict) and isinstance(candidate, dict):
+                goal_value = candidate.get("goal")
+                transfer_id = (
+                    goal_value.get("transfer_id") if isinstance(goal_value, dict) else None
+                )
+                if transfer_id is not None and payload.get("transfer_id") != transfer_id:
+                    validation_errors.append(
+                        takeover_validation_error(
+                            "manual-transfer-identity-consistent", "$.goal.transfer_id"
+                        )
+                    )
+        deduped: List[Dict[str, str]] = []
+        for item in validation_errors:
+            if item not in deduped:
+                deduped.append(item)
+        validation_errors = deduped
     status = "invalid" if validation_errors else "valid"
     result = result_envelope(
         "validate-takeover",
@@ -8965,6 +9169,18 @@ def validate_takeover(root: Path, output_format: str) -> int:
         structural_only=True,
         host_evidence_authenticated=False,
         ready_claim=False,
+        manual_transfer_status=(
+            "absent"
+            if transfer_path is None
+            else (
+                "invalid"
+                if any(
+                    item.get("code", "").startswith("manual-transfer")
+                    for item in validation_errors
+                )
+                else "valid"
+            )
+        ),
         errors=validation_errors,
     )
     if output_format == "json":
@@ -12831,6 +13047,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     upgrade_parser = subparsers.add_parser("upgrade")
     upgrade_parser.add_argument("target", nargs="?", default=".")
+    upgrade_parser.add_argument(
+        "--receipt",
+        type=Path,
+        help="Write the exact result envelope as a byte-stable root-relative receipt artifact; JSON output is implied.",
+    )
     add_format_argument(upgrade_parser)
     add_source_arguments(upgrade_parser)
 
@@ -12856,11 +13077,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("target", nargs="?", default=".")
+    doctor_parser.add_argument(
+        "--receipt",
+        type=Path,
+        help="Write the exact result envelope as a byte-stable root-relative receipt artifact; JSON output is implied.",
+    )
     add_format_argument(doctor_parser)
 
     takeover_parser = subparsers.add_parser(
         "validate-takeover",
         description="Validate one host-owned takeover result from standard input.",
+    )
+    takeover_parser.add_argument(
+        "--receipt",
+        type=Path,
+        help="Write the exact result envelope as a byte-stable root-relative receipt artifact; JSON output is implied.",
+    )
+    takeover_parser.add_argument(
+        "--manual-transfer",
+        type=Path,
+        help="Also validate a minimal manual-transfer payload file against this project.",
     )
     add_format_argument(takeover_parser)
 
@@ -12869,6 +13105,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plan_parser.add_argument("operation", choices=("init", "adopt", "upgrade"))
     plan_parser.add_argument("target", nargs="?", default=".")
+    plan_parser.add_argument(
+        "--receipt",
+        type=Path,
+        help="Write the exact result envelope as a byte-stable root-relative receipt artifact; JSON output is implied.",
+    )
     add_format_argument(plan_parser)
     add_source_arguments(plan_parser)
 
@@ -12922,6 +13163,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=VERIFY_ORDER,
         default=[],
         help="Run only one configured check; repeat to select more than one.",
+    )
+    verify_parser.add_argument(
+        "--receipt",
+        type=Path,
+        help="Write the exact result envelope as a byte-stable root-relative receipt artifact; JSON output is implied.",
     )
     add_format_argument(verify_parser)
 
@@ -12987,6 +13233,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 args.source_ref,
                 args.artifact_sha256,
             )
+        receipt_option = getattr(args, "receipt", None)
+        if receipt_option is not None:
+            if getattr(args, "output_format", "json") != "json":
+                args.output_format = "json"
+            receipt_root = Path(getattr(args, "target", None) or ".").resolve()
+            if args.command == "validate-takeover":
+                receipt_root = source_root()
+            RECEIPT_CONTEXT[0] = (Path(receipt_option), receipt_root)
         if args.command == "upgrade":
             return upgrade(
                 Path(args.target),
@@ -13030,7 +13284,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.command == "doctor":
             return doctor(Path(args.target), args.output_format)
         if args.command == "validate-takeover":
-            return validate_takeover(source_root(), args.output_format)
+            return validate_takeover(
+                source_root(), args.output_format, args.manual_transfer
+            )
         if args.command == "issue-closeout":
             return v090_closeout_command(args)
         if args.command == "validate-readiness":

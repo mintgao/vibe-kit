@@ -159,7 +159,7 @@
       "bin/vibe"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "50852b031713eaab4622e218b96534b5df344ee839e84e1f0c90a9be3cd73c2b",
+    "activation_set_sha256": "3b6864a69d181a787272b2fd38b6428dd458178c3444e2494d7816fdec09d3f1",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",
@@ -178,7 +178,8 @@
     "receipt_kinds": [
       "host-reload",
       "host-successor-start",
-      "manual-task-start"
+      "manual-task-start",
+      "existing-install-admission"
     ],
     "stale_runtime_diagnostic": "stale-runtime-path-preserved",
     "stale_nonruntime_diagnostic": "stale-nonruntime-path-preserved",
@@ -484,7 +485,8 @@
         "receipt_kinds": [
           "host-reload",
           "host-successor-start",
-          "manual-task-start"
+          "manual-task-start",
+          "existing-install-admission"
         ],
         "goal_kinds": [
           "maintenance-only",
@@ -828,6 +830,15 @@
             "manual-task-start"
           ],
           "required_custody_at_ready": "manual-successor-owned"
+        },
+        "existing-install-admission": {
+          "path": "manual-new-task",
+          "active_task_relation": "differs-from-source-task",
+          "handoff_idempotency_key": "must-be-null",
+          "required_evidence": [
+            "manual-task-start"
+          ],
+          "required_custody_at_ready": "manual-successor-owned"
         }
       },
       "custody_transitions": {
@@ -879,7 +890,7 @@
         "successor-custody-terminal"
       ]
     },
-    "contract_registry_sha256": "4ecfb5e8932122654c13dce8ea2e78c17b5beced35c6b2dfd669f68b5d708d7b",
+    "contract_registry_sha256": "6697a332b7f7200c1fdf04828b97878e6c1c99e39910e283c5ade87f6219821f",
     "unknown_or_inconsistent_state": "fail-closed"
   },
   "cli": {

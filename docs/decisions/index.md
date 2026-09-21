@@ -19,3 +19,4 @@ Record durable architectural choices here when the tradeoff matters beyond one w
 - [0015: The manual new-task activation path is host-neutral, and managed contract text follows the installed contract](0015-host-neutral-manual-activation.md)
 - [0016: Readiness accepts both NNNN-slug and YYYYMMDD-slug decision records, and reads a record's heading and status from its own grammar](0016-readiness-decision-naming-grammar.md)
 - [0017: Verification contract closure — declared check order, diagnostic receipts, an environment-limited verdict, and a sanctioned path for hosts whose subagent budget is smaller than the lane](0017-verification-contract-closure.md)
+- [0018: Takeover admission — existing-install receipts, a published takeover contract, receipt artifacts, and a host-neutral transfer payload](0018-takeover-admission.md)
