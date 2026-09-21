@@ -2303,6 +2303,221 @@ class VibeCliTests(unittest.TestCase):
                 )
             )
 
+    def test_verify_declared_check_order_is_derived_and_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "declared-order-project"
+            installed = run_cli(CLI, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            (target / ".vibe/project.yaml").write_text(
+                "schema_version: 1\n"
+                "commands:\n"
+                + f"  lint: {json.dumps('true')}\n"
+                + '  typecheck: ""\n'
+                + f"  test: {json.dumps('true')}\n"
+                + f"  build: {json.dumps('true')}\n"
+                "checks:\n"
+                "  requires:\n"
+                "    test: [\"build\"]\n"
+            )
+            result = run_cli(
+                target / "bin/vibe", "verify", str(target), "--format", "json"
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            receipt = json.loads(result.stdout)
+            self.assertEqual(
+                receipt["default_order"], ["lint", "typecheck", "build", "test"]
+            )
+            self.assertEqual(
+                [check["name"] for check in receipt["checks"]],
+                ["lint", "typecheck", "build", "test"],
+            )
+            self.assertEqual(
+                [check["outcome"] for check in receipt["checks"]],
+                ["passed", "unconfigured", "passed", "passed"],
+            )
+
+    def test_verify_undeclared_default_order_and_toolchain_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "default-order-project"
+            installed = run_cli(CLI, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            (target / ".vibe/project.yaml").write_text(
+                "schema_version: 1\ncommands:\n"
+                + f"  lint: {json.dumps('true')}\n"
+                + '  typecheck: ""\n'
+                + f"  test: {json.dumps('true')}\n"
+                + f"  build: {json.dumps('true')}\n"
+            )
+            result = run_cli(
+                target / "bin/vibe", "verify", str(target), "--format", "json"
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            receipt = json.loads(result.stdout)
+            self.assertEqual(
+                receipt["default_order"], ["lint", "typecheck", "test", "build"]
+            )
+            self.assertEqual(
+                [check["name"] for check in receipt["checks"]],
+                ["lint", "typecheck", "test", "build"],
+            )
+            self.assertTrue(receipt["toolchain"]["python"])
+            self.assertIn("node", receipt["toolchain"])
+            self.assertIn("pnpm", receipt["toolchain"])
+
+    def test_verify_check_declaration_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "invalid-declaration-project"
+            installed = run_cli(CLI, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            base = (
+                "schema_version: 1\ncommands:\n"
+                + f"  lint: {json.dumps('true')}\n"
+                + '  typecheck: ""\n'
+                + f"  test: {json.dumps('true')}\n"
+                + f"  build: {json.dumps('true')}\n"
+            )
+            cases = {
+                "unknown key": "checks:\n  speed: 3\n",
+                "unknown check name": "checks:\n  requires:\n    deploy: [\"build\"]\n",
+                "unknown dependency": "checks:\n  requires:\n    test: [\"deploy\"]\n",
+                "cycle": "checks:\n  requires:\n    test: [\"build\"]\n    build: [\"test\"]\n",
+                "sub-floor bound": "checks:\n  output_limit_bytes: 1024\n",
+                "non-integer bound": "checks:\n  output_limit_bytes: big\n",
+                "misindented entry": "checks:\n    requires:\n    test: [\"build\"]\n",
+            }
+            for label, block in cases.items():
+                with self.subTest(label=label):
+                    (target / ".vibe/project.yaml").write_text(base + block)
+                    result = run_cli(
+                        target / "bin/vibe",
+                        "verify",
+                        str(target),
+                        "--format",
+                        "json",
+                    )
+                    self.assertNotEqual(result.returncode, 0, label)
+                    self.assertIn("check", result.stdout + result.stderr, label)
+
+    def test_verify_environment_limited_outcome_carries_reason_and_toolchain(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "environment-limited-project"
+            installed = run_cli(CLI, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            failing = "python3 -c \"import sys; sys.exit(4)\""
+            (target / ".vibe/project.yaml").write_text(
+                "schema_version: 1\n"
+                "commands:\n"
+                + f"  lint: {json.dumps('true')}\n"
+                + '  typecheck: ""\n'
+                + f"  test: {json.dumps(failing)}\n"
+                + f"  build: {json.dumps('true')}\n"
+                "toolchain:\n"
+                '  python: ">=99.0"\n'
+            )
+            result = run_cli(
+                target / "bin/vibe", "verify", str(target), "--format", "json"
+            )
+            self.assertEqual(result.returncode, 2, result.stderr)
+            receipt = json.loads(result.stdout)
+            self.assertEqual(receipt["status"], "blocked")
+            self.assertEqual(receipt["summary"]["environment-limited"], 1)
+            limited = receipt["checks"][2]
+            self.assertEqual(limited["outcome"], "environment-limited")
+            self.assertEqual(limited["reason_code"], "toolchain-mismatch")
+            self.assertEqual(limited["exit_code"], 4)
+            self.assertEqual(
+                limited["environment"]["expectations"]["python"]["expected"],
+                ">=99.0",
+            )
+            artifact = limited["output"]["full"]
+            artifact_path = target / artifact["path"]
+            self.assertTrue(artifact_path.is_file())
+            self.assertEqual(
+                hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
+                artifact["sha256"],
+            )
+
+    def test_verify_failing_check_keeps_a_recoverable_full_output_artifact(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "full-output-project"
+            installed = run_cli(CLI, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            failing = (
+                "python3 -c \"print('per-file-verdict: alpha.md FAILED'); "
+                "print('" + ("y" * 17000) + "'); import sys; sys.exit(3)\""
+            )
+            (target / ".vibe/project.yaml").write_text(
+                "schema_version: 1\n"
+                "commands:\n"
+                + f"  lint: {json.dumps('true')}\n"
+                + '  typecheck: ""\n'
+                + f"  test: {json.dumps(failing)}\n"
+                + f"  build: {json.dumps('true')}\n"
+            )
+            result = run_cli(
+                target / "bin/vibe", "verify", str(target), "--format", "json"
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            receipt = json.loads(result.stdout)
+            failed = receipt["checks"][2]
+            self.assertEqual(failed["outcome"], "failed")
+            self.assertTrue(failed["output"]["stdout_truncated"])
+            self.assertNotIn(
+                "per-file-verdict: alpha.md FAILED", failed["output"]["stdout_tail"]
+            )
+            artifact = failed["output"]["full"]
+            content = (target / artifact["path"]).read_text()
+            self.assertIn("per-file-verdict: alpha.md FAILED", content)
+            self.assertEqual(
+                hashlib.sha256((target / artifact["path"]).read_bytes()).hexdigest(),
+                artifact["sha256"],
+            )
+
+    def test_verify_declared_raise_of_the_output_bound_is_honoured(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "raised-bound-project"
+            installed = run_cli(CLI, "init", str(target))
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            noisy = (
+                "python3 -c \"print('" + ("z" * 40000) + "'); "
+                "print('final-line-visible'); import sys; sys.exit(3)\""
+            )
+            (target / ".vibe/project.yaml").write_text(
+                "schema_version: 1\n"
+                "commands:\n"
+                + f"  lint: {json.dumps('true')}\n"
+                + '  typecheck: ""\n'
+                + f"  test: {json.dumps(noisy)}\n"
+                + f"  build: {json.dumps('true')}\n"
+                "checks:\n"
+                "  output_limit_bytes: 65536\n"
+            )
+            result = run_cli(
+                target / "bin/vibe", "verify", str(target), "--format", "json"
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            receipt = json.loads(result.stdout)
+            failed = receipt["checks"][2]
+            self.assertFalse(failed["output"]["stdout_truncated"])
+            self.assertIn("final-line-visible", failed["output"]["stdout_tail"])
+
+    def test_operating_model_states_the_constrained_path_and_record_labels(self) -> None:
+        operating_model = (ROOT / ".vibe/core/operating-model.md").read_text()
+        self.assertIn("subagent budget is smaller than the lane", operating_model)
+        self.assertIn("- `- limitation:`", operating_model)
+        self.assertIn("- `- complete run:`", operating_model)
+        self.assertIn("- `- independent focused re-run:`", operating_model)
+        self.assertIn("must not be described as `independent-agent`", operating_model)
+        quality_gates = (ROOT / ".vibe/core/quality-gates.md").read_text()
+        self.assertIn("checks.requires", quality_gates)
+        self.assertIn("default_order", quality_gates)
+        self.assertIn("environment-limited", quality_gates)
+        self.assertIn(".vibe/local/verify/", quality_gates)
+
     def test_feedback_deduplicates_dismisses_and_resurfaces(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "feedback-project"

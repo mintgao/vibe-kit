@@ -159,7 +159,7 @@
       "bin/vibe"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "18e480eaecad1f880e8a1c0fc9ec3cb8df3fc06d45f10f8123837c11897b1775",
+    "activation_set_sha256": "50852b031713eaab4622e218b96534b5df344ee839e84e1f0c90a9be3cd73c2b",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",
@@ -1010,7 +1010,8 @@
         "passed",
         "failed",
         "unconfigured",
-        "skipped"
+        "skipped",
+        "environment-limited"
       ],
       "skipped_reasons": [
         "host-permission-denied",

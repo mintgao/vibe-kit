@@ -29,3 +29,4 @@ Each generated folder contains a brief and verification record. Add design or im
 - [Readiness evidence, documentation gates, and v0.9.0 release](20260908-readiness-doc-gates-release/brief.md)
 - [Host-neutral manual new-task activation and consistent release identity](20260921-host-neutral-manual-activation/brief.md)
 - [Readiness decision-naming grammar and tooling fixes](20260921-readiness-naming-grammar/brief.md)
+- [Verification contract closure: declared check order, preserved failure output, constrained-QA evidence and environment-limited states](20260921-verify-contract-closure/brief.md)

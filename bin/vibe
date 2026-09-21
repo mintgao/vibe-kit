@@ -6941,7 +6941,7 @@ def parse_commands(path: Path) -> Dict[str, str]:
     return commands
 
 
-def sanitize_verify_stream(target: Path, content: bytes) -> Tuple[str, bool]:
+def sanitize_verify_text(target: Path, content: bytes) -> str:
     text = content.decode("utf-8", errors="replace")
     text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
     text = "".join(
@@ -6957,10 +6957,17 @@ def sanitize_verify_stream(target: Path, content: bytes) -> Tuple[str, bool]:
         text = text.replace(root_alias, ".")
     for pattern in SECRET_PATTERNS:
         text = pattern.sub("[REDACTED]", text)
+    return text
+
+
+def sanitize_verify_stream(
+    target: Path, content: bytes, limit: int = VERIFY_OUTPUT_LIMIT
+) -> Tuple[str, bool]:
+    text = sanitize_verify_text(target, content)
     encoded = text.encode("utf-8", errors="replace")
-    truncated = len(encoded) > VERIFY_OUTPUT_LIMIT
+    truncated = len(encoded) > limit
     if truncated:
-        encoded = encoded[-VERIFY_OUTPUT_LIMIT:]
+        encoded = encoded[-limit:]
         while True:
             try:
                 text = encoded.decode("utf-8")
@@ -6973,15 +6980,229 @@ def sanitize_verify_stream(target: Path, content: bytes) -> Tuple[str, bool]:
 
 
 def verify_output(
-    stdout: bytes, stderr: bytes, target: Path
+    stdout: bytes, stderr: bytes, target: Path, limit: int = VERIFY_OUTPUT_LIMIT
 ) -> Dict[str, object]:
-    stdout_tail, stdout_truncated = sanitize_verify_stream(target, stdout)
-    stderr_tail, stderr_truncated = sanitize_verify_stream(target, stderr)
+    stdout_tail, stdout_truncated = sanitize_verify_stream(target, stdout, limit)
+    stderr_tail, stderr_truncated = sanitize_verify_stream(target, stderr, limit)
     return {
         "stdout_tail": stdout_tail,
         "stderr_tail": stderr_tail,
         "stdout_truncated": stdout_truncated,
         "stderr_truncated": stderr_truncated,
+    }
+
+
+CHECK_BLOCK_KEYS = ("requires", "output_limit_bytes")
+TOOLCHAIN_KEYS = ("python", "node", "pnpm")
+VERIFY_LOCAL_DIRECTORY = Path(".vibe/local/verify")
+
+
+def project_section_entries(path: Path, section: str) -> List[Tuple[int, str, str]]:
+    if not path.is_file():
+        return []
+    entries: List[Tuple[int, str, str]] = []
+    in_section = False
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        if raw_line.strip() == section + ":":
+            in_section = True
+            continue
+        if not in_section:
+            continue
+        if raw_line and not raw_line.startswith(" "):
+            break
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = re.match(r"^([A-Za-z0-9_-]+):\s*(.*)$", stripped)
+        if not match:
+            raise VibeError(
+                f"{section} entries must use the `key: value` form in {path}"
+            )
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        entries.append((indent, match.group(1), match.group(2).strip()))
+    return entries
+
+
+def require_known_check(name: str, path: Path) -> str:
+    if name not in VERIFY_ORDER:
+        raise VibeError(
+            f"unknown check name `{name}` in {path}; expected one of "
+            + ", ".join(VERIFY_ORDER)
+        )
+    return name
+
+
+def normalized_dependencies(value: object, path: Path) -> List[str]:
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) for item in value
+    ):
+        raise VibeError(
+            f"check dependencies must be a JSON list of names in {path}"
+        )
+    return [require_known_check(str(item), path) for item in value]
+
+
+def parse_checks_config(path: Path) -> Dict[str, object]:
+    requires: Dict[str, List[str]] = {}
+    limit: Optional[int] = None
+    active = ""
+    for indent, key, raw_value in project_section_entries(path, "checks"):
+        if indent == 2:
+            if key not in CHECK_BLOCK_KEYS:
+                raise VibeError(
+                    f"checks must only declare {', '.join(CHECK_BLOCK_KEYS)} in {path}"
+                )
+            active = key
+            if key == "output_limit_bytes":
+                try:
+                    parsed = int(raw_value)
+                except ValueError:
+                    raise VibeError(
+                        f"checks.output_limit_bytes must be an integer in {path}"
+                    )
+                if parsed < VERIFY_OUTPUT_LIMIT:
+                    raise VibeError(
+                        "checks.output_limit_bytes must not be lower than "
+                        f"{VERIFY_OUTPUT_LIMIT} bytes in {path}"
+                    )
+                limit = parsed
+                continue
+            if raw_value:
+                try:
+                    inline = json.loads(raw_value)
+                except json.JSONDecodeError:
+                    raise VibeError(
+                        "checks.requires must be a JSON mapping or nested "
+                        f"entries in {path}"
+                    )
+                if not isinstance(inline, dict):
+                    raise VibeError(
+                        f"checks.requires must be a mapping of check names in {path}"
+                    )
+                for name, value in inline.items():
+                    requires[require_known_check(str(name), path)] = (
+                        normalized_dependencies(value, path)
+                    )
+            continue
+        if indent == 4 and active == "requires":
+            try:
+                parsed = json.loads(raw_value) if raw_value else []
+            except json.JSONDecodeError:
+                raise VibeError(
+                    f"check dependencies must be a JSON list in {path}"
+                )
+            requires[require_known_check(key, path)] = normalized_dependencies(
+                parsed, path
+            )
+            continue
+        raise VibeError(
+            f"checks entries must use two-space indentation in {path}"
+        )
+    return {"requires": requires, "output_limit_bytes": limit or VERIFY_OUTPUT_LIMIT}
+
+
+def parse_toolchain_config(path: Path) -> Dict[str, str]:
+    expectation: Dict[str, str] = {}
+    for indent, key, raw_value in project_section_entries(path, "toolchain"):
+        if indent != 2:
+            raise VibeError(
+                f"toolchain entries must use two-space indentation in {path}"
+            )
+        if key not in TOOLCHAIN_KEYS:
+            raise VibeError(
+                f"toolchain must only declare {', '.join(TOOLCHAIN_KEYS)} in {path}"
+            )
+        if not raw_value:
+            raise VibeError(
+                f"toolchain.{key} must name an expected version in {path}"
+            )
+        try:
+            decoded = json.loads(raw_value)
+        except json.JSONDecodeError:
+            decoded = raw_value
+        expectation[key] = str(decoded)
+    return expectation
+
+
+def derive_check_order(requires: Dict[str, List[str]], path: Path) -> List[str]:
+    for name in requires:
+        require_known_check(name, path)
+    placed: List[str] = []
+    remaining = list(VERIFY_ORDER)
+    while remaining:
+        progressed = False
+        for name in list(remaining):
+            if all(dependency in placed for dependency in requires.get(name, [])):
+                placed.append(name)
+                remaining.remove(name)
+                progressed = True
+        if not progressed:
+            raise VibeError(
+                "checks.requires contains a dependency cycle among: "
+                + ", ".join(remaining)
+            )
+    return placed
+
+
+def observe_toolchain(target: Path) -> Dict[str, Optional[str]]:
+    observed: Dict[str, Optional[str]] = {"python": platform.python_version()}
+    for tool in ("node", "pnpm"):
+        observed[tool] = None
+        try:
+            result = subprocess.run(
+                [tool, "--version"],
+                cwd=str(target),
+                check=False,
+                capture_output=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode != 0:
+            continue
+        text = result.stdout.decode("utf-8", errors="replace").strip()
+        observed[tool] = text or None
+    return observed
+
+
+def version_components(value: str) -> Tuple[int, ...]:
+    return tuple(int(number) for number in re.findall(r"\d+", value)) or (0,)
+
+
+def toolchain_expectation_met(expectation: str, actual: str) -> bool:
+    pattern = expectation.strip()
+    if pattern.startswith(">="):
+        return version_components(actual) >= version_components(pattern[2:])
+    expected = version_components(pattern)
+    return version_components(actual)[: len(expected)] == expected
+
+
+def unmet_toolchain_expectations(
+    expectations: Dict[str, str], observed: Dict[str, Optional[str]]
+) -> Dict[str, Dict[str, Optional[str]]]:
+    unmet: Dict[str, Dict[str, Optional[str]]] = {}
+    for tool, expectation in expectations.items():
+        actual = observed.get(tool)
+        if actual is None or not toolchain_expectation_met(expectation, actual):
+            unmet[tool] = {"expected": expectation, "observed": actual}
+    return unmet
+
+
+def write_verify_full_output(
+    target: Path, name: str, stdout: bytes, stderr: bytes
+) -> Dict[str, str]:
+    directory = target / VERIFY_LOCAL_DIRECTORY
+    directory.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    path = directory / f"{stamp}-{name}.log"
+    payload = sanitize_verify_text(target, stdout) + sanitize_verify_text(
+        target, stderr
+    )
+    data = payload.encode("utf-8", errors="replace")
+    path.write_bytes(data)
+    return {
+        "path": str(path.relative_to(target)),
+        "sha256": hashlib.sha256(data).hexdigest(),
     }
 
 
@@ -6991,8 +7212,19 @@ def verify(target: Path, only: Sequence[str], output_format: str) -> int:
     if not config.is_file():
         raise VibeError(f"Project configuration is missing: {config}")
     commands = parse_commands(config)
-    requested = [key for key in VERIFY_ORDER if key in set(only)] if only else []
-    selected = requested if only else list(VERIFY_ORDER)
+    checks_config = parse_checks_config(config)
+    check_requires = checks_config["requires"]
+    output_limit = int(checks_config["output_limit_bytes"])
+    effective_order = derive_check_order(check_requires, config)
+    toolchain_expectations = parse_toolchain_config(config)
+    observed_toolchain = observe_toolchain(target)
+    unmet_toolchain = unmet_toolchain_expectations(
+        toolchain_expectations, observed_toolchain
+    )
+    requested = (
+        [key for key in effective_order if key in set(only)] if only else []
+    )
+    selected = requested if only else list(effective_order)
     checks: List[Dict[str, object]] = []
     for key in selected:
         command = commands.get(key, "")
@@ -7011,7 +7243,7 @@ def verify(target: Path, only: Sequence[str], output_format: str) -> int:
                         "task_id": None,
                         "operation_id": None,
                     },
-                    "output": verify_output(b"", b"", target),
+                    "output": verify_output(b"", b"", target, output_limit),
                 }
             )
             continue
@@ -7026,7 +7258,9 @@ def verify(target: Path, only: Sequence[str], output_format: str) -> int:
                 capture_output=True,
             )
         except OSError as error:
-            captured = verify_output(b"", str(error).encode("utf-8"), target)
+            captured = verify_output(
+                b"", str(error).encode("utf-8"), target, output_limit
+            )
             checks.append(
                 {
                     "name": key,
@@ -7047,25 +7281,34 @@ def verify(target: Path, only: Sequence[str], output_format: str) -> int:
             if output_format == "text":
                 print(captured["stderr_tail"], file=sys.stderr, end="")
             continue
-        captured = verify_output(result.stdout, result.stderr, target)
-        outcome = "passed" if result.returncode == 0 else "failed"
-        checks.append(
-            {
-                "name": key,
-                "configured": True,
-                "applicability": "applicable",
-                "required": True,
-                "outcome": outcome,
-                "exit_code": result.returncode,
-                "reason_code": None,
-                "provenance": {
-                    "kind": "cli",
-                    "task_id": None,
-                    "operation_id": None,
-                },
-                "output": captured,
+        captured = verify_output(result.stdout, result.stderr, target, output_limit)
+        record: Dict[str, object] = {
+            "name": key,
+            "configured": True,
+            "applicability": "applicable",
+            "required": True,
+            "outcome": "passed" if result.returncode == 0 else "failed",
+            "exit_code": result.returncode,
+            "reason_code": None,
+            "provenance": {
+                "kind": "cli",
+                "task_id": None,
+                "operation_id": None,
+            },
+            "output": captured,
+        }
+        if result.returncode != 0 and unmet_toolchain:
+            record["outcome"] = "environment-limited"
+            record["reason_code"] = "toolchain-mismatch"
+            record["environment"] = {
+                "expectations": unmet_toolchain,
+                "observed": observed_toolchain,
             }
-        )
+        if record["outcome"] in ("failed", "environment-limited"):
+            captured["full"] = write_verify_full_output(
+                target, key, result.stdout, result.stderr
+            )
+        checks.append(record)
         if output_format == "text":
             if captured["stdout_tail"]:
                 print(captured["stdout_tail"], end="")
@@ -7074,9 +7317,15 @@ def verify(target: Path, only: Sequence[str], output_format: str) -> int:
 
     summary = {
         outcome: sum(1 for check in checks if check["outcome"] == outcome)
-        for outcome in ("passed", "failed", "unconfigured", "skipped")
+        for outcome in (
+            "passed",
+            "failed",
+            "unconfigured",
+            "skipped",
+            "environment-limited",
+        )
     }
-    if summary["skipped"]:
+    if summary["skipped"] or summary["environment-limited"]:
         status = "blocked"
         exit_code = 2
     elif summary["failed"]:
@@ -7098,6 +7347,8 @@ def verify(target: Path, only: Sequence[str], output_format: str) -> int:
                 },
                 producer="cli",
                 cli_invoked=True,
+                default_order=list(effective_order),
+                toolchain=observed_toolchain,
                 checks=checks,
                 summary=summary,
             )
@@ -7118,12 +7369,14 @@ def verify(target: Path, only: Sequence[str], output_format: str) -> int:
         ]
         print("\nVerification failed: " + ", ".join(failures), file=sys.stderr)
     else:
-        skipped = [
+        blocked_names = [
             str(check["name"])
             for check in checks
-            if check["outcome"] == "skipped"
+            if check["outcome"] in ("skipped", "environment-limited")
         ]
-        print("\nVerification blocked: " + ", ".join(skipped), file=sys.stderr)
+        print(
+            "\nVerification blocked: " + ", ".join(blocked_names), file=sys.stderr
+        )
     return exit_code
 
 
@@ -7779,7 +8032,13 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
     if not isinstance(verify_contract, dict) or verify_contract != {
         "statuses": list(AGENT_COMMAND_STATUSES["verify"]),
         "default_order": list(VERIFY_ORDER),
-        "outcomes": ["passed", "failed", "unconfigured", "skipped"],
+        "outcomes": [
+            "passed",
+            "failed",
+            "unconfigured",
+            "skipped",
+            "environment-limited",
+        ],
         "skipped_reasons": [
             "host-permission-denied",
             "host-capability-unavailable",

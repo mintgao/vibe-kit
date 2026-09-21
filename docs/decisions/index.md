@@ -18,3 +18,4 @@ Record durable architectural choices here when the tradeoff matters beyond one w
 - [0014: Readiness evidence, managed documentation boundaries, and exact v0.9 publication](0014-readiness-doc-gates-v09-publication.md)
 - [0015: The manual new-task activation path is host-neutral, and managed contract text follows the installed contract](0015-host-neutral-manual-activation.md)
 - [0016: Readiness accepts both NNNN-slug and YYYYMMDD-slug decision records, and reads a record's heading and status from its own grammar](0016-readiness-decision-naming-grammar.md)
+- [0017: Verification contract closure — declared check order, diagnostic receipts, an environment-limited verdict, and a sanctioned path for hosts whose subagent budget is smaller than the lane](0017-verification-contract-closure.md)
