@@ -139,17 +139,17 @@ The contract defines three paths:
 
 The manual new-task path is host-neutral. Any host that can start a new task in
 the same project may own the successor task and supply `manual-task-start`,
-including a host that has no kit adapter of its own, such as a new Hermes session.
+including a host without a declared adapter, such as any other agent runtime opening a new task.
 The `adapter` metadata and the activation fingerprint describe the host that
 installed or adopted this version; they never restrict which host owns the
 successor task. The receipt requirements above are unchanged, and a host that
 cannot recompute the installed identities must take the degraded stop below
 rather than supply a receipt.
 
-This repository and the bootstrap-only Plugin currently claim only the manual
-fallback. Same-task reload and automatic successor handoff remain conditional
-until a running host supplies positive live conformance receipts. Do not infer
-them from the current Codex tool surface or from any other host's tool surface.
+The kit's standing claims are declared per host in the host registry below.
+Same-task reload and automatic successor handoff remain conditional until a
+running host supplies positive live conformance receipts. Do not infer them from
+any host's current tool surface.
 
 Without a live receipt, stop the source task after upgrade/doctor with
 `overall_status=degraded`, `reason_code=manual-new-task-required`, and exactly one
@@ -160,6 +160,32 @@ action: create a new task in the same project. Say:
 Use a host-prefilled continuation when available. Otherwise include one copyable
 sentence containing the active objective. Do not require a CLI command, Skill name
 or repeated upgrade confirmation.
+
+## Host registry, payload selection and conformance labels
+
+The contract declares every supported host in `hosts`. Each entry carries the
+host's adapter protocol, the same three capability claims, a conformance label
+and the payload paths that belong to that host:
+
+| Host | Protocol | Payload paths | Conformance |
+| --- | --- | --- | --- |
+| `codex` | 7 | `.codex/agents/vibe-*.toml`, `.agents/skills/vibe-*/agents/**` | verified |
+| `hermes` | 1 | none | supported, unverified |
+
+A label reads `verified` only where that host has a complete conformance record
+for the lifecycle stages (upgrade, takeover, adaptation, default verification,
+target re-evaluation); otherwise it reads `supported-unverified`, and the
+strictest fail-closed rules stay in force for that host. Labels change only with
+recorded evidence, never by assertion.
+
+`init` and `adopt` take a host selection (`--host`, comma-separated, default
+`codex`). The installed copy carries only the selected hosts' payload files,
+records the selection in `activation.selected_hosts` and the manifest `hosts`
+field, and recomputes its activation identity over exactly that content.
+`upgrade` preserves the recorded selection; unknown hosts, incoherent selections
+and payload that does not match the recorded selection fail closed with
+actionable diagnostics. The source repository and the release payload always
+carry every declared host's files — a selection never shrinks the release.
 
 ## Goal custody and privacy
 

@@ -1,7 +1,7 @@
 {
   "name": "vibe-kit",
   "version": "0.9.0",
-  "payload_tree_sha256": "97d369a0064e7150ce0cf724a99c97f9673ff68b8bd23950cbbdba6773535f6a",
+  "payload_tree_sha256": "0886122ce3af929c4b1b6f42830478825ea1ef3cb419871001d3a9e3f2b25765",
   "description": "Install and maintain a repository-pinned Vibe Kit workflow from a bundled offline payload.",
   "author": {
     "name": "mintgao",
@@ -20,7 +20,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Vibe Kit",
-    "shortDescription": "Let Codex adopt the Vibe Kit operating protocol.",
+    "shortDescription": "Let an agent host adopt the Vibe Kit operating protocol.",
     "longDescription": "Agent-first bootstrap and resilient maintenance from a version-matched offline payload. Upgrades are recoverable transactions; publication remains an explicit host-owned workflow.",
     "developerName": "mintgao",
     "category": "Productivity",

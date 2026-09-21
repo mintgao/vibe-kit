@@ -1,6 +1,6 @@
 ---
 name: vibe-bootstrap
-description: Let Codex plan and install the bundled, version-pinned Vibe Kit into a new or existing repository without exposing internal CLI operations to the user.
+description: Let an agent host plan and install the bundled, version-pinned Vibe Kit into a new or existing repository without exposing internal CLI operations to the user.
 ---
 
 # Vibe Kit bootstrap

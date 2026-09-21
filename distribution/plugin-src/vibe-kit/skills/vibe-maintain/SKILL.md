@@ -1,6 +1,6 @@
 ---
 name: vibe-maintain
-description: Let Codex diagnose or safely upgrade a repository-pinned Vibe Kit from the Plugin's bundled offline payload using structured internal operations.
+description: Let an agent host diagnose or safely upgrade a repository-pinned Vibe Kit from the Plugin's bundled offline payload using structured internal operations.
 ---
 
 # Vibe Kit maintenance
