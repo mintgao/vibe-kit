@@ -7138,7 +7138,7 @@ def work_item(target: Path, slug_value: str, size: str, title: Optional[str]) ->
     target = target.resolve()
     slug = normalized_slug(slug_value)
     date = dt.date.today().isoformat()
-    identifier = dt.date.today().strftime("%Y%m%d") + "-" + slug
+    identifier = slug if re.fullmatch(r"\d{8}-[a-z0-9-]+", slug) else dt.date.today().strftime("%Y%m%d") + "-" + slug
     destination = target / "docs/work-items" / identifier
     if destination.exists():
         raise VibeError(f"Work item already exists: {destination}")
@@ -12204,7 +12204,7 @@ def feedback_submit(
         )
     repository = feedback_repository(target, explicit_repo)
     title, body, labels, review_hash = feedback_payload(target, report, state, repository)
-    if not confirm or confirm != review_hash:
+    if not confirm or confirm.removeprefix("sha256:") != review_hash.removeprefix("sha256:"):
         raise VibeError(
             "feedback confirmation is missing or stale; run feedback review for this repository and confirm its exact review hash"
         )
@@ -12459,16 +12459,19 @@ def readiness_findings(target: Path, brief: str) -> List[Dict[str, str]]:
         governing = fields["Governing decision"]
         adr_based = outcome in ("covered-by-accepted-decision", "decision-accepted")
         if adr_based:
-            if not re.fullmatch(r"`docs/decisions/\d{4}-[a-z0-9-]+\.md`(?:, `docs/decisions/\d{4}-[a-z0-9-]+\.md`)*", governing):
+            adr_reference = r"`docs/decisions/(?:\d{4}|\d{8})-[a-z0-9-]+\.md`"
+            if not re.fullmatch(adr_reference + r"(?:, " + adr_reference + r")*", governing):
                 fail("readiness.adr-reference", "Governing decision")
             else:
                 for reference in governing.split(", "):
                     relative = reference[1:-1]
+                    name = Path(relative).name
+                    identifier = name[:8] if name[:8].isdigit() else name[:4]
                     adr = unfenced_markdown(evidence_file(target, relative).read_text(encoding="utf-8"))
                     end = next((i for i, line in enumerate(adr) if line.startswith("## ")), len(adr))
                     headings = [line for line in adr if line.startswith("# ")]
-                    statuses = [line for line in adr[:end] if line.startswith("- Status:")]
-                    if len(headings) != 1 or not headings[0].startswith("# " + Path(relative).name[:4] + ": ") or statuses != ["- Status: Accepted"]:
+                    statuses = [re.sub(r"^- ", "", line.strip()) for line in adr[:end] if re.fullmatch(r"(?:- )?Status: .*", line.strip())]
+                    if len(headings) != 1 or not headings[0].startswith("# " + identifier + ": ") or statuses != ["Status: Accepted"]:
                         fail("readiness.adr-not-accepted", relative)
             if fields["Decision owner"] == "none":
                 fail("readiness.decision-owner", "Decision owner")
@@ -12700,7 +12703,10 @@ def build_parser() -> argparse.ArgumentParser:
     submit_parser.add_argument("report_id")
     submit_parser.add_argument("--target", default=".")
     submit_parser.add_argument("--repo")
-    submit_parser.add_argument("--confirm")
+    submit_parser.add_argument(
+        "--confirm",
+        help="the exact review hash printed by the latest feedback review or revise, in sha256:<hex> form (a bare hex digest is accepted); it goes stale after any revise and must be re-read",
+    )
     dismiss_parser = feedback_subparsers.add_parser("dismiss")
     dismiss_parser.add_argument("report_id")
     dismiss_parser.add_argument("--target", default=".")

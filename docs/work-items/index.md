@@ -28,3 +28,4 @@ Each generated folder contains a brief and verification record. Add design or im
 - [Self-hosting pilot](20260827-self-hosting-pilot/brief.md)
 - [Readiness evidence, documentation gates, and v0.9.0 release](20260908-readiness-doc-gates-release/brief.md)
 - [Host-neutral manual new-task activation and consistent release identity](20260921-host-neutral-manual-activation/brief.md)
+- [Readiness decision-naming grammar and tooling fixes](20260921-readiness-naming-grammar/brief.md)

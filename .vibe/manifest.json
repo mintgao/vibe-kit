@@ -21,20 +21,20 @@
     ".vibe/core/operating-model.md": "7b7f0a04714e2cd564340cd11145a4fbba020c804f1a4dd4179615067522b70a",
     ".vibe/core/protocol.json": "7a72b584f1c3c90aae1fd4a7e88254675c586712b411ffcd354845483a89d3d6",
     ".vibe/core/quality-gates.md": "dfcd0eed91f343e2857fd7e48f202bea7aadb14a1010ffcc65818ca094f79c1c",
-    ".vibe/core/technical-decision-readiness.md": "da3a51e83596bf846741fda217b55f5e49f948593d73dab9ecaff98e6293be90",
+    ".vibe/core/technical-decision-readiness.md": "a9a82e9cd2dc3ce63612b74a5e10fc36266c5e50ff69fc028f47e7148325f7be",
     ".vibe/core/templates/work-item-brief.md": "35ffe64b8c7b9355385e1ebcb469700bb32a861924f805f93d90c135d7847c42",
     ".vibe/core/templates/work-item-verification.md": "f6b0b9f58aeb911180ffaa366e5c976c48348df616d3adb8ada882b111a530ec",
     ".vibe/core/version": "9d8c94f1ad3ea96b1e2ac4914fda4cb93c76b4a3e0d8cc6dd8976d6c0b227d15",
     "AGENT_INSTALL.md": "eac0fdd8cb770a3eb6bcd3523616d2c10b0de9c0008ad5018ec6c34421ed0c20",
-    "agent-install.json": "2e8d944e984bfe99bf1e09abc9abec53b9c665b7777addf7030554b55a5c014e",
-    "bin/vibe": "ab8c72feb3799ddf31399fef12fd486182639b7de2aa9b77a94de9f6f9b22589"
+    "agent-install.json": "6d017c663aeadd02c3af63ead4b0e22f35993f455efe72d5890daada7c7d03ed",
+    "bin/vibe": "114e3c429f41c793fcd514cba185b87317d453183ebbfd3a543d190007bcae98"
   },
   "agents_block_hash": "05b27773496d4259063fd1eef987f3ccd5624b9fa7b3ad983f5ac339fa12bfef",
   "source": {
     "type": "local-payload",
     "ref": "0.9.0",
     "artifact_sha256": null,
-    "payload_tree_sha256": "6d6c8e275d6f47cc653d5465384c07aab83e0882656dd58b7a77acf9e43b1e76"
+    "payload_tree_sha256": "998a1798ffe76f1aa4bdb300a0494f834653184b8009bb27193032f7692de657"
   },
   "target_fingerprint": {
     "kit_version": "0.9.0",
@@ -44,7 +44,7 @@
     "adapter_name": "codex",
     "adapter_protocol": 7,
     "manifest_sha256": null,
-    "activation_set_sha256": "db8c95b7bfab0003247b5068d92daad45d98c73d4a2b186d427579910553fc30"
+    "activation_set_sha256": "18e480eaecad1f880e8a1c0fc9ec3cb8df3fc06d45f10f8123837c11897b1775"
   },
   "activation": {
     "algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
@@ -97,16 +97,16 @@
       ".vibe/core/operating-model.md": "7b7f0a04714e2cd564340cd11145a4fbba020c804f1a4dd4179615067522b70a",
       ".vibe/core/protocol.json": "7a72b584f1c3c90aae1fd4a7e88254675c586712b411ffcd354845483a89d3d6",
       ".vibe/core/quality-gates.md": "dfcd0eed91f343e2857fd7e48f202bea7aadb14a1010ffcc65818ca094f79c1c",
-      ".vibe/core/technical-decision-readiness.md": "da3a51e83596bf846741fda217b55f5e49f948593d73dab9ecaff98e6293be90",
+      ".vibe/core/technical-decision-readiness.md": "a9a82e9cd2dc3ce63612b74a5e10fc36266c5e50ff69fc028f47e7148325f7be",
       ".vibe/core/templates/work-item-brief.md": "35ffe64b8c7b9355385e1ebcb469700bb32a861924f805f93d90c135d7847c42",
       ".vibe/core/templates/work-item-verification.md": "f6b0b9f58aeb911180ffaa366e5c976c48348df616d3adb8ada882b111a530ec",
       ".vibe/core/version": "9d8c94f1ad3ea96b1e2ac4914fda4cb93c76b4a3e0d8cc6dd8976d6c0b227d15",
       "AGENTS.md#managed-block": "05b27773496d4259063fd1eef987f3ccd5624b9fa7b3ad983f5ac339fa12bfef",
       "AGENT_INSTALL.md": "eac0fdd8cb770a3eb6bcd3523616d2c10b0de9c0008ad5018ec6c34421ed0c20",
       "agent-install.json": "5866bbfd4d7cab7931d6b6c11f6e67683fd55c500ce7be2b1eef5f1d71c18a3e",
-      "bin/vibe": "ab8c72feb3799ddf31399fef12fd486182639b7de2aa9b77a94de9f6f9b22589"
+      "bin/vibe": "114e3c429f41c793fcd514cba185b87317d453183ebbfd3a543d190007bcae98"
     },
-    "activation_set_sha256": "db8c95b7bfab0003247b5068d92daad45d98c73d4a2b186d427579910553fc30",
+    "activation_set_sha256": "18e480eaecad1f880e8a1c0fc9ec3cb8df3fc06d45f10f8123837c11897b1775",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",

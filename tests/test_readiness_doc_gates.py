@@ -53,6 +53,25 @@ class ReadinessDocGateTests(unittest.TestCase):
         note.write_text('# Note\n- Status: Accepted\n')
         self.assertTrue(self.findings(self.original.replace('docs/decisions/0001-test.md', 'implemented.md')))
 
+    def test_documented_naming_forms_and_relaxed_status_line(self):
+        dated = self.root / 'docs/decisions/20260913-versioned-assembly.md'
+        text = self.original.replace('docs/decisions/0001-test.md', 'docs/decisions/20260913-versioned-assembly.md')
+        self.adr.write_text('# 0001: Test\n\n- Status: Accepted\n\n## Decision\n\nNumbered record.\n')
+        self.assertEqual(self.findings(), [], 'the documented `# 0001: ...` form must keep passing')
+        for body in ('# 20260913: Versioned assembly\n\nStatus: Accepted\n\n## Decision\n\nDate-named record.\n','# 20260913: Versioned assembly\n\n- Status: Accepted\n\n## Decision\n\nDate-named record.\n'):
+            with self.subTest(body=body):
+                dated.write_text(body)
+                self.assertEqual(self.findings(text), [], 'the documented `# 20260913: ...` form must pass with either status line')
+        for body in ('# 20260101: Other\nStatus: Accepted\n','# 20260913: Superseded\nStatus: Superseded\n','# 20260913: Two\nStatus: Accepted\n- Status: Accepted\n','# 20260913: Late\n\n## Decision\n\nStatus: Accepted\n','# 20260913: Missing\n\n## Decision\n\nBounded test.\n','# 20260913: One\n# 20260913: Two\n\nStatus: Accepted\n','# 20260913: Fenced\n\n```md\nStatus: Accepted\n```\n'):
+            with self.subTest(body=body):
+                dated.write_text(body)
+                self.assertTrue(any(item['rule'] == 'readiness.adr-not-accepted' for item in self.findings(text)))
+        dated.write_text('# 20260913: Versioned assembly\n\nStatus: Accepted\n\n## Decision\n\nDate-named record.\n')
+        self.assertEqual(self.findings(text), [])
+        for name in ('2026091-versioned-assembly','202609133-versioned-assembly'):
+            with self.subTest(name=name):
+                self.assertTrue(any(item['rule'] == 'readiness.adr-reference' for item in self.findings(text.replace('20260913-versioned-assembly', name))))
+
     def test_missing_duplicate_unknown_fenced_and_continued_fields_fail(self):
         for old,new in [('- Gate: `implementation-ready`',''),('- Gate: `implementation-ready`','- Gate: `implementation-ready`\n- Gate: blocked'),('- Size: `L`','- Size: `S`'),('- Size: `L`','- Size: `M`\n- Size: `L`'),('- Outcome: `decision-accepted`','- Outcome: unknown'),('- Open blockers: none','- Open blockers: unresolved'),('- Confirmed at:', '- Bad time:'),('## Technical decision readiness','```md\n## Technical decision readiness'),('- Decision owner:', '  continued prose\n- Decision owner:')]:
             with self.subTest(old=old,new=new):

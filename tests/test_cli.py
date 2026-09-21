@@ -509,6 +509,41 @@ class VibeCliTests(unittest.TestCase):
             self.assertIn("- Confirmed at: none", brief)
             self.assertTrue((folders[0] / "verification.md").is_file())
 
+    def test_work_item_does_not_double_prefix_a_dated_slug(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "dated-slug-project"
+            self.assertEqual(run_cli(CLI, "init", str(target)).returncode, 0)
+            dated = run_cli(
+                target / "bin/vibe",
+                "work-item",
+                "20260918-green-default-verification",
+                "--target",
+                str(target),
+                "--size",
+                "M",
+            )
+            self.assertEqual(dated.returncode, 0, dated.stderr)
+            self.assertTrue(
+                (target / "docs/work-items/20260918-green-default-verification").is_dir()
+            )
+            self.assertEqual(list((target / "docs/work-items").glob("20260918-2026*")), [])
+            before = {folder.name for folder in (target / "docs/work-items").iterdir()}
+            plain = run_cli(
+                target / "bin/vibe",
+                "work-item",
+                "green-default-verification",
+                "--target",
+                str(target),
+                "--size",
+                "M",
+            )
+            self.assertEqual(plain.returncode, 0, plain.stderr)
+            created = {
+                folder.name for folder in (target / "docs/work-items").iterdir()
+            } - before
+            self.assertEqual(len(created), 1)
+            self.assertRegex(next(iter(created)), r"^\d{8}-green-default-verification$")
+
     def test_plan_is_read_only_for_init_adopt_upgrade_and_conflict(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
@@ -2577,6 +2612,54 @@ class VibeCliTests(unittest.TestCase):
             )
             self.assertEqual(blocked_submit.returncode, 2)
             self.assertFalse(marker.exists())
+
+    def test_feedback_confirm_accepts_a_bare_hash_and_documents_the_token(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            target = base / "bare-hash-project"
+            self.assertEqual(run_cli(CLI, "init", str(target)).returncode, 0)
+            feedback_config = target / ".vibe/core/feedback.json"
+            configuration = json.loads(feedback_config.read_text())
+            configuration["github_repository"] = "mintgao/example"
+            feedback_config.write_text(json.dumps(configuration, indent=2) + "\n")
+            closed = self.feedback_close(target / "bin/vibe", target)
+            self.assertEqual(closed.returncode, 0, closed.stderr)
+            report_id = next((target / ".vibe/local/feedback").glob("fb-*")).name
+            review_hash = re.search(r"Review hash: (sha256:[a-f0-9]{64})", closed.stdout)
+            self.assertIsNotNone(review_hash)
+            documented = run_cli(target / "bin/vibe", "feedback", "submit", "--help")
+            self.assertEqual(documented.returncode, 0, documented.stderr)
+            self.assertIn("sha256:", documented.stdout)
+            self.assertIn("stale", documented.stdout)
+            marker = base / "gh-called"
+            fake_bin = base / "fake-bin"
+            fake_bin.mkdir()
+            fake_gh = fake_bin / "gh"
+            fake_gh.write_text(
+                "#!/bin/sh\n"
+                f"touch {marker}\n"
+                'if [ "$2" = "create" ]; then echo '
+                '"https://github.com/mintgao/example/issues/1"; else echo "[]"; fi\n'
+                "exit 0\n"
+            )
+            fake_gh.chmod(0o755)
+            env = {"PATH": str(fake_bin) + os.pathsep + os.environ.get("PATH", "")}
+            bare = run_cli(
+                target / "bin/vibe",
+                "feedback",
+                "submit",
+                report_id,
+                "--target",
+                str(target),
+                "--repo",
+                "mintgao/example",
+                "--confirm",
+                review_hash.group(1).removeprefix("sha256:"),
+                env=env,
+            )
+            self.assertEqual(bare.returncode, 0, bare.stdout + bare.stderr)
+            self.assertIn("https://github.com/mintgao/example/issues/1", bare.stdout)
+            self.assertTrue(marker.exists())
 
     def test_feedback_redacts_identifiers_and_blocks_secrets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
