@@ -23,12 +23,7 @@ REGENERATION = (
     "a disposable directory, then update the Plugin manifest payload digest and "
     ".vibe/manifest.json source/activation mirrors in the same change."
 )
-# The managed `AGENTS.md` block is a host-protected file in this environment: its write awaits
-# explicit user approval, recorded as a pending surface in the work-item verification record.
-MANAGED_BLOCK_APPROVAL_PENDING = (
-    "managed AGENTS.md block write awaits explicit host approval; recorded as a pending surface in "
-    "docs/work-items/20260921-host-neutral-manual-activation/verification.md"
-)
+HOST_NEUTRAL_ACTION = "create a new task in the same project"
 
 
 class ReleaseIdentityTests(unittest.TestCase):
@@ -58,17 +53,19 @@ class ReleaseIdentityTests(unittest.TestCase):
 
     def test_takeover_schema_references_agree_with_the_installed_contract(self) -> None:
         declared = json.loads(CONTRACT.read_text())["takeover"]["schema_version"]
-        for relative in ("AGENT_INSTALL.md", "AGENTS.md"):
-            with self.subTest(relative=relative):
-                text = (ROOT / relative).read_text()
-                if relative == "AGENTS.md" and "takeover schema 1" in text:
-                    self.skipTest(MANAGED_BLOCK_APPROVAL_PENDING)
-                for reference in re.findall(r"takeover schema (\d+)", text):
-                    self.assertEqual(
-                        int(reference),
-                        declared,
-                        f"{relative} names takeover schema {reference}; the installed contract declares {declared}",
-                    )
+        block = (ROOT / "AGENTS.md").read_text()
+        self.assertEqual(
+            re.findall(r"takeover schema (\d+)", block),
+            [],
+            "the managed block references the takeover schema the installed contract declares "
+            "instead of a hard-coded number (ADR 0015)",
+        )
+        for reference in re.findall(r"takeover schema (\d+)", (ROOT / "AGENT_INSTALL.md").read_text()):
+            self.assertEqual(
+                int(reference),
+                declared,
+                f"AGENT_INSTALL.md names takeover schema {reference}; the installed contract declares {declared}",
+            )
 
     def test_manual_fallback_action_is_host_neutral(self) -> None:
         surfaces = (
@@ -83,10 +80,13 @@ class ReleaseIdentityTests(unittest.TestCase):
         for relative in surfaces:
             with self.subTest(relative=relative):
                 text = (ROOT / relative).read_text()
-                if relative == "AGENTS.md" and "new Codex task" in text:
-                    self.skipTest(MANAGED_BLOCK_APPROVAL_PENDING)
                 self.assertNotIn("Codex task", text)
                 self.assertNotIn("Codex 任务", text)
+        for relative in ("AGENT_INSTALL.md", "AGENTS.md"):
+            with self.subTest(required=relative):
+                text = (ROOT / relative).read_text()
+                self.assertIn(HOST_NEUTRAL_ACTION, text)
+                self.assertIn("host-neutral", text)
 
     def test_installed_contract_states_the_host_neutral_manual_path(self) -> None:
         guide = " ".join((ROOT / "AGENT_INSTALL.md").read_text().split())
