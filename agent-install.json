@@ -56,8 +56,10 @@
         }
       },
       "conformance": {
-        "label": "supported-unverified",
-        "evidence": []
+        "label": "verified",
+        "evidence": [
+          "docs/work-items/20260921-host-adapters/conformance.md"
+        ]
       },
       "payload": []
     }
@@ -203,7 +205,7 @@
       "hermes"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "7454b02243494b9f78fe8d48314d59a50ae828ef070b80c688aeb01b3185d14f",
+    "activation_set_sha256": "34f1cd873aef5c9f5c314a4d4fe94ec4a67d4bcf1c600c539bcd11b56f8b7ca6",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",

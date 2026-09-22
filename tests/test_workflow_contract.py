@@ -294,7 +294,11 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(set(contract["hosts"]), {"codex", "hermes"})
         self.assertEqual(contract["hosts"]["hermes"]["protocol"], 1)
         self.assertEqual(
-            contract["hosts"]["hermes"]["conformance"]["label"], "supported-unverified"
+            contract["hosts"]["hermes"]["conformance"]["label"], "verified"
+        )
+        self.assertEqual(
+            contract["hosts"]["hermes"]["conformance"]["evidence"],
+            ["docs/work-items/20260921-host-adapters/conformance.md"],
         )
         self.assertEqual(contract["activation"]["selected_hosts"], ["codex", "hermes"])
         self.assertEqual(

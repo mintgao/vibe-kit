@@ -170,7 +170,7 @@ and the payload paths that belong to that host:
 | Host | Protocol | Payload paths | Conformance |
 | --- | --- | --- | --- |
 | `codex` | 7 | `.codex/agents/vibe-*.toml`, `.agents/skills/vibe-*/agents/**` | verified |
-| `hermes` | 1 | none | supported, unverified |
+| `hermes` | 1 | none | verified |
 
 A label reads `verified` only where that host has a complete conformance record
 for the lifecycle stages (upgrade, takeover, adaptation, default verification,

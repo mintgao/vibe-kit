@@ -4,7 +4,7 @@ Work item: `docs/work-items/20260921-host-adapters/`. Host labels live in the
 contract's `hosts` registry; this record is their evidence basis, and a label
 changes only when this record changes first.
 
-## Hermes — five-stage evidence complete (label raise pending)
+## Hermes — five-stage evidence complete (label: `verified`)
 
 Session: Hermes Agent on this machine; install, upgrade, adaptation and
 verification runs on 2026-09-21, the takeover and re-evaluation stages on
@@ -72,11 +72,11 @@ The exit criteria for a `verified` label — the full
 upgrade → takeover → adaptation → verification → re-evaluation sequence run
 under the Hermes host with its takeover object validated by
 `bin/vibe validate-takeover`, recorded here with command results — are met by
-this record. Raising the label itself is a registry payload change (host
-evidence list and `agent-install.json`) with release-identity consequences and
-stays a separate, owner-approved change; until it lands the label remains
-`supported-unverified` and Hermes keeps the strictest fail-closed rules
-(decision C of this work item).
+this record, and the label was raised to `verified` by the owner-approved work
+item `docs/work-items/20260922-host-label-raise/` (product-owner confirmation
+2026-09-22): the registry, the contract mirror and the guide now read `verified`
+for Hermes. Historical records — the v0.10.0 release note and the 0.10.0-era
+decisions — keep their point-in-time wording.
 
 ## Codex — basis of the current `verified` label
 

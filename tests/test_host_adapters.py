@@ -61,6 +61,9 @@ class HostAdapterTests(unittest.TestCase):
                 self.assertEqual(protocol["adapters"][host]["version"], entry["protocol"])
                 self.assertEqual(contract["hosts"][host]["capabilities"], entry["capabilities"])
                 self.assertEqual(contract["hosts"][host]["payload"], entry["payload"])
+                self.assertEqual(
+                    contract["hosts"][host]["conformance"], entry["conformance"]
+                )
         self.assertEqual(
             contract["activation"]["selected_hosts"], sorted(MODULE.HOST_REGISTRY)
         )
@@ -94,10 +97,21 @@ class HostAdapterTests(unittest.TestCase):
     def test_guide_publishes_host_registry(self):
         guide = " ".join((ROOT / "AGENT_INSTALL.md").read_text(encoding="utf-8").split())
         self.assertIn("`codex` | 7 |", guide)
-        self.assertIn("`hermes` | 1 | none | supported, unverified", guide)
+        self.assertIn("`hermes` | 1 | none | verified", guide)
         for selector in MODULE.HOST_PAYLOAD_SELECTORS["codex"]:
             self.assertIn(selector, guide)
         self.assertIn("declared per host in the host registry", guide)
+
+    def test_hermes_conformance_label_follows_its_record(self):
+        entry = MODULE.HOST_REGISTRY["hermes"]["conformance"]
+        self.assertIn(entry["label"], MODULE.HOST_CONFORMANCE_LABELS)
+        self.assertEqual(entry["label"], "verified")
+        self.assertEqual(
+            entry["evidence"],
+            ["docs/work-items/20260921-host-adapters/conformance.md"],
+        )
+        for reference in entry["evidence"]:
+            self.assertTrue((ROOT / reference).is_file(), reference)
 
     def test_guide_publishes_the_hermes_role_mapping_and_host_differences(self):
         guide = " ".join((ROOT / "AGENT_INSTALL.md").read_text(encoding="utf-8").split())

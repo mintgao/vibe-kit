@@ -133,8 +133,10 @@ HOST_REGISTRY = {
         "protocol": HERMES_ADAPTER_PROTOCOL,
         "capabilities": HOST_CAPABILITY_CLAIMS,
         "conformance": {
-            "label": "supported-unverified",
-            "evidence": [],
+            "label": "verified",
+            "evidence": [
+                "docs/work-items/20260921-host-adapters/conformance.md",
+            ],
         },
         "payload": list(HOST_PAYLOAD_SELECTORS["hermes"]),
     },

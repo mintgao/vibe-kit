@@ -14,7 +14,7 @@
 
 Vibe Kit is a project-pinned development system for coding Agents. You describe the project and the result you want. Codex handles trusted adoption, project understanding, workflow selection, technical-decision readiness, implementation, and verification.
 
-The working model travels with the repository, so a collaborator or a new machine can pick up the same versioned instructions and project context. Codex is the currently verified Agent host. Hermes is published as a first-class declared host with its own capability claims, payload selection and specialist-role mapping, recorded as supported but not yet verified; every other coding Agent needs its own adapter and conformance evidence before receiving the same compatibility claim.
+The working model travels with the repository, so a collaborator or a new machine can pick up the same versioned instructions and project context. Codex is a verified Agent host, and Hermes is published as a first-class declared host with its own capability claims, payload selection and specialist-role mapping, recorded verified on its completed five-stage conformance record; every other coding Agent needs its own adapter and conformance evidence before receiving the same compatibility claim.
 
 ## What your Agent gets
 
@@ -159,7 +159,7 @@ Security-sensitive candidates can remain local but cannot produce a public revie
 
 - `v0.10.0` is the selected Pre-release version; public completion is recorded separately. There is no stable Release, public Plugin Directory entry, automatic network updater, or publisher signature and provenance attestation.
 - SHA-256 metadata verifies asset and manifest consistency. Publisher identity still depends on the GitHub account, commit, and tag.
-- The Codex adapter is the only currently verified Agent integration; Hermes is declared first-class and recorded `supported-unverified` until its five-stage conformance record is complete, and unverified hosts keep the strictest fail-closed rules. The current repository and Plugin are manual-fallback-only for upgrade activation; live same-task reload, automatic successor handoff, real Linux, and live Plugin-host evidence remain unverified.
+- The Codex adapter and the Hermes host are both verified Agent integrations; Hermes's label follows its completed five-stage conformance record, and hosts without a complete record keep the strictest fail-closed rules. The current repository and Plugin are manual-fallback-only for upgrade activation; live same-task reload, automatic successor handoff, real Linux, and live Plugin-host evidence remain unverified.
 - Install is not a whole-directory transaction. Upgrade has a scoped recoverable transaction over managed/tool-maintained state and the narrow eligible onboarding bridge; it does not cover business files or the whole Git worktree.
 - Technical-decision readiness is a fail-closed repository workflow contract carried by prompts, role separation, and Markdown evidence. The CLI distributes and hash-checks the contract, but it does not currently parse work-item readiness or mechanically prevent file writes.
 - Adoption performs shallow stack detection. Evidence-backed onboarding performs deeper project understanding after installation.
