@@ -34,3 +34,4 @@ Each generated folder contains a brief and verification record. Add design or im
 - [Host adapters: per-host capability declarations, on-demand host payloads, a first-class Hermes entry and per-host conformance evidence](20260921-host-adapters/brief.md)
 - [Publish Vibe Kit v0.10.0](20260922-v0-10-0-publication/brief.md)
 - [Raise the Hermes host label to verified and refresh the Codex conformance record under the schema-4 contract](20260922-host-label-raise/brief.md)
+- [Publish Vibe Kit v0.10.1](20260922-v0-10-1-publication/brief.md)
