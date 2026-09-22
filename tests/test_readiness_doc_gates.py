@@ -170,7 +170,7 @@ class ReadinessDocGateTests(unittest.TestCase):
         with (target/'AGENTS.md').open('a') as stream:stream.write(owned)
         result=run_cli(target/'bin/vibe','doctor',str(target),'--format','json')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-        result=run_cli(CLI,'upgrade',str(target),'--format','json','--source-type','local-payload','--source-ref','0.10.0')
+        result=run_cli(CLI,'upgrade',str(target),'--format','json','--source-type','local-payload','--source-ref','0.10.1')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertTrue((target/'AGENTS.md').read_text().endswith(owned))
         result=run_cli(target/'bin/vibe','doctor',str(target),'--format','json')
@@ -183,7 +183,7 @@ class ReadinessDocGateTests(unittest.TestCase):
                 self.assertNotIn('\n',para)
         for filename in ['README.md','README.zh-CN.md']:
             text=(ROOT/filename).read_text()
-            for fact in ('v0.10.0','validate-readiness','inspect-managed-agents','unicode-whitespace-v1','2858','2800'):
+            for fact in ('v0.10.1','validate-readiness','inspect-managed-agents','unicode-whitespace-v1','2858','2800'):
                 self.assertIn(fact,text)
         release=(ROOT/'.agents/skills/vibe-release/SKILL.md').read_text()
         for fact in ('README.md','README.zh-CN.md','unchanged','Before final'):

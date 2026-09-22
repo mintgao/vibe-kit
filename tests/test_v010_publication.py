@@ -95,13 +95,18 @@ class V010PublicationProfileTests(unittest.TestCase):
 
     def test_historical_profiles_reject_a_v010_candidate(self):
         intent = profile_test_intent(self.m, 4)
-        for schema in (2, 3):
+        for schema in (2, 3, 5):
             self.assertTrue(
                 self.m.validate_profile_intent(intent, profile=self.m.PUBLICATION_PROFILES[schema]),
                 f"a v0.10.0 candidate must not pass the schema-{schema} profile",
             )
-        self.assertEqual(
+        self.assertNotEqual(
             self.m.validate_publication_intent(dict(intent, schema_version=5)),
+            [],
+            "a v0.10.0 candidate must not pass the schema-5 dispatch",
+        )
+        self.assertEqual(
+            self.m.validate_publication_intent(dict(intent, schema_version=6)),
             ["publication intent schema/profile is unsupported"],
         )
         self.assertTrue(
@@ -120,7 +125,7 @@ class V010PublicationProfileTests(unittest.TestCase):
     def test_publication_schemas_and_identity_are_mirrored_everywhere(self):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
-        expected = (4, 4, 3)
+        expected = (5, 5, 3)
         self.assertEqual(
             (
                 contract["publication"]["intent_schema"],
@@ -145,25 +150,25 @@ class V010PublicationProfileTests(unittest.TestCase):
             ),
             expected,
         )
-        self.assertEqual(contract["kit_version"], "0.10.0")
-        self.assertEqual((ROOT / ".vibe/core/version").read_text().strip(), "0.10.0")
-        self.assertEqual((ROOT / ".vibe/version").read_text().strip(), "0.10.0")
+        self.assertEqual(contract["kit_version"], "0.10.1")
+        self.assertEqual((ROOT / ".vibe/core/version").read_text().strip(), "0.10.1")
+        self.assertEqual((ROOT / ".vibe/version").read_text().strip(), "0.10.1")
         plugin = json.loads(
             (ROOT / "distribution/plugin-src/vibe-kit/.codex-plugin/plugin.json").read_text()
         )
-        self.assertEqual(plugin["version"], "0.10.0")
+        self.assertEqual(plugin["version"], "0.10.1")
 
-    def test_bridge_bound_and_predecessor_migration_advance_to_v010(self):
+    def test_bridge_bound_and_predecessor_migration_advance_to_the_current_target(self):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
         bridge = contract["maintenance_bridge"]
-        self.assertEqual(bridge["maximum_installed_kit_version_exclusive"], "0.10.0")
+        self.assertEqual(bridge["maximum_installed_kit_version_exclusive"], "0.10.1")
         self.assertEqual(bridge["minimum_installed_kit_version"], "0.2.0")
         self.assertEqual(bridge["supported_installed_agent_protocols"], [0, 1, 2, 3])
         self.assertEqual(bridge["target_agent_install_schema"], 4)
         self.assertEqual(bridge["target_agent_install_protocol"], 4)
         entry = self.m.PREDECESSOR_MIGRATION_REGISTRY["entries"][3]
-        self.assertEqual(entry["target"]["framework_version"], "0.10.0")
+        self.assertEqual(entry["target"]["framework_version"], "0.10.1")
         self.assertEqual(entry["predecessor"]["framework_version"], "0.5.0")
         self.assertEqual(
             self.m.PREDECESSOR_MIGRATION_REGISTRY_SHA256,
@@ -344,7 +349,7 @@ class ManagedGuideDriftTests(unittest.TestCase):
         self.version = self.m.framework_version(ROOT)
 
     def test_framework_version_is_the_release_version(self):
-        self.assertEqual(self.version, "0.10.0")
+        self.assertEqual(self.version, "0.10.1")
 
     def test_managed_guide_version_literals_agree_with_the_framework_version(self):
         sites = {

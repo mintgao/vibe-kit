@@ -43,10 +43,12 @@ Provide a project-pinned development system that lets coding Agents carry truste
 
 ## Non-goals and boundaries
 
-- Vibe Kit v0.9.0 is the latest published non-draft GitHub Pre-release, and
-  v0.10.0 is the prepared candidate; its public completion is recorded only after
-  live verification. The v0.9.0 publication, public verification and issue #6/#7
+- Vibe Kit v0.10.0 is the latest published non-draft GitHub Pre-release, and
+  v0.10.1 is the prepared candidate; its public completion is recorded only after
+  live verification. The v0.10.0 publication, public verification and issue #8/#13
   closeout evidence is recorded in
+  `docs/work-items/20260922-v0-10-0-publication/postpublication.md`, and the
+  earlier v0.9.0 evidence in
   `docs/work-items/20260908-readiness-doc-gates-release/verification.md`. Both
   homepages reflect the selected Pre-release version. This does not imply stable
   promotion, public Plugin Directory publication, or automatic network updates.
@@ -69,4 +71,4 @@ Provide a project-pinned development system that lets coding Agents carry truste
 - Verification results must distinguish executed evidence from assumptions or skipped checks.
 - Upgrade completion language must distinguish installed files, active target rules, adapted context, configured-check coverage, and original-goal routability.
 
-The published v0.9.0 release added bounded preimplementation evidence validation and authenticated AGENTS-region integration without changing project word budgets. The v0.10.0 candidate adds the widened readiness grammar, the closed verification contract, published takeover admission and the per-host registry with the schema-4 Agent-install contract and the first-class Hermes entry; the Hermes conformance label subsequently rose from `supported-unverified` to `verified` on its completed five-stage record. Both release homepages are reviewed and synchronized; independent public acceptance and exact issue closeout are recorded in the current work item.
+The published v0.9.0 release added bounded preimplementation evidence validation and authenticated AGENTS-region integration without changing project word budgets. The published v0.10.0 release added the widened readiness grammar, the closed verification contract, published takeover admission and the per-host registry with the schema-4 Agent-install contract and the first-class Hermes entry, and its closeout closed issues #8–#13. The v0.10.1 candidate publishes the Hermes label raise: the conformance label rose from `supported-unverified` to `verified` on its completed five-stage record, and the version boundary advances with publication schema 5 and no issue closeout. Both release homepages are reviewed and synchronized; independent public acceptance is recorded in the current work item.

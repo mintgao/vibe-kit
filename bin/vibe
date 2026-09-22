@@ -75,8 +75,8 @@ MAINTENANCE_BRIDGE_SCHEMA_VERSION = 2
 COMPATIBILITY_MIGRATION_REGISTRY_SCHEMA = 2
 TRANSACTION_JOURNAL_SCHEMA = 1
 TRANSACTION_COMMIT_SCHEMA = 1
-PUBLICATION_INTENT_SCHEMA = 4
-PUBLICATION_RECEIPT_SCHEMA = 4
+PUBLICATION_INTENT_SCHEMA = 5
+PUBLICATION_RECEIPT_SCHEMA = 5
 HISTORICAL_PUBLICATION_INTENT_SCHEMA = 1
 HISTORICAL_PUBLICATION_RECEIPT_SCHEMA = 1
 ISSUE_CLOSEOUT_INTENT_SCHEMA = 3
@@ -265,7 +265,7 @@ PREDECESSOR_MIGRATION_REGISTRY = {
                 "manifest_schema": 1,
             },
             "target": {
-                "framework_version": "0.10.0",
+                "framework_version": "0.10.1",
                 "source_types": list(SOURCE_TYPES),
             },
         },
@@ -280,7 +280,7 @@ PREDECESSOR_MIGRATION_REGISTRY_SHA256 = hashlib.sha256(
     ).encode("utf-8")
 ).hexdigest()
 EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256 = (
-    "cf0b7a15aed8d2bd90ca61e8d41962824159af816aa05e15a64c2ff4b3057697"
+    "7cedd9fbabd84ab1b51b029a5e679765a1e79efd2d09d5edaa42f9ccf2e47bd3"
 )
 if PREDECESSOR_MIGRATION_REGISTRY_SHA256 != (
     EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256
@@ -1356,8 +1356,8 @@ def predecessor_migration_evidence(phase: str) -> Dict[str, object]:
 
 
 def validate_target_predecessor_migration_contract(root: Path) -> None:
-    if framework_version(root) != "0.10.0":
-        raise VibeError("predecessor migration is supported only by target 0.10.0")
+    if framework_version(root) != "0.10.1":
+        raise VibeError("predecessor migration is supported only by target 0.10.1")
     contract = load_agent_install_contract(root)
     try:
         protocol = load_json_object_strict(root / ".vibe/core/protocol.json")
@@ -5611,7 +5611,7 @@ def upgrade_plan(
             )],
             "<transaction-active>", version, [], bridge,
         )
-    if version == "0.10.0":
+    if version == "0.10.1":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -6070,7 +6070,7 @@ def upgrade(
             None, "inspect-upgrade-transaction" if active_kind == "invalid" else "recover-upgrade",
             output_format,
         )
-    if version == "0.10.0":
+    if version == "0.10.1":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -8275,7 +8275,7 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
         "supported_installed_manifest_schemas": [1],
         "supported_installed_agent_protocols": [0, 1, 2, 3],
         "minimum_installed_kit_version": "0.2.0",
-        "maximum_installed_kit_version_exclusive": "0.10.0",
+        "maximum_installed_kit_version_exclusive": "0.10.1",
         "target_agent_install_schema": AGENT_INSTALL_SCHEMA,
         "target_agent_install_protocol": AGENT_INSTALL_PROTOCOL,
         "target_cli_result_schema": AGENT_RESULT_SCHEMA,
@@ -10234,6 +10234,18 @@ PUBLICATION_PROFILES = {
         "issue_policy": {"mode": "after-public-verification", "issues": [8, 9, 10, 11, 12, 13], "allowed_operations": ["create-exact-evidence-comment", "close-issue"]},
         "kinds": {"prepublication-qa": "vibe-kit-v0.10-prepublication-qa", "configured-checks": "vibe-kit-v0.10-configured-checks", "python-3.9": "vibe-kit-v0.10-python-3.9", "clean-build": "vibe-kit-v0.10-clean-build", "release-gate-evidence": "vibe-kit-v0.10-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.10-postpublication-acceptance"},
     },
+    5: {
+        "schema": 5, "version": "0.10.1", "tag": "v0.10.1", "title": "Vibe Kit v0.10.1",
+        "profile": "vibe-kit-v0.10.1-prerelease", "body_path": "docs/releases/0.10.1.md",
+        "direct": "vibe-kit-0.10.1.zip", "plugin": "vibe-kit-plugin-0.10.1.zip", "distribution": "vibe-kit-distribution-0.10.1.zip",
+        "smokes": ("public-direct-init-doctor", "public-plugin-bundled-plan-init-doctor", "public-upgrade-v0.3-to-v0.10.1", "public-upgrade-v0.5-to-v0.10.1", "public-upgrade-v0.6-to-v0.10.1", "public-upgrade-v0.7-to-v0.10.1", "public-upgrade-v0.8-to-v0.10.1", "public-upgrade-v0.9-to-v0.10.1", "public-upgrade-v0.10.0-to-v0.10.1"),
+        "states": {"AC-1": "passed", "AC-2": "passed", "AC-3": "passed", "AC-4": "passed", "AC-5": "passed", "AC-6": "not-runnable-before-publication"},
+        "requirements": {"AC-1": "none", "AC-2": "none", "AC-3": "none", "AC-4": "none", "AC-5": "none", "AC-6": "live-read-back"},
+        "post_criteria": ["AC-1", "AC-2", "AC-3", "AC-4", "AC-5", "AC-6"],
+        "authorization_fields": ("authorization_source_ref", "bound_at"),
+        "issue_policy": {"mode": "none", "issues": [], "allowed_operations": []},
+        "kinds": {"prepublication-qa": "vibe-kit-v0.10.1-prepublication-qa", "configured-checks": "vibe-kit-v0.10.1-configured-checks", "python-3.9": "vibe-kit-v0.10.1-python-3.9", "clean-build": "vibe-kit-v0.10.1-clean-build", "release-gate-evidence": "vibe-kit-v0.10.1-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.10.1-postpublication-acceptance"},
+    },
 }
 
 REMOTE_WRITE_STATES = ("none", "confirmed-partial", "confirmed-complete", "uncertain")
@@ -11084,7 +11096,7 @@ def validate_profile_authorization(value: object, intent: Dict[str, object], *, 
     errors: List[str] = []
     if any((not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
         errors.append('publication authorization identity is invalid')
-    if profile['schema'] in (3, 4) and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
+    if profile['schema'] in (3, 4, 5) and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
         errors.append('authorization source reference or binding time is invalid')
     expected = {'repository': 'mintgao/vibe-kit', 'version': profile['version'], 'release_kind': 'prerelease', 'allowed_operations': list(V080_PUBLICATION_ALLOWED_OPERATIONS), 'publication_intent_sha256': canonical_json_sha256(intent)}
     if any((value.get(key) != expected[key] for key in expected)):
@@ -11218,7 +11230,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
                 errors.append('schema-2 publication asset identity is invalid')
         if intent.get('asset_set_sha256') != canonical_json_sha256(assets):
             errors.append('schema-2 publication asset-set digest is invalid')
-    if profile['schema'] in (3, 4) and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
+    if profile['schema'] in (3, 4, 5) and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
         errors.append('publication requires each exact asset name once')
     gates = intent.get('local_gates')
     if not exact_keys(gates, ('release_gate_evidence_sha256',)) or not valid_sha256(gates.get('release_gate_evidence_sha256')):
@@ -11238,7 +11250,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
         if not exact_keys(operation, fields):
             errors.append('schema-2 publication operation fields are invalid')
             continue
-        if profile['schema'] in (3, 4):
+        if profile['schema'] in (3, 4, 5):
             exact_keys_by_operation = (
                 "mintgao/vibe-kit:main", f"mintgao/vibe-kit:tag:{profile['tag']}",
                 f"mintgao/vibe-kit:release:{profile['tag']}", f"mintgao/vibe-kit:release:{profile['tag']}:assets",
@@ -11288,7 +11300,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
 def validate_publication_intent(value: object) -> List[str]:
     if isinstance(value, dict) and value.get("schema_version") == 1:
         return validate_publication_intent_v1(value)
-    if isinstance(value, dict) and value.get("schema_version") in (2, 3, 4):
+    if isinstance(value, dict) and value.get("schema_version") in (2, 3, 4, 5):
         return validate_profile_intent(value, profile=PUBLICATION_PROFILES[value["schema_version"]])
     return ["publication intent schema/profile is unsupported"]
 
@@ -11340,7 +11352,7 @@ def publication_plan(
             candidate_status = validate_release(release_dir, "json")
         if candidate_status != 0:
             errors.append("publication candidate does not pass validate-release")
-        if schema in (2, 3, 4):
+        if schema in (2, 3, 4, 5):
             if comparison_candidate is None:
                 errors.append("schema-2 publication planning requires --comparison-candidate")
             if release_gate_evidence is None:
@@ -11838,7 +11850,7 @@ def validate_publication_receipt_shape(
 ) -> List[str]:
     if isinstance(receipt, dict) and receipt.get("schema_version") == 1:
         return validate_publication_receipt_shape_v1(receipt)
-    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3, 4) and isinstance(intent, dict):
+    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3, 4, 5) and isinstance(intent, dict):
         return validate_profile_receipt(receipt, intent, profile=PUBLICATION_PROFILES[receipt["schema_version"]])
     return ["publication receipt schema/profile is unsupported"]
 
@@ -12070,7 +12082,7 @@ def validate_publication(
         if authorization_path is not None:
             raise VibeError("historical schema-1 validation does not accept --authorization")
         return validate_publication_v1(intent_path, receipt_path, release_dir, output_format)
-    if schema in (2, 3, 4):
+    if schema in (2, 3, 4, 5):
         return validate_publication_profile(
             intent_path, receipt_path, release_dir, authorization_path, output_format, profile=PUBLICATION_PROFILES[schema]
         )

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.1 — 2026-09-22
+
+- Raised the Hermes host label to `verified` on its completed five-stage
+  conformance record, so both declared hosts' labels rest on current, citable
+  evidence.
+- Added publication schema 5, binding v0.10.1 to six operations, five assets and
+  no issue closeout; historical v0.7/v0.8/v0.9/v0.10.0 profiles keep their
+  boundaries and the schema-3 closeout stays bound to the v0.10.0 parent.
+- Advanced the maintenance-bridge bound to `0.10.1` and moved the
+  `v0.5.0-unmanaged-agent-contracts-v1` migration target with it, so a healthy
+  recorded `0.10.0` install and the bridgeable older installs upgrade into the
+  candidate.
+- Kit 0.10.1 uses core/Codex protocol 7 and Hermes adapter protocol 1, and
+  requires Python 3.9 or later. No other product change ships.
+
 ## 0.10.0 — 2026-09-22
 
 - Widened the readiness decision grammar so a repository can cite its own

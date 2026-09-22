@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
   "protocol_version": 4,
-  "kit_version": "0.10.0",
+  "kit_version": "0.10.1",
   "adapter": {
     "name": "codex",
     "protocol": 7
@@ -76,13 +76,13 @@
       3
     ],
     "minimum_installed_kit_version": "0.2.0",
-    "maximum_installed_kit_version_exclusive": "0.10.0",
+    "maximum_installed_kit_version_exclusive": "0.10.1",
     "target_agent_install_schema": 4,
     "target_agent_install_protocol": 4,
     "target_cli_result_schema": 2,
     "predecessor_migrations": {
       "schema_version": 2,
-      "registry_sha256": "cf0b7a15aed8d2bd90ca61e8d41962824159af816aa05e15a64c2ff4b3057697",
+      "registry_sha256": "7cedd9fbabd84ab1b51b029a5e679765a1e79efd2d09d5edaa42f9ccf2e47bd3",
       "authority": "target-cli-compiled",
       "modes": [
         "create-pending-onboarding-if-absent",
@@ -205,7 +205,7 @@
       "hermes"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "34f1cd873aef5c9f5c314a4d4fe94ec4a67d4bcf1c600c539bcd11b56f8b7ca6",
+    "activation_set_sha256": "d418a177c0f9c1cf3f9d84256a6549986187050408859685e62a8e7ea68afd64",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",
@@ -1135,8 +1135,8 @@
     "ordinary_upgrade_auto_recovers": false
   },
   "publication": {
-    "intent_schema": 4,
-    "receipt_schema": 4,
+    "intent_schema": 5,
+    "receipt_schema": 5,
     "issue_closeout_intent_schema": 3,
     "commands": [
       "publication-plan",

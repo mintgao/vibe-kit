@@ -7,21 +7,21 @@
 
 ## Technical decision readiness
 
-- Outcome: `decision-required`
-- Trigger evidence: an L-sized public release moves the external version boundary, the compatibility surface that existing installs upgrade through, and the version-specific publication contract that fixes the tag, Release, asset set and operation allowlist; the repository records such a choice once per release, and the current Accepted decisions fix only v0.10.0
-- Decision owner: none
-- Governing decision: none
+- Outcome: `decision-accepted`
+- Trigger evidence: an L-sized public release moves the external version boundary, the compatibility surface that existing installs upgrade through, and the version-specific publication contract that fixes the tag, Release, asset set and operation allowlist; the repository records such a choice once per release, and the prior Accepted decisions fix only v0.10.0
+- Decision owner: read-only Tech Lead author (Hermes subagent, dispatched 2026-09-22), authoring `docs/decisions/0021-v0-10-1-publication.md`; its review is a distinct sequential-perspective Tech Lead pass recorded below
+- Governing decision: `docs/decisions/0021-v0-10-1-publication.md`
 - No-new-decision rationale: none
-- Review mode: `not-required`
-- Review result: `not-required`
-- Review evidence: none
+- Review mode: `sequential-perspective`
+- Review result: `approved`
+- Review evidence: `docs/work-items/20260922-v0-10-1-publication/technical-review.md#Review pass — approved`
 - Material product decisions: resolved by the product owner on 2026-09-22: (a) the host-label raise ships as the patch release `0.10.1` rather than being folded into a later iteration; (b) the release contains no product change beyond the label raise and the version identity; (c) no public GitHub operation happens in this work item until one later authorization bound to the exact frozen publication intent digest
-- Open blockers: the governing decision `docs/decisions/0021-v0-10-1-publication.md` is not authored or Accepted yet
-- Gate: `blocked`
+- Open blockers: none
+- Gate: `implementation-ready`
 - Gate owner: Workflow orchestrator, Hermes session 2026-09-22
-- Confirmed at: none
-- Confirmation basis: none
-- Readiness history: `2026-09-22 — the trigger scan found the version/compatibility and publication-contract triggers; the record starts decision-required + blocked with no application or shared implementation code edited`
+- Confirmed at: 2026-09-22T22:36:00+08:00
+- Confirmation basis: the governing decision `docs/decisions/0021-v0-10-1-publication.md` exists and reads `Status: Accepted` with exactly one H1; its recorded scope matches this brief (version identity `0.10.1`, the advanced bridge bound and migration target, the closed schema-5 `vibe-kit-v0.10.1-prerelease` profile with nine smokes and issue policy `none`, no closeout, the schema-5 helper parity at seven sites); the sequential-perspective review pass returned `approved` with one editorial correction applied and three non-blocking implementation notes (`docs/work-items/20260922-v0-10-1-publication/technical-review.md#Review pass — approved`; capability limitation: analysis-shaped review packets exceed this host's 600 s subagent budget, so no identity-isolated independent reviewer was available); the material product decisions are resolved; `Open blockers: none`; every affected file and test is enumerated in this brief's scope and risks.
+- Readiness history: `2026-09-22 — the trigger scan found the version/compatibility and publication-contract triggers; the record started decision-required + blocked with no application or shared implementation code edited. 2026-09-22 — the Tech Lead author wrote ADR 0021 (Accepted, 175 lines) and the orchestrator recorded the distinct sequential-perspective review pass as approved after re-checking ten claims against the tree and correcting one editorial count; the gate owner then confirmed implementation-ready after checking the decision, the review, the resolved material product decisions and the empty blocker list.`
 
 ## Goal
 
