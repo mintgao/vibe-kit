@@ -7,7 +7,7 @@
   "takeover_contract_registry_sha256": "6697a332b7f7200c1fdf04828b97878e6c1c99e39910e283c5ade87f6219821f",
   "predecessor_migrations": {
     "schema_version": 2,
-    "registry_sha256": "42b28f7e13a86b39b2a88136613cdcbeed62b3302ae0a7ba3238612114c11314",
+    "registry_sha256": "cf0b7a15aed8d2bd90ca61e8d41962824159af816aa05e15a64c2ff4b3057697",
     "authority": "target-cli-compiled",
     "modes": [
       "create-pending-onboarding-if-absent",
@@ -44,7 +44,7 @@
   "release_manifest_schema": 2,
   "transaction_journal_schema": 1,
   "transaction_commit_schema": 1,
-  "publication_intent_schema": 3,
-  "publication_receipt_schema": 3,
-  "issue_closeout_intent_schema": 2
+  "publication_intent_schema": 4,
+  "publication_receipt_schema": 4,
+  "issue_closeout_intent_schema": 3
 }

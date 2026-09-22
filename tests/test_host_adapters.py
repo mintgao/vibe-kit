@@ -43,7 +43,7 @@ class HostAdapterTests(unittest.TestCase):
         target = Path(directory) / "project"
         arguments = [
             "init", str(target), "--format", "json",
-            "--source-type", "local-payload", "--source-ref", "0.9.0",
+            "--source-type", "local-payload", "--source-ref", "0.10.0",
         ]
         if hosts is not None:
             arguments += ["--host", hosts]
@@ -138,7 +138,7 @@ class HostAdapterTests(unittest.TestCase):
             self.assertEqual(doctor.returncode, 0, doctor.stdout)
             upgraded = self.run_cli(
                 "upgrade", str(hermes), "--format", "json",
-                "--source-type", "local-payload", "--source-ref", "0.9.0",
+                "--source-type", "local-payload", "--source-ref", "0.10.0",
             )
             self.assertEqual(upgraded.returncode, 0, upgraded.stdout + upgraded.stderr)
             self.assertFalse((hermes / ".codex").exists())
@@ -157,7 +157,7 @@ class HostAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             result = self.run_cli(
                 "init", str(Path(directory) / "bogus"), "--format", "json",
-                "--source-type", "local-payload", "--source-ref", "0.9.0",
+                "--source-type", "local-payload", "--source-ref", "0.10.0",
                 "--host", "bogus",
             )
             self.assertNotEqual(result.returncode, 0)

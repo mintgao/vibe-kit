@@ -288,7 +288,7 @@ class WorkflowContractTests(unittest.TestCase):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         self.assertEqual(contract["schema_version"], 4)
         self.assertEqual(contract["protocol_version"], 4)
-        self.assertEqual(contract["kit_version"], "0.9.0")
+        self.assertEqual(contract["kit_version"], "0.10.0")
         self.assertEqual(contract["adapter"]["protocol"], 7)
         self.assertEqual(contract["adapter"]["name"], "codex")
         self.assertEqual(set(contract["hosts"]), {"codex", "hermes"})
@@ -303,7 +303,7 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual(
             contract["maintenance_bridge"]["maximum_installed_kit_version_exclusive"],
-            "0.9.0",
+            "0.10.0",
         )
         self.assertEqual(
             contract["lifecycle"]["stages"],

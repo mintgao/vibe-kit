@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.10.0 — 2026-09-22
+
+- Widened the readiness decision grammar so a repository can cite its own
+  date-named Accepted decisions, and fixed the dated-slug and feedback-token
+  tooling defects.
+- Closed the verification contract: a project declares check order through
+  `checks.requires`, a failing check keeps a full recoverable output artifact
+  beside the bounded receipt tail, an unmet declared toolchain records an
+  `environment-limited` verdict with the observed toolchain, and the operating
+  model sanctions a constrained-QA path for hosts whose subagent budget is
+  smaller than the lane.
+- Published the takeover object contract, added byte-stable `--receipt`
+  artifacts, defined and validated the minimal manual-transfer payload, and
+  admitted a healthy existing installation through an
+  `existing-install-admission` receipt that claims no new transaction.
+- Added the per-host registry: `init`, `adopt` and `upgrade` take a `--host`
+  selection, an installed copy records its selection in the manifest and the
+  activation identity, Hermes is published first-class with a specialist-role
+  mapping recorded `supported-unverified`, and the Agent-install contract
+  advanced to schema/protocol 4.
+- Added publication schema 4, binding v0.10.0 to six operations and five assets,
+  with a separate closeout schema 3 that permits only #8–#13 after public
+  verification; historical v0.7/v0.8/v0.9 profiles keep their boundaries.
+- Kit 0.10.0 uses core/Codex protocol 7 and Hermes adapter protocol 1, and
+  requires Python 3.9 or later.
+
 ## 0.9.0 — 2026-09-07
 
 - Added read-only `validate-readiness`, which checks newly adopted M/L briefs and

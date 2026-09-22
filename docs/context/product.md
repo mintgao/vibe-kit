@@ -43,10 +43,12 @@ Provide a project-pinned development system that lets coding Agents carry truste
 
 ## Non-goals and boundaries
 
-- Vibe Kit v0.9.0 is the latest published non-draft GitHub Pre-release.
-  Publication, public verification and issue #6/#7 closeout evidence is recorded
-  in `docs/work-items/20260908-readiness-doc-gates-release/verification.md`.
-  Both homepages reflect the published version. This does not imply stable
+- Vibe Kit v0.9.0 is the latest published non-draft GitHub Pre-release, and
+  v0.10.0 is the prepared candidate; its public completion is recorded only after
+  live verification. The v0.9.0 publication, public verification and issue #6/#7
+  closeout evidence is recorded in
+  `docs/work-items/20260908-readiness-doc-gates-release/verification.md`. Both
+  homepages reflect the selected Pre-release version. This does not imply stable
   promotion, public Plugin Directory publication, or automatic network updates.
 - Current repository/Plugin activation is manual-fallback-only unless a running host supplies positive conformance receipts. Static prompts, controlled fixtures and tool presence do not establish live same-task reload or automatic successor handoff.
 - It does not collect telemetry or silently submit feedback. The central feedback repository is configured, but every outbound payload still requires adjacent, unambiguous approval bound to its report, repository and current hash.
@@ -67,4 +69,4 @@ Provide a project-pinned development system that lets coding Agents carry truste
 - Verification results must distinguish executed evidence from assumptions or skipped checks.
 - Upgrade completion language must distinguish installed files, active target rules, adapted context, configured-check coverage, and original-goal routability.
 
-The published v0.9.0 release adds bounded preimplementation evidence validation and authenticated AGENTS-region integration without changing project word budgets. Both release homepages are reviewed and synchronized; independent public acceptance and exact issue closeout are recorded in the current work item.
+The published v0.9.0 release added bounded preimplementation evidence validation and authenticated AGENTS-region integration without changing project word budgets. The v0.10.0 candidate adds the widened readiness grammar, the closed verification contract, published takeover admission and the per-host registry with the schema-4 Agent-install contract and the first-class Hermes entry recorded `supported-unverified`. Both release homepages are reviewed and synchronized; independent public acceptance and exact issue closeout are recorded in the current work item.

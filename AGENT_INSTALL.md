@@ -1,7 +1,7 @@
 # Agent installation and takeover contract
 
 This document is the Agent-host-facing adoption and maintenance entry point for
-Vibe Kit 0.9.0. The machine-readable source of truth is `agent-install.json`. Keep
+Vibe Kit 0.10.0. The machine-readable source of truth is `agent-install.json`. Keep
 CLI commands, JSON receipts, hashes and archive details internal during a healthy
 flow; report them only when they establish evidence or explain a blocker.
 
@@ -155,7 +155,7 @@ Without a live receipt, stop the source task after upgrade/doctor with
 `overall_status=degraded`, `reason_code=manual-new-task-required`, and exactly one
 action: create a new task in the same project. Say:
 
-> Vibe Kit 文件已升级到 0.9.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个任务（Codex、Hermes 或任何能新建任务的宿主均可）。
+> Vibe Kit 文件已升级到 0.10.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个任务（Codex、Hermes 或任何能新建任务的宿主均可）。
 
 Use a host-prefilled continuation when available. Otherwise include one copyable
 sentence containing the active objective. Do not require a CLI command, Skill name
@@ -285,7 +285,7 @@ installation state.
 ## Publication boundary
 
 The repository release Skill preserves the exact v0.7.0 schema-1 publication and
-closeout path and presents the closed v0.9.0 schema-3 Pre-release and separate #6/#7 closeout plan.
+closeout path and presents the closed v0.10.0 schema-4 Pre-release and separate #8–#13 closeout plan.
 Offline `publication-plan` and `validate-publication` build and
 check canonical intents and receipts; they never gain GitHub credentials or
 network authority. The Agent/host performs compare-and-swap main advancement,

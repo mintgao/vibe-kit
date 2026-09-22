@@ -75,11 +75,11 @@ MAINTENANCE_BRIDGE_SCHEMA_VERSION = 2
 COMPATIBILITY_MIGRATION_REGISTRY_SCHEMA = 2
 TRANSACTION_JOURNAL_SCHEMA = 1
 TRANSACTION_COMMIT_SCHEMA = 1
-PUBLICATION_INTENT_SCHEMA = 3
-PUBLICATION_RECEIPT_SCHEMA = 3
+PUBLICATION_INTENT_SCHEMA = 4
+PUBLICATION_RECEIPT_SCHEMA = 4
 HISTORICAL_PUBLICATION_INTENT_SCHEMA = 1
 HISTORICAL_PUBLICATION_RECEIPT_SCHEMA = 1
-ISSUE_CLOSEOUT_INTENT_SCHEMA = 2
+ISSUE_CLOSEOUT_INTENT_SCHEMA = 3
 TRANSACTION_ACTIVE_PATH = Path(".vibe/local/upgrade-transactions/active")
 TRANSACTION_ROOT_PATH = TRANSACTION_ACTIVE_PATH.parent
 LEAF_ATOMICITY_PLAN_PATH = ".vibe/local/upgrade-leaf-atomicity"
@@ -263,7 +263,7 @@ PREDECESSOR_MIGRATION_REGISTRY = {
                 "manifest_schema": 1,
             },
             "target": {
-                "framework_version": "0.9.0",
+                "framework_version": "0.10.0",
                 "source_types": list(SOURCE_TYPES),
             },
         },
@@ -278,7 +278,7 @@ PREDECESSOR_MIGRATION_REGISTRY_SHA256 = hashlib.sha256(
     ).encode("utf-8")
 ).hexdigest()
 EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256 = (
-    "42b28f7e13a86b39b2a88136613cdcbeed62b3302ae0a7ba3238612114c11314"
+    "cf0b7a15aed8d2bd90ca61e8d41962824159af816aa05e15a64c2ff4b3057697"
 )
 if PREDECESSOR_MIGRATION_REGISTRY_SHA256 != (
     EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256
@@ -1354,8 +1354,8 @@ def predecessor_migration_evidence(phase: str) -> Dict[str, object]:
 
 
 def validate_target_predecessor_migration_contract(root: Path) -> None:
-    if framework_version(root) != "0.9.0":
-        raise VibeError("predecessor migration is supported only by target 0.9.0")
+    if framework_version(root) != "0.10.0":
+        raise VibeError("predecessor migration is supported only by target 0.10.0")
     contract = load_agent_install_contract(root)
     try:
         protocol = load_json_object_strict(root / ".vibe/core/protocol.json")
@@ -5609,7 +5609,7 @@ def upgrade_plan(
             )],
             "<transaction-active>", version, [], bridge,
         )
-    if version == "0.9.0":
+    if version == "0.10.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -6068,7 +6068,7 @@ def upgrade(
             None, "inspect-upgrade-transaction" if active_kind == "invalid" else "recover-upgrade",
             output_format,
         )
-    if version == "0.9.0":
+    if version == "0.10.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -8273,7 +8273,7 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
         "supported_installed_manifest_schemas": [1],
         "supported_installed_agent_protocols": [0, 1, 2, 3],
         "minimum_installed_kit_version": "0.2.0",
-        "maximum_installed_kit_version_exclusive": "0.9.0",
+        "maximum_installed_kit_version_exclusive": "0.10.0",
         "target_agent_install_schema": AGENT_INSTALL_SCHEMA,
         "target_agent_install_protocol": AGENT_INSTALL_PROTOCOL,
         "target_cli_result_schema": AGENT_RESULT_SCHEMA,
@@ -10220,6 +10220,18 @@ PUBLICATION_PROFILES = {
         "issue_policy": {"mode": "after-public-verification", "issues": [6, 7], "allowed_operations": ["create-exact-evidence-comment", "close-issue"]},
         "kinds": {"prepublication-qa": "vibe-kit-v0.9-prepublication-qa", "configured-checks": "vibe-kit-v0.9-configured-checks", "python-3.9": "vibe-kit-v0.9-python-3.9", "clean-build": "vibe-kit-v0.9-clean-build", "release-gate-evidence": "vibe-kit-v0.9-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.9-postpublication-acceptance"},
     },
+    4: {
+        "schema": 4, "version": "0.10.0", "tag": "v0.10.0", "title": "Vibe Kit v0.10.0",
+        "profile": "vibe-kit-v0.10.0-prerelease", "body_path": "docs/releases/0.10.0.md",
+        "direct": "vibe-kit-0.10.0.zip", "plugin": "vibe-kit-plugin-0.10.0.zip", "distribution": "vibe-kit-distribution-0.10.0.zip",
+        "smokes": ("public-direct-init-doctor", "public-plugin-bundled-plan-init-doctor", "public-upgrade-v0.3-to-v0.10", "public-upgrade-v0.5-to-v0.10", "public-upgrade-v0.6-to-v0.10", "public-upgrade-v0.7-to-v0.10", "public-upgrade-v0.8-to-v0.10", "public-upgrade-v0.9-to-v0.10"),
+        "states": {"AC-1": "passed", "AC-2": "passed", "AC-3": "passed", "AC-4": "passed", "AC-5": "passed", "AC-6": "passed", "AC-7": "not-runnable-before-publication", "AC-CLOSE.1": "not-runnable-before-publication"},
+        "requirements": {"AC-1": "none", "AC-2": "none", "AC-3": "none", "AC-4": "none", "AC-5": "none", "AC-6": "none", "AC-7": "live-read-back", "AC-CLOSE.1": "issue-closeout"},
+        "post_criteria": ["AC-1", "AC-2", "AC-3", "AC-4", "AC-5", "AC-6", "AC-7"],
+        "authorization_fields": ("authorization_source_ref", "bound_at"),
+        "issue_policy": {"mode": "after-public-verification", "issues": [8, 9, 10, 11, 12, 13], "allowed_operations": ["create-exact-evidence-comment", "close-issue"]},
+        "kinds": {"prepublication-qa": "vibe-kit-v0.10-prepublication-qa", "configured-checks": "vibe-kit-v0.10-configured-checks", "python-3.9": "vibe-kit-v0.10-python-3.9", "clean-build": "vibe-kit-v0.10-clean-build", "release-gate-evidence": "vibe-kit-v0.10-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.10-postpublication-acceptance"},
+    },
 }
 
 REMOTE_WRITE_STATES = ("none", "confirmed-partial", "confirmed-complete", "uncertain")
@@ -10486,7 +10498,9 @@ def build_profile_closeout_intent(request: Dict[str, object], *, version: str, s
         raise VibeError("issue closeout repository identity is invalid")
     inputs = request.get("issues")
     if not isinstance(inputs, list) or [item.get("issue_number") for item in inputs if isinstance(item, dict)] != issue_numbers:
-        raise VibeError("issue closeout requires exactly issues 1 through 5")
+        raise VibeError(
+            "issue closeout requires exactly the ordered issue set this profile declares"
+        )
     identifier = profile_closeout_id(str(request["parent_publication_intent_sha256"]), version=version, schema=schema, issues=issue_numbers)
     issues = []
     bodies: Dict[str, str] = {}
@@ -10534,7 +10548,9 @@ def build_profile_closeout_intent(request: Dict[str, object], *, version: str, s
     if not isinstance(snapshot_issues, list) or [
         item.get("issue_number") for item in snapshot_issues if isinstance(item, dict)
     ] != issue_numbers:
-        raise VibeError("issue closeout snapshot requires exactly issues 1 through 5")
+        raise VibeError(
+            "issue closeout snapshot requires exactly the ordered issue set this profile declares"
+        )
     for snapshot_item in snapshot_issues:
         if not exact_keys(
             snapshot_item,
@@ -10597,7 +10613,9 @@ def build_profile_closeout_intent(request: Dict[str, object], *, version: str, s
                 "max_write_attempts": 2,
             })
     if request.get("operations") != expected_operations:
-        raise VibeError("issue closeout operations are not the exact ordered ten-operation graph")
+        raise VibeError(
+            f"issue closeout operations are not the exact ordered {2 * len(issue_numbers)}-operation graph"
+        )
     expected_scope = {
         "repository": "mintgao/vibe-kit",
         "issues": issue_numbers,
@@ -10629,12 +10647,12 @@ def validate_profile_closeout_authorization(
         "allowed_operations", "closeout_intent_sha256",
         "destructive_operations_allowed",
     )
-    if schema == 2:
+    if schema in (2, 3):
         fields += ("authorization_source_ref", "bound_at")
     if not exact_keys(value, fields) or not isinstance(value, dict):
         return ["closeout authorization fields are unknown or incomplete"]
     errors: List[str] = []
-    if schema == 2 and (not isinstance(value.get("authorization_source_ref"), str) or not value.get("authorization_source_ref") or contains_secret(value["authorization_source_ref"]) or not is_iso8601(value.get("bound_at"))):
+    if schema in (2, 3) and (not isinstance(value.get("authorization_source_ref"), str) or not value.get("authorization_source_ref") or contains_secret(value["authorization_source_ref"]) or not is_iso8601(value.get("bound_at"))):
         errors.append("closeout authorization source reference or binding time is invalid")
     if (
         not isinstance(value.get("closeout_authorization_id"), str)
@@ -10716,6 +10734,58 @@ def validate_v090_closeout_receipt(value: object, intent: Dict[str, object], aut
         if value.get("overall_state") == "confirmed-complete" and (not valid_positive_int(comment_id) or item.get("observed_post_state") != "closed" or item.get("read_back") is not True or item.get("error") is not None or item.get("comment_write_state") not in ("created", "read-matched", "confirmed-after-uncertain") or item.get("close_write_state") not in ("created", "read-matched", "confirmed-after-uncertain")):
             errors.append("complete closeout requires exact comments and closed issue read-back")
     return errors
+
+V100_CLOSEOUT_ISSUES = [8, 9, 10, 11, 12, 13]
+
+
+def validate_v100_closeout_parent(parent: Dict[str, object], publication: Dict[str, object], authorization: Dict[str, object], acceptance: Dict[str, object], validation: Dict[str, object]) -> List[str]:
+    profile = PUBLICATION_PROFILES[4]
+    errors = validate_profile_intent(parent, profile=profile)
+    errors.extend(validate_profile_receipt(publication, parent, profile=profile))
+    errors.extend(validate_profile_authorization(authorization, parent, profile=profile))
+    errors.extend(validate_profile_postpublication_acceptance(acceptance, parent, authorization, str(acceptance.get("source_tree_oid", "")), profile=profile))
+    if (publication.get("remote_write_state") != "confirmed-complete" or publication.get("verification_state") != "passed" or publication.get("error") is not None or acceptance.get("status") != "passed" or not valid_oid(acceptance.get("source_tree_oid"))):
+        errors.append("closeout requires completed public verification and passing acceptance")
+    if (validation.get("command") != "validate-publication" or validation.get("status") != "valid" or validation.get("profile") != profile["profile"] or validation.get("intent_sha256") != canonical_json_sha256(parent) or validation.get("authorization_id") != authorization.get("authorization_id") or validation.get("host_operation_id") != authorization.get("host_operation_id") or acceptance.get("validate_publication_result_sha256") != canonical_json_sha256(validation)):
+        errors.append("closeout validation receipt does not bind the accepted publication")
+    if (publication.get("authorization_id") != authorization.get("authorization_id") or publication.get("host_operation_id") != authorization.get("host_operation_id")):
+        errors.append("closeout parent authorization mismatch")
+    return errors
+
+
+def build_v100_closeout_intent(request: Dict[str, object], parent: Dict[str, object], publication: Dict[str, object], authorization: Dict[str, object], acceptance: Dict[str, object], validation: Dict[str, object]) -> Tuple[Dict[str, object], Dict[str, str]]:
+    errors = validate_v100_closeout_parent(parent, publication, authorization, acceptance, validation)
+    if request.get("publication_receipt_sha256") != canonical_json_sha256(publication) or request.get("verification_receipt_sha256") != canonical_json_sha256(acceptance):
+        errors.append("closeout parent receipt digest mismatch")
+    if errors:
+        raise VibeError("; ".join(errors))
+    return build_profile_closeout_intent(request, version="0.10.0", schema=3, issue_numbers=V100_CLOSEOUT_ISSUES, parent_digest=canonical_json_sha256(parent))
+
+
+def validate_v100_closeout_receipt(value: object, intent: Dict[str, object], authorization: Dict[str, object]) -> List[str]:
+    errors = validate_profile_closeout_authorization(authorization, intent, schema=3)
+    fields = ("schema_version", "kind", "closeout_id", "closeout_intent_sha256", "closeout_authorization_id", "overall_state", "items")
+    if not exact_keys(value, fields):
+        return errors + ["closeout receipt fields are unknown or incomplete"]
+    if (value.get("schema_version") != 3 or value.get("kind") != "vibe-kit-issue-closeout-receipt" or value.get("closeout_id") != intent.get("closeout_id") or value.get("closeout_intent_sha256") != canonical_json_sha256(intent) or value.get("closeout_authorization_id") != authorization.get("closeout_authorization_id") or value.get("overall_state") not in ("not-run", "confirmed-partial", "confirmed-complete", "uncertain", "conflict")):
+        errors.append("closeout receipt identity or state is invalid")
+    items = value.get("items")
+    if not isinstance(items, list) or [item.get("issue_number") for item in items if isinstance(item, dict)] != V100_CLOSEOUT_ISSUES:
+        return errors + ["closeout receipt requires exactly the ordered #8-#13 items"]
+    for item, expected in zip(items, intent.get("issues", [])):
+        if not exact_keys(item, ("issue_number", "expected_initial_state", "comment_body_sha256", "comment_id", "comment_url", "comment_write_state", "close_write_state", "observed_post_state", "read_back", "error")):
+            errors.append("closeout receipt item fields are invalid")
+            continue
+        number = item["issue_number"]
+        comment_id = item.get("comment_id")
+        if (item.get("expected_initial_state") != expected.get("observed_state") or item.get("comment_body_sha256") != expected.get("comment_body_sha256") or item.get("observed_post_state") not in (None, "open", "closed") or not isinstance(item.get("read_back"), bool) or item.get("comment_write_state") not in HISTORICAL_CLOSEOUT_OUTCOMES or item.get("close_write_state") not in HISTORICAL_CLOSEOUT_OUTCOMES or (item.get("error") is not None and not valid_publication_error(item["error"]))):
+            errors.append("closeout receipt item identity or state is invalid")
+        if (comment_id is None and item.get("comment_url") is not None) or (comment_id is not None and (not valid_positive_int(comment_id) or item.get("comment_url") != f"https://github.com/mintgao/vibe-kit/issues/{number}#issuecomment-{comment_id}")):
+            errors.append("closeout comment identity is invalid")
+        if value.get("overall_state") == "confirmed-complete" and (not valid_positive_int(comment_id) or item.get("observed_post_state") != "closed" or item.get("read_back") is not True or item.get("error") is not None or item.get("comment_write_state") not in ("created", "read-matched", "confirmed-after-uncertain") or item.get("close_write_state") not in ("created", "read-matched", "confirmed-after-uncertain")):
+            errors.append("complete closeout requires exact comments and closed issue read-back")
+    return errors
+
 
 def publication_repository() -> Dict[str, str]:
     return {
@@ -11012,7 +11082,7 @@ def validate_profile_authorization(value: object, intent: Dict[str, object], *, 
     errors: List[str] = []
     if any((not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
         errors.append('publication authorization identity is invalid')
-    if profile['schema'] == 3 and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
+    if profile['schema'] in (3, 4) and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
         errors.append('authorization source reference or binding time is invalid')
     expected = {'repository': 'mintgao/vibe-kit', 'version': profile['version'], 'release_kind': 'prerelease', 'allowed_operations': list(V080_PUBLICATION_ALLOWED_OPERATIONS), 'publication_intent_sha256': canonical_json_sha256(intent)}
     if any((value.get(key) != expected[key] for key in expected)):
@@ -11146,7 +11216,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
                 errors.append('schema-2 publication asset identity is invalid')
         if intent.get('asset_set_sha256') != canonical_json_sha256(assets):
             errors.append('schema-2 publication asset-set digest is invalid')
-    if profile['schema'] == 3 and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
+    if profile['schema'] in (3, 4) and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
         errors.append('publication requires each exact asset name once')
     gates = intent.get('local_gates')
     if not exact_keys(gates, ('release_gate_evidence_sha256',)) or not valid_sha256(gates.get('release_gate_evidence_sha256')):
@@ -11166,7 +11236,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
         if not exact_keys(operation, fields):
             errors.append('schema-2 publication operation fields are invalid')
             continue
-        if profile['schema'] == 3:
+        if profile['schema'] in (3, 4):
             exact_keys_by_operation = (
                 "mintgao/vibe-kit:main", f"mintgao/vibe-kit:tag:{profile['tag']}",
                 f"mintgao/vibe-kit:release:{profile['tag']}", f"mintgao/vibe-kit:release:{profile['tag']}:assets",
@@ -11216,7 +11286,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
 def validate_publication_intent(value: object) -> List[str]:
     if isinstance(value, dict) and value.get("schema_version") == 1:
         return validate_publication_intent_v1(value)
-    if isinstance(value, dict) and value.get("schema_version") in (2, 3):
+    if isinstance(value, dict) and value.get("schema_version") in (2, 3, 4):
         return validate_profile_intent(value, profile=PUBLICATION_PROFILES[value["schema_version"]])
     return ["publication intent schema/profile is unsupported"]
 
@@ -11268,7 +11338,7 @@ def publication_plan(
             candidate_status = validate_release(release_dir, "json")
         if candidate_status != 0:
             errors.append("publication candidate does not pass validate-release")
-        if schema in (2, 3):
+        if schema in (2, 3, 4):
             if comparison_candidate is None:
                 errors.append("schema-2 publication planning requires --comparison-candidate")
             if release_gate_evidence is None:
@@ -11766,7 +11836,7 @@ def validate_publication_receipt_shape(
 ) -> List[str]:
     if isinstance(receipt, dict) and receipt.get("schema_version") == 1:
         return validate_publication_receipt_shape_v1(receipt)
-    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3) and isinstance(intent, dict):
+    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3, 4) and isinstance(intent, dict):
         return validate_profile_receipt(receipt, intent, profile=PUBLICATION_PROFILES[receipt["schema_version"]])
     return ["publication receipt schema/profile is unsupported"]
 
@@ -11998,7 +12068,7 @@ def validate_publication(
         if authorization_path is not None:
             raise VibeError("historical schema-1 validation does not accept --authorization")
         return validate_publication_v1(intent_path, receipt_path, release_dir, output_format)
-    if schema in (2, 3):
+    if schema in (2, 3, 4):
         return validate_publication_profile(
             intent_path, receipt_path, release_dir, authorization_path, output_format, profile=PUBLICATION_PROFILES[schema]
         )
@@ -13357,7 +13427,7 @@ def inspect_managed_agents(target: Path, word_policy: Optional[str], max_words: 
     return 0 if passed else 1
 
 
-def v090_closeout_command(args: argparse.Namespace) -> int:
+def issue_closeout_command(args: argparse.Namespace) -> int:
     packet = load_json_object_strict(Path(args.packet))
     required = ("request", "parent_intent", "publication_receipt", "publication_authorization", "acceptance_receipt", "validation_result")
     optional = ("closeout_authorization", "closeout_receipt")
@@ -13365,10 +13435,18 @@ def v090_closeout_command(args: argparse.Namespace) -> int:
         raise VibeError("closeout packet requires the exact six plan or eight validation file references")
     root = Path(args.packet).resolve().parent
     values = {key: load_json_object_strict(evidence_file(root, path)) for key, path in packet.items()}
-    intent, bodies = build_v090_closeout_intent(*(values[key] for key in required))
+    parent = values["parent_intent"]
+    parent_schema = parent.get("schema_version") if isinstance(parent, dict) else None
+    if parent_schema == 3:
+        build_intent, validate_receipt = build_v090_closeout_intent, validate_v090_closeout_receipt
+    elif parent_schema == 4:
+        build_intent, validate_receipt = build_v100_closeout_intent, validate_v100_closeout_receipt
+    else:
+        raise VibeError("issue closeout requires a schema-3 (v0.9.0) or schema-4 (v0.10.0) parent publication intent")
+    intent, bodies = build_intent(*(values[key] for key in required))
     errors = []
     if "closeout_receipt" in values:
-        errors = validate_v090_closeout_receipt(values["closeout_receipt"], intent, values["closeout_authorization"])
+        errors = validate_receipt(values["closeout_receipt"], intent, values["closeout_authorization"])
     result = {"schema_version": 1, "command": "issue-closeout", "status": "invalid" if errors else "valid", "intent": intent, "intent_sha256": canonical_json_sha256(intent), "comment_bodies": bodies, "errors": errors, "writes_performed": False, "network_used": False, "host_evidence_authenticated": False}
     print_json(result)
     return 1 if errors else 0
@@ -13646,7 +13724,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 source_root(), args.output_format, args.manual_transfer
             )
         if args.command == "issue-closeout":
-            return v090_closeout_command(args)
+            return issue_closeout_command(args)
         if args.command == "validate-readiness":
             return validate_readiness(Path(args.target), args.brief, args.output_format)
         if args.command == "inspect-managed-agents":
