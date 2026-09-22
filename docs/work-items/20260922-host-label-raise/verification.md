@@ -33,6 +33,18 @@
   differs (the parsed data is equal) — the same serializer-order note recorded
   in the Hermes conformance record.
 
+## Independent QA (delegated run-shaped packet)
+
+The frozen candidate (`3828071`) was verified independently by a delegated QA
+packet that ran the complete default lane once and `doctor` once, and reported
+the raw output verbatim: `verify` `status: passed` (118 tests OK; summary
+`passed: 1, failed: 0, skipped: 0, unconfigured: 3`), `doctor` `status: healthy`
+(activation `match`, zero warnings, zero errors, no writes performed), and a
+change-surface check confirming exactly the intended 14 files. Raw outputs and
+digests are host-side under `.vibe/local/host-label-raise-qa/` (`verify.json`
+`f6e3d34074d26dab16ec97dcccf15cafe76ef3f0479b2c0f5b1c0fe93701c75f`,
+`doctor.json` `2e026af519f88d3406cf24adcc7b16252c007c91500655373cf9e5ab006dd02d`).
+
 ## Limitations and follow-ups
 
 - The real Codex five-stage run is a handoff to the Codex environment (no Codex
@@ -40,6 +52,3 @@
   deliverable here.
 - The release that carries the label change is a separate release-preparation
   decision and stays out of scope.
-- Independent QA of the frozen candidate runs as a delegated run-shaped packet
-  (one complete `verify` run plus `doctor`); its result is appended to this
-  record when it returns.
