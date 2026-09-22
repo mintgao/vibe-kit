@@ -7,21 +7,21 @@
 
 ## Technical decision readiness
 
-- Outcome: `decision-required`
+- Outcome: `decision-accepted`
 - Trigger evidence: an L-sized public release moves the external version boundary, the compatibility surface that existing installs upgrade through, and the version-specific publication contract that fixes the tag, Release, asset set and operation allowlist — so it is a durable, compatibility-relevant choice at size L
-- Decision owner: `vibe_tech_lead` perspective (Hermes subagent, dispatched 2026-09-22), which authors `docs/decisions/0020-v0-10-0-publication.md`
-- Governing decision: none
+- Decision owner: `vibe_tech_lead` perspective (Hermes subagent, dispatched 2026-09-22), which authored `docs/decisions/0020-v0-10-0-publication.md`
+- Governing decision: `docs/decisions/0020-v0-10-0-publication.md`
 - No-new-decision rationale: none
-- Review mode: `not-required`
-- Review result: `not-required`
-- Review evidence: none
-- Material product decisions: the product owner's iteration 0.10.0 plan reserves this item as the release of the iteration that closed the readiness grammar, verification contract, takeover admission and host adapters; the public GitHub operations stay out of scope until the product owner gives one later authorization bound to the exact publication intent digest
-- Open blockers: the version-specific publication profile for v0.10.0 is undecided; no application or shared implementation code may be edited before the gate is `implementation-ready`
-- Gate: `blocked`
-- Gate owner: Workflow orchestrator
-- Confirmed at: none
-- Confirmation basis: none
-- Readiness history: `2026-09-22 — the trigger scan found the version/compatibility and publication-contract triggers; the record starts decision-required + blocked with no application or shared implementation code edited`
+- Review mode: `sequential-perspective`
+- Review result: `approved`
+- Review evidence: `docs/work-items/20260922-v0-10-0-publication/technical-review.md#Pass 2 — approved`
+- Material product decisions: resolved by the product owner on 2026-09-22: (a) the v0.10.0 publication ships the verified iteration (readiness grammar, verification contract, takeover admission, host adapters) as one non-draft Pre-release; (b) the standing issue-closure standard is that an issue may be closed once its fix is confirmed by verification, which makes the closeout cover exactly #8–#13; (c) no public GitHub operation happens in this work item until one later authorization bound to the exact frozen publication intent digest
+- Open blockers: none
+- Gate: `implementation-ready`
+- Gate owner: Workflow orchestrator, Hermes session 2026-09-22
+- Confirmed at: 2026-09-22T09:15:06+08:00
+- Confirmation basis: ADR 0020 revision 2 was reviewed against this brief's acceptance criteria and the five closed iteration records; Pass 1 returned changes-required on two blocking gaps (the unstated schema-4 helper parity in the publication helpers, and the closeout-authorization parity that the record's own field list requires) plus two non-blocking notes; the addendum landed as revision 2 with the decision text unchanged and Pass 2 approved it as `docs/work-items/20260922-v0-10-0-publication/technical-review.md#Pass 2 — approved`; the review ran as a separate sequential pass because this host's subagent channel times out on analysis-shaped review tasks at its 600 s budget; the product-owner decisions above resolve every open product choice, and no application or shared implementation code was edited before this gate
+- Readiness history: `2026-09-22 — the trigger scan found the version/compatibility and publication-contract triggers; the record started decision-required + blocked with no application or shared implementation code edited`; `2026-09-22 — the Tech Lead author (subagent) wrote docs/decisions/0020-v0-10-0-publication.md; review Pass 1 required two precision fixes, the reviewer addendum landed as revision 2, Pass 2 approved, and the gate moved to implementation-ready`
 
 ## Goal
 
