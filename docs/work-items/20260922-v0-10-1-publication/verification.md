@@ -96,3 +96,16 @@ and its own re-derivation of the gate evidence.
   its record on the older evidence.
 - The `0.9.0`-era same-version re-upgrade defect stays out of scope for a patch
   release; the admission paths exercised here contain no re-upgrade.
+
+## Publication completion (recorded after this verification)
+
+The candidate was published on 2026-09-23 under a separate authorization bound
+to the frozen intent digest `0ed6d34f…`: main fast-forwarded `dc88d3f… → 409d67a…`
+under an expected-old-OID lease, annotated tag `v0.10.1` = `2fd9de20…`, Release
+`394214638` (`https://github.com/mintgao/vibe-kit/releases/tag/v0.10.1`) with the
+byte-equal frozen note and exactly five assets, all five public downloads matched,
+nine of nine public smokes passed, and `validate-publication` returned `valid` on
+CPython 3.9.6. Full facts, operation ledger, the transport incident and resume,
+and the evidence digests are in `postpublication.md`. “v0.10.1 published and
+verified” is claimable from that record; platform immutability is reported
+`false` and no host activation is claimed.
