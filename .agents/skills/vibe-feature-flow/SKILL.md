@@ -55,3 +55,16 @@ record the reason and candidate state.
 Close with changed behavior, evidence, skipped checks, risks, and follow-ups. Update durable context only if the project truth changed.
 
 For newly adopted applicable M/L work, the orchestrator runs `./bin/vibe validate-readiness . --brief docs/work-items/<id>/brief.md --format json` before implementation release and after referenced evidence changes. Nonzero blocks release. QA verifies the persisted release evidence; a passed structural check does not establish human applicability, independence or product acceptance. Implemented notes do not replace Accepted ADRs.
+
+For prospective M/L work that delivers part of a larger approved outcome, use the
+optional outcome coverage section in the new brief template. Reference approved
+artifacts and record what this stage covers, Pass/Fail/Blocked/Unverified/Not
+applicable, evidence, next action, role owner, and blocker or waiting condition.
+Source Pass plus external API Blocked plus export Unverified completes only the
+source stage. Continue an already-authorized actionable diagnosis; a genuine
+external permission blocker records its waiting condition and owner. The table
+grants no permission and does not repeat settled approvals. S and completed
+historical work gain no required artifact. Keep host goal text, transfer payloads
+and custody outside repository documents; readiness and independent QA remain
+required. Unverified is a coverage state, not a new QA result enum. Static
+scenarios do not prove live-model compliance or measured efficiency.

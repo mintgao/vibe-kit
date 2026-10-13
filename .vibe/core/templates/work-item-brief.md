@@ -40,6 +40,17 @@ Link relevant project context, prior work, issues, or evidence.
 
 - [ ] AC-1:
 
+## Outcome coverage (optional)
+
+Use prospectively only when M/L work delivers part of a larger approved outcome.
+Reference approved artifacts; do not copy host goal text, transfer payloads or
+custody. S and completed historical work gain no required artifact. Unverified
+is a planning/coverage state; independent QA keeps its four result states.
+
+| Approved outcome / AC reference | This stage covers | State | Evidence | Next action | Role owner | Blocker / waiting condition |
+| --- | --- | --- | --- | --- | --- | --- |
+| Approved artifact reference | Stage scope | Pass, Fail, Blocked, Unverified or Not applicable | Evidence reference | Already-authorized next action | Responsible role | Genuine blocker or waiting condition |
+
 ## Design and technical notes
 
 Add only accepted implementation constraints needed for this work. Apply

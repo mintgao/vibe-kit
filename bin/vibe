@@ -16,12 +16,15 @@ import os
 from pathlib import Path, PurePosixPath
 import platform
 import re
+import secrets
+import signal
 import shlex
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Dict, List, Optional, Sequence, Tuple
 import zipfile
 
@@ -75,11 +78,11 @@ MAINTENANCE_BRIDGE_SCHEMA_VERSION = 2
 COMPATIBILITY_MIGRATION_REGISTRY_SCHEMA = 2
 TRANSACTION_JOURNAL_SCHEMA = 1
 TRANSACTION_COMMIT_SCHEMA = 1
-PUBLICATION_INTENT_SCHEMA = 5
-PUBLICATION_RECEIPT_SCHEMA = 5
+PUBLICATION_INTENT_SCHEMA = 6
+PUBLICATION_RECEIPT_SCHEMA = 6
 HISTORICAL_PUBLICATION_INTENT_SCHEMA = 1
 HISTORICAL_PUBLICATION_RECEIPT_SCHEMA = 1
-ISSUE_CLOSEOUT_INTENT_SCHEMA = 3
+ISSUE_CLOSEOUT_INTENT_SCHEMA = 4
 TRANSACTION_ACTIVE_PATH = Path(".vibe/local/upgrade-transactions/active")
 TRANSACTION_ROOT_PATH = TRANSACTION_ACTIVE_PATH.parent
 LEAF_ATOMICITY_PLAN_PATH = ".vibe/local/upgrade-leaf-atomicity"
@@ -265,7 +268,7 @@ PREDECESSOR_MIGRATION_REGISTRY = {
                 "manifest_schema": 1,
             },
             "target": {
-                "framework_version": "0.10.1",
+                "framework_version": "0.11.0",
                 "source_types": list(SOURCE_TYPES),
             },
         },
@@ -280,7 +283,7 @@ PREDECESSOR_MIGRATION_REGISTRY_SHA256 = hashlib.sha256(
     ).encode("utf-8")
 ).hexdigest()
 EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256 = (
-    "7cedd9fbabd84ab1b51b029a5e679765a1e79efd2d09d5edaa42f9ccf2e47bd3"
+    "6873eeac1952d6ba3d1d049eae75b58e7d6319e98e2fc10d0baeb878f5d9819c"
 )
 if PREDECESSOR_MIGRATION_REGISTRY_SHA256 != (
     EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256
@@ -872,6 +875,135 @@ def write_receipt_artifact(value: object, receipt_path: Path, root: Path) -> Non
         sys.exit(2)
 
 
+def receipt_bytes(value: object, root: Path) -> bytes:
+    """Serialization is stable for equal root-relative envelope values."""
+    return (json.dumps(root_relative_receipt(value, root), ensure_ascii=False,
+                       indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def open_existing_directory_nofollow(path: Path) -> int:
+    if not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
+        raise VibeError("safe result persistence is unsupported", code="result_receipt_unavailable")
+    absolute = Path(os.path.abspath(str(path)))
+    descriptor = os.open(absolute.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for component in absolute.parts[1:]:
+            next_descriptor = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                      dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = next_descriptor
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def publication_result_preflight(destination: Path, inputs: Sequence[Path], candidate: Path) -> int:
+    """Pin an existing, symlink-free parent before any result temporary exists."""
+    lexical = Path(os.path.abspath(str(destination)))
+    try:
+        resolved = lexical.resolve()
+    except (RuntimeError, OSError):
+        raise VibeError("result receipt path is unavailable or unsafe", code="result_receipt_unavailable") from None
+    def key(path: Path) -> str:
+        value = str(path)
+        return value.casefold() if sys.platform == "darwin" else os.path.normcase(value)
+    for protected in inputs:
+        try:
+            protected_resolved = protected.resolve()
+        except (RuntimeError, OSError):
+            raise VibeError("publication input path is unavailable", code="result_receipt_unavailable") from None
+        if key(lexical) == key(Path(os.path.abspath(str(protected)))) or key(resolved) == key(protected_resolved):
+            raise VibeError("result receipt aliases a publication input", code="result_receipt_alias")
+        try:
+            if os.path.samefile(lexical, protected):
+                raise VibeError("result receipt aliases a publication input", code="result_receipt_alias")
+        except (FileNotFoundError, NotADirectoryError):
+            pass
+    try:
+        resolved_candidate = candidate.resolve()
+    except (RuntimeError, OSError):
+        raise VibeError("release candidate path is unavailable", code="result_receipt_unavailable") from None
+    for output, directory in ((lexical, Path(os.path.abspath(str(candidate)))), (resolved, resolved_candidate)):
+        output_key, directory_key = key(output), key(directory).rstrip(os.sep)
+        if output_key == directory_key or output_key.startswith(directory_key + os.sep):
+            raise VibeError("result receipt is inside the release candidate", code="result_receipt_alias")
+    try:
+        parent = open_existing_directory_nofollow(lexical.parent)
+        try:
+            try:
+                os.stat(lexical.name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                result_parent, parent = parent, None
+                return result_parent
+            raise VibeError("result receipt destination already exists", code="result_receipt_exists")
+        finally:
+            if parent is not None:
+                os.close(parent)
+    except OSError:
+        raise VibeError("result receipt parent is unavailable or unsafe", code="result_receipt_unavailable") from None
+
+
+def publish_exclusive_bytes(parent: int, name: str, data: bytes) -> None:
+    """Publish a complete new leaf; never replace a competing final creation."""
+    if os.link not in os.supports_dir_fd or not hasattr(os, "O_NOFOLLOW"):
+        raise OSError(errno.ENOTSUP, "exclusive publication unsupported")
+    temporary = ".vibe-evidence-" + secrets.token_hex(16)
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=parent)
+    identity = os.fstat(descriptor)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "wb", closefd=False) as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(descriptor)
+        os.link(temporary, name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
+        os.fsync(parent)
+    finally:
+        os.close(descriptor)
+        try:
+            observed = os.stat(temporary, dir_fd=parent, follow_symlinks=False)
+            if (observed.st_dev, observed.st_ino) == (identity.st_dev, identity.st_ino):
+                os.unlink(temporary, dir_fd=parent)
+                os.fsync(parent)
+        except FileNotFoundError:
+            pass
+
+
+def publication_validation_command(args: argparse.Namespace) -> int:
+    if args.result_receipt is None:
+        return validate_publication(args.intent, args.receipt, args.candidate,
+                                    args.authorization, args.output_format)
+    args.output_format = "json"
+    protected = [args.intent, args.receipt]
+    if args.authorization is not None:
+        protected.append(args.authorization)
+    parent = publication_result_preflight(args.result_receipt, protected, args.candidate)
+    try:
+        try:
+            captured = io.StringIO()
+            with contextlib.redirect_stdout(captured):
+                code = validate_publication(args.intent, args.receipt, args.candidate,
+                                            args.authorization, "json")
+            envelope = json.loads(captured.getvalue())
+        except VibeError as error:
+            code = 2
+            envelope = result_envelope("validate-publication", "error", operation="validate-publication",
+                error={"code": error.code, "message": str(error)}, write_state=error.write_state,
+                writes_performed=writes_performed(error.write_state), recovery=error.recovery)
+        try:
+            publish_exclusive_bytes(parent, args.result_receipt.name, receipt_bytes(envelope, source_root()))
+        except OSError:
+            code = 2
+            envelope = result_envelope("validate-publication", "error",
+                error={"code": "result_receipt_unavailable", "message": "Result receipt could not be safely published."})
+        print_json(envelope)
+        return code
+    finally:
+        os.close(parent)
+
+
 def validate_manual_transfer_payload(value: object, root: Path) -> List[Dict[str, str]]:
     """Validate the host-neutral minimal manual-transfer payload (schema 1)."""
     findings: List[Dict[str, str]] = []
@@ -956,7 +1088,14 @@ def validate_manual_transfer_payload(value: object, root: Path) -> List[Dict[str
 def print_json(value: object) -> None:
     if RECEIPT_CONTEXT[0] is not None:
         receipt_path, receipt_root = RECEIPT_CONTEXT[0]
-        write_receipt_artifact(value, receipt_path, receipt_root)
+        if isinstance(value, dict) and value.get("command") == "verify":
+            RECEIPT_CONTEXT[0] = None
+            availability = write_verify_receipt(value, receipt_path, receipt_root)
+            if availability["availability"] == "unavailable":
+                value["status"] = "error"
+                verify_notice("receipt=unavailable reason=" + availability["reason"])
+        else:
+            write_receipt_artifact(value, receipt_path, receipt_root)
     print(json.dumps(value, ensure_ascii=False, sort_keys=True))
 
 
@@ -1356,8 +1495,8 @@ def predecessor_migration_evidence(phase: str) -> Dict[str, object]:
 
 
 def validate_target_predecessor_migration_contract(root: Path) -> None:
-    if framework_version(root) != "0.10.1":
-        raise VibeError("predecessor migration is supported only by target 0.10.1")
+    if framework_version(root) != "0.11.0":
+        raise VibeError("predecessor migration is supported only by target 0.11.0")
     contract = load_agent_install_contract(root)
     try:
         protocol = load_json_object_strict(root / ".vibe/core/protocol.json")
@@ -3672,10 +3811,10 @@ def transaction_control_members_allowlisted(target: Path) -> bool:
 
 
 def transaction_installation_state(
-    target: Path, intent: Dict[str, object]
+    target: Path, intent: Dict[str, object], expected: Optional[str] = None
 ) -> Tuple[str, List[str]]:
     with ProjectRootFD(target) as project:
-        return transaction_installation_state_project(project, intent)
+        return transaction_installation_state_project(project, intent, expected)
 
 
 def directory_unit_installation_state(
@@ -3739,10 +3878,11 @@ def directory_unit_installation_state(
 
 
 def transaction_installation_state_project(
-    project: ProjectRootFD, intent: Dict[str, object]
+    project: ProjectRootFD, intent: Dict[str, object], expected: Optional[str] = None
 ) -> Tuple[str, List[str]]:
     mismatched: List[str] = []
-    states = set()
+    matches_pre = True
+    matches_post = True
     directory_member_slots = {
         str(member["slot"])
         for unit in intent.get("directory_units", [])
@@ -3750,7 +3890,8 @@ def transaction_installation_state_project(
     }
     for unit in intent.get("directory_units", []):
         state = directory_unit_installation_state(project, unit)
-        states.add(state)
+        matches_pre = matches_pre and state == "pre"
+        matches_post = matches_post and state == "post"
         if state == "unknown":
             mismatched.append(str(unit["final_root"]))
     for item in intent["changes"]:
@@ -3759,22 +3900,23 @@ def transaction_installation_state_project(
         try:
             state, content, mode = project.read(item["path"])
         except (OSError, VibeError):
-            states.add("unknown")
+            matches_pre = matches_post = False
             mismatched.append(str(item["path"]))
             continue
         current = bytes_identity(state, content, mode)
-        if current == item["preimage"]:
-            states.add("pre")
-        elif current == item["postimage"]:
-            states.add("post")
-        else:
-            states.add("unknown")
+        item_pre = current == item["preimage"]
+        item_post = current == item["postimage"]
+        matches_pre = matches_pre and item_pre
+        matches_post = matches_post and item_post
+        if not item_pre and not item_post:
             mismatched.append(item["path"])
-    if "unknown" in states:
+    if mismatched:
         return "unknown", mismatched
-    if states == {"pre"}:
+    if expected == "target" and matches_post:
+        return "target", []
+    if matches_pre:
         return "predecessor", []
-    if states == {"post"}:
+    if matches_post:
         return "target", []
     return "recovery-required", []
 
@@ -5282,7 +5424,7 @@ def rollback_upgrade_transaction(
                 project, adapter, item, temporary
             ):
                 return False, relative
-        state, mismatched = transaction_installation_state_project(project, intent)
+        state, mismatched = transaction_installation_state_project(project, intent, "predecessor")
         if state != "predecessor":
             return False, mismatched[0] if mismatched else None
         append_transaction_event(
@@ -5352,7 +5494,7 @@ def execute_upgrade_transaction(
                     "prepared final/private pair validation failed",
                     "upgrade_leaf_race_preserved",
                 )
-            state, mismatched = transaction_installation_state_project(project, intent)
+            state, mismatched = transaction_installation_state_project(project, intent, "target")
             if state != "target":
                 failed_path = mismatched[0] if mismatched else failed_path
                 raise VibeError("target postimage validation failed", "upgrade_postimage_invalid")
@@ -5611,7 +5753,7 @@ def upgrade_plan(
             )],
             "<transaction-active>", version, [], bridge,
         )
-    if version == "0.10.1":
+    if version == "0.11.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -6070,7 +6212,7 @@ def upgrade(
             None, "inspect-upgrade-transaction" if active_kind == "invalid" else "recover-upgrade",
             output_format,
         )
-    if version == "0.10.1":
+    if version == "0.11.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -6611,7 +6753,9 @@ def recover_upgrade(target: Path, output_format: str) -> int:
             prepared = load_prepared_transaction(project)
         from_version = str(intent["from_version"])
         target_version = str(intent["target_version"])
-        observed, mismatched = transaction_installation_state(target, intent)
+        observed, mismatched = transaction_installation_state(
+            target, intent, "target" if kind == "committed" else "predecessor"
+        )
         if observed == "unknown":
             directory_roots = {
                 str(unit["final_root"])
@@ -7364,10 +7508,11 @@ def parse_commands(path: Path) -> Dict[str, str]:
 def sanitize_verify_text(target: Path, content: bytes) -> str:
     text = content.decode("utf-8", errors="replace")
     text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+    text = re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\|$)", "", text)
     text = "".join(
         character
         for character in text
-        if character in "\n\t" or ord(character) >= 32
+        if character in "\n\t" or (ord(character) >= 32 and not 127 <= ord(character) <= 159)
     )
     canonical_root = str(target.resolve())
     root_aliases = [canonical_root]
@@ -7375,6 +7520,8 @@ def sanitize_verify_text(target: Path, content: bytes) -> str:
         root_aliases.append(canonical_root[len("/private"):])
     for root_alias in sorted(root_aliases, key=len, reverse=True):
         text = text.replace(root_alias, ".")
+    text = re.sub(r"-----BEGIN ((?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|\Z)",
+                  "[REDACTED PRIVATE KEY]", text, flags=re.IGNORECASE)
     for pattern in SECRET_PATTERNS:
         text = pattern.sub("[REDACTED]", text)
     return text
@@ -7412,7 +7559,7 @@ def verify_output(
     }
 
 
-CHECK_BLOCK_KEYS = ("requires", "output_limit_bytes")
+CHECK_BLOCK_KEYS = ("requires", "output_limit_bytes", "log_policy", "progress")
 TOOLCHAIN_KEYS = ("python", "node", "pnpm")
 VERIFY_LOCAL_DIRECTORY = Path(".vibe/local/verify")
 
@@ -7422,14 +7569,24 @@ def project_section_entries(path: Path, section: str) -> List[Tuple[int, str, st
         return []
     entries: List[Tuple[int, str, str]] = []
     in_section = False
+    section_count = 0
     for raw_line in path.read_text(encoding="utf-8").splitlines():
+        if section == "checks":
+            if re.match(r"^checks\s*:", raw_line) and raw_line.strip() != "checks:":
+                raise VibeError(f"checks must be a block mapping in {path}")
+            if raw_line.strip() == "checks:" and raw_line != raw_line.lstrip():
+                raise VibeError(f"checks must be a top-level block mapping in {path}")
         if raw_line.strip() == section + ":":
+            section_count += 1
+            if section_count > 1:
+                raise VibeError(f"duplicate {section} declaration in {path}")
             in_section = True
             continue
         if not in_section:
             continue
         if raw_line and not raw_line.startswith(" "):
-            break
+            in_section = False
+            continue
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -7466,13 +7623,33 @@ def parse_checks_config(path: Path) -> Dict[str, object]:
     requires: Dict[str, List[str]] = {}
     limit: Optional[int] = None
     active = ""
+    declared = set()
+    log_policy = "failures"
+    progress = True
     for indent, key, raw_value in project_section_entries(path, "checks"):
         if indent == 2:
             if key not in CHECK_BLOCK_KEYS:
                 raise VibeError(
                     f"checks must only declare {', '.join(CHECK_BLOCK_KEYS)} in {path}"
                 )
+            if key in declared:
+                raise VibeError(f"duplicate checks.{key} in {path}")
+            declared.add(key)
             active = key
+            if key in ("log_policy", "progress"):
+                try:
+                    parsed = json.loads(raw_value)
+                except json.JSONDecodeError:
+                    raise VibeError(f"invalid checks.{key} in {path}") from None
+                if key == "progress":
+                    if type(parsed) is not bool:
+                        raise VibeError(f"checks.progress must be true or false in {path}")
+                    progress = parsed
+                else:
+                    if parsed not in ("failures", "all-configured"):
+                        raise VibeError(f"checks.log_policy must be failures or all-configured in {path}")
+                    log_policy = parsed
+                continue
             if key == "output_limit_bytes":
                 try:
                     parsed = int(raw_value)
@@ -7489,8 +7666,8 @@ def parse_checks_config(path: Path) -> Dict[str, object]:
                 continue
             if raw_value:
                 try:
-                    inline = json.loads(raw_value)
-                except json.JSONDecodeError:
+                    inline = json.loads(raw_value, object_pairs_hook=reject_duplicate_json_keys)
+                except (json.JSONDecodeError, ValueError):
                     raise VibeError(
                         "checks.requires must be a JSON mapping or nested "
                         f"entries in {path}"
@@ -7505,6 +7682,8 @@ def parse_checks_config(path: Path) -> Dict[str, object]:
                     )
             continue
         if indent == 4 and active == "requires":
+            if key in requires:
+                raise VibeError(f"duplicate dependency declaration in {path}")
             try:
                 parsed = json.loads(raw_value) if raw_value else []
             except json.JSONDecodeError:
@@ -7518,7 +7697,8 @@ def parse_checks_config(path: Path) -> Dict[str, object]:
         raise VibeError(
             f"checks entries must use two-space indentation in {path}"
         )
-    return {"requires": requires, "output_limit_bytes": limit or VERIFY_OUTPUT_LIMIT}
+    return {"requires": requires, "output_limit_bytes": limit or VERIFY_OUTPUT_LIMIT,
+            "log_policy": log_policy, "progress": progress}
 
 
 def parse_toolchain_config(path: Path) -> Dict[str, str]:
@@ -7608,196 +7788,978 @@ def unmet_toolchain_expectations(
     return unmet
 
 
-def write_verify_full_output(
-    target: Path, name: str, stdout: bytes, stderr: bytes
-) -> Dict[str, str]:
-    directory = target / VERIFY_LOCAL_DIRECTORY
-    directory.mkdir(parents=True, exist_ok=True)
-    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    path = directory / f"{stamp}-{name}.log"
-    payload = sanitize_verify_text(target, stdout) + sanitize_verify_text(
-        target, stderr
-    )
-    data = payload.encode("utf-8", errors="replace")
-    path.write_bytes(data)
-    return {
-        "path": str(path.relative_to(target)),
-        "sha256": hashlib.sha256(data).hexdigest(),
-    }
+VERIFY_STORAGE_REASONS = ("permission-denied", "unsafe-path", "unsafe-object", "unsupported-filesystem", "resource-exhausted", "io-error")
+VERIFY_LOG_LAYOUT = "stdout-stderr-v1"
+VERIFY_RUN_PATTERN = r"verify-[0-9a-f]{32}"
+VERIFY_TIMESTAMP_PATTERN = r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z"
 
 
-def verify(target: Path, only: Sequence[str], output_format: str) -> int:
+def verify_storage_reason(error: BaseException) -> str:
+    if isinstance(error, MemoryError):
+        return "resource-exhausted"
+    if isinstance(error, VibeError):
+        return error.code if error.code in VERIFY_STORAGE_REASONS else "unsafe-path"
+    if isinstance(error, PermissionError):
+        return "permission-denied"
+    number = getattr(error, "errno", None)
+    if number in (errno.EACCES, errno.EPERM, errno.EROFS):
+        return "permission-denied"
+    if number in (errno.ENOSPC, errno.EDQUOT, errno.ENOMEM):
+        return "resource-exhausted"
+    if number in (errno.ENOTSUP, errno.ENOSYS):
+        return "unsupported-filesystem"
+    if number in (errno.ELOOP, errno.ENOTDIR):
+        return "unsafe-path"
+    return "io-error"
+
+
+def verify_notice(message: str) -> None:
+    # All callers use bounded enums/identities, never commands, bodies or exceptions.
+    encoded = ("vibe verify: " + message + "\n").encode("utf-8")[:2048]
+    print(encoded.decode("utf-8", errors="ignore"), file=sys.stderr, end="", flush=True)
+
+
+def verify_timestamp(previous: Optional[str] = None) -> str:
+    observed = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return max(observed, previous) if previous else observed
+
+
+def verify_log_metadata(availability: str, reason: Optional[str] = None, *, path=None, byte_count=None, digest=None) -> Dict[str, object]:
+    return {"availability": availability, "reason": reason, "layout": VERIFY_LOG_LAYOUT,
+            "path": path, "bytes": byte_count, "sha256": digest}
+
+
+class VerifyPrivateStore:
+    """Pinned, no-follow access to independent local metadata and log stores."""
+    def __init__(self, target: Path):
+        if (not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY")
+                or not hasattr(os, "getuid") or os.open not in os.supports_dir_fd):
+            raise VibeError("private evidence storage is unsupported", "unsupported-filesystem")
+        self.project = ProjectRootFD(target)
+
+    def close(self):
+        self.project.close()
+
+    @staticmethod
+    def private_object(metadata, *, directory=False):
+        if metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != (0o700 if directory else 0o600):
+            raise VibeError("private evidence object is unsafe", "unsafe-object")
+        if directory:
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise VibeError("private evidence directory is unsafe", "unsafe-object")
+        elif not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+            raise VibeError("private evidence file is unsafe", "unsafe-object")
+
+    def directory(self, relative: str, *, create=False) -> int:
+        value = safe_project_relative_path(relative)
+        if value is None or not relative.startswith(".vibe/"):
+            raise VibeError("unsafe evidence path", "unsafe-path")
+        descriptor = os.dup(self.project.fd)
+        try:
+            for index, component in enumerate(value.parts):
+                made = False
+                if create and index > 0:
+                    try:
+                        os.mkdir(component, 0o700, dir_fd=descriptor)
+                        made = True
+                    except FileExistsError:
+                        pass
+                child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+                try:
+                    if made:
+                        os.fchmod(child, 0o700)
+                        os.fsync(descriptor)
+                    if index > 0:
+                        self.private_object(os.fstat(child), directory=True)
+                    elif os.fstat(child).st_uid != os.getuid() or stat.S_IMODE(os.fstat(child).st_mode) & 0o022:
+                        raise VibeError("evidence parent is unsafe", "unsafe-object")
+                except BaseException:
+                    os.close(child)
+                    raise
+                os.close(descriptor)
+                descriptor = child
+            return descriptor
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+    def read(self, relative: str, *, maximum: Optional[int] = None) -> bytes:
+        if not verify_safe_path(relative):
+            raise VibeError("unsafe evidence path", "unsafe-path")
+        parent = self.directory(str(PurePosixPath(relative).parent))
+        try:
+            descriptor = os.open(PurePosixPath(relative).name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            try:
+                first = os.fstat(descriptor)
+                self.private_object(first)
+                if maximum is not None and first.st_size > maximum:
+                    raise VibeError("evidence size exceeds its bound", "unsafe-object")
+                chunks, count = [], 0
+                while True:
+                    chunk = os.read(descriptor, 65536)
+                    if not chunk:
+                        break
+                    count += len(chunk)
+                    if maximum is not None and count > maximum:
+                        raise VibeError("evidence size exceeds its bound", "unsafe-object")
+                    chunks.append(chunk)
+                second = os.fstat(descriptor)
+                signature = lambda item: (item.st_dev, item.st_ino, item.st_mode, item.st_uid, item.st_nlink, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
+                if signature(first) != signature(second):
+                    raise VibeError("evidence changed during reading", "unsafe-object")
+                return b"".join(chunks)
+            finally:
+                os.close(descriptor)
+        finally:
+            os.close(parent)
+
+    def ignore(self, relative: str):
+        parent = self.directory(relative, create=True)
+        try:
+            try:
+                publish_exclusive_bytes(parent, ".gitignore", b"*\n!.gitignore\n")
+            except FileExistsError:
+                if self.read_after_publication(relative + "/.gitignore", maximum=128) != b"*\n!.gitignore\n":
+                    raise VibeError("private ignore rule is unsafe", "unsafe-object")
+        finally:
+            os.close(parent)
+
+    def read_after_publication(self, relative: str, *, maximum=None) -> bytes:
+        # An exclusive producer briefly owns a second link while removing its
+        # temporary. Retry reads only; unexpected persistent links stay unsafe.
+        for attempt in range(3):
+            try:
+                return self.read(relative, maximum=maximum)
+            except VibeError as error:
+                if error.code != "unsafe-object" or attempt == 2:
+                    raise
+                time.sleep(0.01)
+        raise VibeError("private evidence is unavailable", "unsafe-object")
+
+    def metadata(self, relative: str, value: object):
+        parent = self.directory(str(PurePosixPath(relative).parent), create=True)
+        temporary, descriptor, identity = None, None, None
+        try:
+            temporary = ".vibe-evidence-" + secrets.token_hex(16)
+            try:
+                existing = os.stat(PurePosixPath(relative).name, dir_fd=parent, follow_symlinks=False)
+                self.private_object(existing)
+            except FileNotFoundError:
+                pass
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+            identity = os.fstat(descriptor)
+            os.fchmod(descriptor, 0o600)
+            data = (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+            with os.fdopen(descriptor, "wb", closefd=False) as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(descriptor)
+            os.replace(temporary, PurePosixPath(relative).name, src_dir_fd=parent, dst_dir_fd=parent)
+            os.fsync(parent)
+        finally:
+            try:
+                if descriptor is not None:
+                    os.close(descriptor)
+                    if identity is not None:
+                        try:
+                            observed = os.stat(temporary, dir_fd=parent, follow_symlinks=False)
+                            if (observed.st_dev, observed.st_ino) == (identity.st_dev, identity.st_ino):
+                                os.unlink(temporary, dir_fd=parent)
+                        except FileNotFoundError:
+                            pass
+            finally:
+                os.close(parent)
+
+    def log(self, data: bytes) -> Dict[str, object]:
+        digest = hashlib.sha256(data).hexdigest()
+        relative = ".vibe/local/verify/logs/sha256/" + digest + ".log"
+        self.ignore(".vibe/local/verify/logs")
+        parent = self.directory(".vibe/local/verify/logs/sha256", create=True)
+        try:
+            try:
+                publish_exclusive_bytes(parent, digest + ".log", data)
+            except FileExistsError:
+                pass
+        finally:
+            os.close(parent)
+        if self.read_after_publication(relative) != data:
+            raise VibeError("existing content-addressed evidence differs", "unsafe-object")
+        return verify_log_metadata("available", path=relative, byte_count=len(data), digest=digest)
+
+
+def verify_safe_path(value: object) -> bool:
+    return (isinstance(value, str) and 1 <= len(value) <= 1024 and not value.startswith("/")
+            and "\\" not in value and all(part not in ("", ".", "..") for part in value.split("/"))
+            and all(ord(char) >= 32 and not 127 <= ord(char) <= 159 for char in value))
+
+
+def verify_time_valid(value: object) -> bool:
+    if not isinstance(value, str) or re.fullmatch(VERIFY_TIMESTAMP_PATTERN, value) is None:
+        return False
+    try:
+        dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ")
+        return True
+    except ValueError:
+        return False
+
+
+def validate_verify_locator(value: object) -> List[Dict[str, str]]:
+    findings = []
+    if not exact_keys(value, ("schema_version", "kind", "run_id", "progress_path", "started_at")):
+        return [{"code": "execution-locator-shape", "path": "$"}]
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1 or value["kind"] != "vibe-verify-locator":
+        findings.append({"code": "execution-locator-identity", "path": "$"})
+    if not isinstance(value["run_id"], str) or re.fullmatch(VERIFY_RUN_PATTERN, value["run_id"]) is None:
+        findings.append({"code": "execution-run-id", "path": "$.run_id"})
+    if value["progress_path"] != ".vibe/local/verify/runs/" + str(value["run_id"]) + "/progress.json":
+        findings.append({"code": "execution-locator-path", "path": "$.progress_path"})
+    if not verify_time_valid(value["started_at"]):
+        findings.append({"code": "execution-time", "path": "$.started_at"})
+    return findings
+
+
+def _validate_verify_execution(value: object, envelope: Optional[object] = None, *, root: Optional[Path] = None) -> List[Dict[str, str]]:
+    """Pure closed schema validation. Findings contain only bounded rules/paths."""
+    findings = []
+    def add(code, path):
+        item = {"code": code, "path": path}
+        if item not in findings and len(findings) < 64:
+            findings.append(item)
+    def integer(item, minimum=-(2 ** 63), maximum=2 ** 63 - 1):
+        return type(item) is int and minimum <= item <= maximum
+    def digest(item):
+        return isinstance(item, str) and re.fullmatch(r"[0-9a-f]{64}", item) is not None
+    fields = ("schema_version", "kind", "run_id", "kit_version", "state", "started_at", "updated_at", "ended_at", "selection", "effective_order", "log_policy", "current_check", "checks", "interruption", "result", "metadata_sha256")
+    if not exact_keys(value, fields):
+        return [{"code": "execution-shape", "path": "$"}]
+    try:
+        raw = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        if len(raw) > 65536:
+            add("execution-size", "$")
+    except (ValueError, TypeError, UnicodeError, RecursionError):
+        return [{"code": "execution-json", "path": "$"}]
+    if not integer(value["schema_version"]) or value["schema_version"] != 1 or value["kind"] != "vibe-verify-execution":
+        add("execution-identity", "$")
+    if not isinstance(value["run_id"], str) or re.fullmatch(VERIFY_RUN_PATTERN, value["run_id"]) is None:
+        add("execution-run-id", "$.run_id")
+    if not isinstance(value["kit_version"], str) or re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", value["kit_version"]) is None:
+        add("execution-version", "$.kit_version")
+    state = value["state"]
+    if state not in ("running", "incomplete", "finished"):
+        add("execution-state", "$.state")
+    start, updated, end = value["started_at"], value["updated_at"], value["ended_at"]
+    for key in ("started_at", "updated_at", "ended_at"):
+        if value[key] is None and key == "ended_at":
+            continue
+        if not verify_time_valid(value[key]):
+            add("execution-time", "$." + key)
+    def in_interval(item):
+        return verify_time_valid(item) and verify_time_valid(start) and verify_time_valid(updated) and start <= item <= updated
+    if verify_time_valid(start) and verify_time_valid(updated) and start > updated:
+        add("execution-time-order", "$.updated_at")
+    if end is not None and not in_interval(end):
+        add("execution-time-order", "$.ended_at")
+    order = value["effective_order"]
+    if not isinstance(order, list) or len(order) != 4 or any(type(name) is not str for name in order) or set(order) != set(VERIFY_ORDER):
+        add("execution-order", "$.effective_order")
+        order = list(VERIFY_ORDER)
+    selection = value["selection"]
+    selected = []
+    if not exact_keys(selection, ("mode", "requested", "coverage")):
+        add("execution-selection", "$.selection")
+    elif selection["mode"] == "default":
+        if selection["requested"] != [] or selection["coverage"] != "all-configured":
+            add("execution-selection", "$.selection")
+        selected = order
+    elif selection["mode"] == "only":
+        requested = selection["requested"]
+        if not isinstance(requested, list) or not requested or any(type(name) is not str or name not in VERIFY_ORDER for name in requested) or requested != [name for name in order if name in requested] or selection["coverage"] != "partial":
+            add("execution-selection", "$.selection")
+        else:
+            selected = requested
+    else:
+        add("execution-selection", "$.selection")
+    policy = value["log_policy"]
+    if policy not in ("failures", "all-configured"):
+        add("execution-log-policy", "$.log_policy")
+    checks = value["checks"]
+    if not isinstance(checks, list) or len(checks) > 4 or [item.get("name") if isinstance(item, dict) else None for item in checks] != selected:
+        add("execution-check-selection", "$.checks")
+        checks = []
+    running = []
+    for index, check in enumerate(checks):
+        path = "$.checks[" + str(index) + "]"
+        if not exact_keys(check, ("name", "configured", "state", "started_at", "ended_at", "outcome", "exit_code", "reason_code", "log")):
+            add("execution-check-shape", path)
+            continue
+        configured, cstate = check["configured"], check["state"]
+        cs, ce, outcome, exit_code, reason = [check[key] for key in ("started_at", "ended_at", "outcome", "exit_code", "reason_code")]
+        if type(configured) is not bool:
+            add("execution-check-configured", path + ".configured")
+        for key, timestamp in (("started_at", cs), ("ended_at", ce)):
+            if timestamp is not None and not in_interval(timestamp):
+                add("execution-time", path + "." + key)
+        if verify_time_valid(cs) and verify_time_valid(ce) and cs > ce:
+            add("execution-time-order", path)
+        combination = False
+        if cstate == "pending":
+            combination = configured is True and all(item is None for item in (cs, ce, outcome, exit_code, reason))
+        elif cstate == "running":
+            running.append(check["name"])
+            combination = configured is True and in_interval(cs) and all(item is None for item in (ce, outcome, exit_code, reason))
+        elif cstate == "finished":
+            combination = configured is True and in_interval(cs) and in_interval(ce) and integer(exit_code) and ((outcome == "passed" and exit_code == 0 and reason is None) or (outcome == "failed" and exit_code != 0 and reason is None) or (outcome == "environment-limited" and exit_code != 0 and reason == "toolchain-mismatch"))
+        elif cstate == "not-started":
+            combination = configured is True and cs is None and in_interval(ce) and outcome == "skipped" and exit_code is None and reason in ("process-start-failed", "execution-interrupted")
+        elif cstate == "interrupted":
+            combination = configured is True and in_interval(cs) and in_interval(ce) and outcome == "skipped" and exit_code is None and reason == "execution-interrupted"
+        elif cstate == "unconfigured":
+            combination = configured is False and cs is None and ce is None and outcome == "unconfigured" and exit_code is None and reason == "not-configured"
+        if not combination:
+            add("execution-check-combination", path)
+        log = check["log"]
+        if not exact_keys(log, ("availability", "reason", "layout", "path", "bytes", "sha256")):
+            add("execution-log-shape", path + ".log")
+            continue
+        availability = log["availability"]
+        null_identity = all(log[key] is None for key in ("path", "bytes", "sha256"))
+        valid_log = log["layout"] == VERIFY_LOG_LAYOUT
+        if availability == "available":
+            valid_log = valid_log and log["reason"] is None and digest(log["sha256"]) and integer(log["bytes"], 0) and log["path"] == ".vibe/local/verify/logs/sha256/" + str(log["sha256"]) + ".log" and verify_safe_path(log["path"])
+        elif availability == "pending":
+            valid_log = valid_log and null_identity and log["reason"] is None
+        elif availability == "not-selected":
+            valid_log = valid_log and null_identity and log["reason"] == "policy-failures" and cstate == "finished" and outcome == "passed" and policy == "failures"
+        elif availability == "not-applicable":
+            valid_log = valid_log and null_identity and ((cstate == "unconfigured" and log["reason"] == "not-configured") or (cstate == "not-started" and log["reason"] == "not-started"))
+        elif availability == "incomplete":
+            valid_log = valid_log and null_identity and cstate == "interrupted" and log["reason"] == "execution-interrupted"
+        elif availability == "unavailable":
+            valid_log = valid_log and null_identity and log["reason"] in VERIFY_STORAGE_REASONS
+        else:
+            valid_log = False
+        expected_availability = {"pending": ("pending",), "running": ("pending",), "unconfigured": ("not-applicable",), "not-started": ("not-applicable",), "interrupted": ("incomplete",)}.get(cstate)
+        if cstate == "finished":
+            expected_availability = ("not-selected",) if outcome == "passed" and policy == "failures" else ("available", "unavailable")
+        if not valid_log or expected_availability is None or availability not in expected_availability:
+            add("execution-log-combination", path + ".log")
+    if len(running) > 1 or value["current_check"] != (running[0] if len(running) == 1 else None):
+        add("execution-current-check", "$.current_check")
+    interruption = value["interruption"]
+    if interruption is not None:
+        if not exact_keys(interruption, ("reason", "requested_at", "direct_child", "descendants")):
+            add("execution-interruption-shape", "$.interruption")
+        elif interruption["reason"] not in ("sigint", "sigterm", "runner-error") or not in_interval(interruption["requested_at"]) or interruption["direct_child"] not in ("not-started", "reaped", "unconfirmed") or interruption["descendants"] != "not-proven":
+            add("execution-interruption", "$.interruption")
+    result = value["result"]
+    if result is not None:
+        if not exact_keys(result, ("status", "exit_code", "envelope_sha256", "receipt")):
+            add("execution-result-shape", "$.result")
+        else:
+            if result["status"] not in ("passed", "failed", "blocked", "error") or not integer(result["exit_code"]) or result["exit_code"] != {"passed": 0, "failed": 1, "blocked": 2, "error": 2}.get(result["status"]) or not digest(result["envelope_sha256"]):
+                add("execution-result", "$.result")
+            receipt = result["receipt"]
+            if not exact_keys(receipt, ("availability", "scope", "path", "sha256", "reason")):
+                add("execution-receipt-shape", "$.result.receipt")
+            else:
+                available = receipt["availability"]
+                valid = False
+                if available == "not-requested":
+                    valid = all(receipt[key] is None for key in ("scope", "path", "sha256", "reason"))
+                elif available == "available":
+                    valid = receipt["scope"] in ("project", "external") and digest(receipt["sha256"]) and receipt["reason"] is None and ((receipt["scope"] == "project" and verify_safe_path(receipt["path"])) or (receipt["scope"] == "external" and receipt["path"] is None))
+                elif available == "unavailable":
+                    valid = receipt["scope"] in ("project", "external") and receipt["path"] is None and receipt["sha256"] is None and receipt["reason"] in VERIFY_STORAGE_REASONS
+                if not valid:
+                    add("execution-receipt", "$.result.receipt")
+    terminal_states = [check.get("state") for check in checks if isinstance(check, dict)]
+    if state == "running":
+        if end is not None or interruption is not None or result is not None or any(item in ("interrupted",) for item in terminal_states):
+            add("execution-run-combination", "$")
+    elif state == "finished":
+        if end is None or result is None or interruption is not None or value["current_check"] is not None or any(item in ("pending", "running", "interrupted") for item in terminal_states) or any(check.get("state") == "not-started" and check.get("reason_code") != "process-start-failed" for check in checks):
+            add("execution-run-combination", "$")
+    elif state == "incomplete":
+        if end is None or interruption is None or value["current_check"] is not None or any(item in ("pending", "running") for item in terminal_states) or (isinstance(result, dict) and (result.get("status") not in ("blocked", "error") or result.get("exit_code") != 2)):
+            add("execution-run-combination", "$")
+    if isinstance(result, dict):
+        outcomes = [check.get("outcome") for check in checks]
+        if result.get("status") == "passed" and (state != "finished" or any(item not in ("passed", "unconfigured") for item in outcomes)):
+            add("execution-result-outcomes", "$.result.status")
+        if result.get("status") == "failed" and ("failed" not in outcomes or any(item in ("skipped", "environment-limited") for item in outcomes)):
+            add("execution-result-outcomes", "$.result.status")
+        if result.get("status") == "blocked" and state == "finished" and not any(item in ("skipped", "environment-limited") for item in outcomes):
+            add("execution-result-outcomes", "$.result.status")
+    try:
+        expected_hash = canonical_json_sha256({key: item for key, item in value.items() if key != "metadata_sha256"})
+        if not digest(value["metadata_sha256"]) or value["metadata_sha256"] != expected_hash:
+            add("execution-checksum", "$.metadata_sha256")
+    except (ValueError, TypeError, UnicodeError):
+        add("execution-checksum", "$.metadata_sha256")
+    if envelope is not None:
+        if result is None or not isinstance(envelope, dict):
+            add("execution-envelope-binding", "$.result")
+        else:
+            supplied = root_relative_receipt(envelope, root.resolve()) if root is not None else envelope
+            try:
+                bound = result.get("envelope_sha256") == canonical_json_sha256(supplied)
+            except (ValueError, TypeError):
+                bound = False
+            expected_checks = [{key: check.get(key) for key in ("name", "configured", "outcome", "exit_code", "reason_code")} for check in checks]
+            supplied_checks = supplied.get("checks")
+            actual_checks = [{key: check.get(key) for key in ("name", "configured", "outcome", "exit_code", "reason_code")} for check in supplied_checks if isinstance(check, dict)] if isinstance(supplied_checks, list) else None
+            if not bound or supplied.get("schema_version") != AGENT_RESULT_SCHEMA or supplied.get("command") != "verify" or supplied.get("status") != result.get("status") or supplied.get("selection") != selection or supplied.get("default_order") != order or actual_checks != expected_checks:
+                add("execution-envelope-binding", "$.result")
+            if isinstance(supplied_checks, list):
+                for index, check in enumerate(checks):
+                    if index >= len(supplied_checks) or not isinstance(supplied_checks[index], dict):
+                        continue
+                    full = supplied_checks[index].get("output", {}).get("full") if isinstance(supplied_checks[index].get("output"), dict) else None
+                    log = check.get("log", {})
+                    expected_full = {"path": log.get("path"), "sha256": log.get("sha256")} if log.get("availability") == "available" else None
+                    if full != expected_full:
+                        add("execution-envelope-log-binding", "$.checks[" + str(index) + "].log")
+    return findings
+
+
+def validate_verify_execution(value: object, envelope: Optional[object] = None, *, root: Optional[Path] = None) -> List[Dict[str, str]]:
+    try:
+        return _validate_verify_execution(value, envelope, root=root)
+    except (TypeError, ValueError, KeyError, IndexError, AttributeError, RecursionError):
+        return [{"code": "execution-value", "path": "$"}]
+
+
+def strict_verify_json(data: bytes, maximum: int) -> object:
+    if len(data) > maximum:
+        raise ValueError("execution-size")
+    def reject_constant(value):
+        raise ValueError("execution-json")
+    return json.loads(data.decode("utf-8"), object_pairs_hook=reject_duplicate_json_keys, parse_constant=reject_constant)
+
+
+def read_verify_execution(target: Path, run_id: str, envelope: Optional[object] = None, *, artifacts=False, external_receipt: Optional[bytes] = None) -> Tuple[Optional[Dict[str, object]], List[Dict[str, str]]]:
+    if not isinstance(run_id, str) or re.fullmatch(VERIFY_RUN_PATTERN, run_id) is None:
+        return None, [{"code": "execution-run-id", "path": "$.run_id"}]
+    store = None
+    try:
+        store = VerifyPrivateStore(target.resolve())
+        value = strict_verify_json(store.read(".vibe/local/verify/runs/" + run_id + "/progress.json", maximum=65536), 65536)
+        findings = validate_verify_execution(value, envelope, root=target)
+        if findings:
+            return None, findings
+        if value["run_id"] != run_id:
+            return None, [{"code": "execution-run-id", "path": "$.run_id"}]
+        if artifacts:
+            for index, check in enumerate(value["checks"]):
+                log = check["log"]
+                if log["availability"] == "available":
+                    try:
+                        data = store.read(log["path"])
+                        if len(data) != log["bytes"] or hashlib.sha256(data).hexdigest() != log["sha256"]:
+                            raise ValueError("digest")
+                    except (OSError, VibeError, ValueError):
+                        findings.append({"code": "execution-artifact", "path": "$.checks[" + str(index) + "].log"})
+            result = value["result"]
+            receipt = result["receipt"] if result else None
+            if receipt and receipt["availability"] == "available":
+                try:
+                    if receipt["scope"] == "project":
+                        data = read_verify_project_receipt(target, receipt["path"])
+                    elif external_receipt is not None:
+                        data = external_receipt
+                    else:
+                        data = None
+                    if data is not None and hashlib.sha256(data).hexdigest() != receipt["sha256"]:
+                        raise ValueError("digest")
+                    if data is not None and canonical_json_sha256(strict_verify_json(data, len(data))) != result["envelope_sha256"]:
+                        raise ValueError("envelope")
+                except (OSError, VibeError, ValueError):
+                    findings.append({"code": "execution-artifact", "path": "$.result.receipt"})
+        return value, findings
+    except (OSError, UnicodeError, VibeError, ValueError, RecursionError):
+        return None, [{"code": "execution-unavailable-or-invalid", "path": "$"}]
+    finally:
+        if store is not None:
+            store.close()
+
+
+def read_verify_project_receipt(target: Path, relative: str) -> bytes:
+    if not verify_safe_path(relative):
+        raise VibeError("unsafe receipt path", "unsafe-path")
+    with ProjectRootFD(target.resolve()) as project:
+        parent = project.open_directory(str(PurePosixPath(relative).parent))
+        try:
+            descriptor = os.open(PurePosixPath(relative).name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            try:
+                first = os.fstat(descriptor)
+                VerifyPrivateStore.private_object(first)
+                with os.fdopen(descriptor, "rb", closefd=False) as handle:
+                    data = handle.read()
+                second = os.fstat(descriptor)
+                VerifyPrivateStore.private_object(second)
+                signature = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
+                if signature(first) != signature(second) or len(data) != second.st_size:
+                    raise VibeError("receipt changed during reading", "unsafe-object")
+                return data
+            finally:
+                os.close(descriptor)
+        finally:
+            os.close(parent)
+
+
+def read_verify_locator(target: Path) -> Tuple[Optional[Dict[str, object]], List[Dict[str, str]]]:
+    store = None
+    try:
+        store = VerifyPrivateStore(target.resolve())
+        value = strict_verify_json(store.read(".vibe/local/verify/runs/latest.json", maximum=2048), 2048)
+        findings = validate_verify_locator(value)
+        return (None, findings) if findings else (value, [])
+    except (OSError, UnicodeError, VibeError, ValueError, RecursionError):
+        return None, [{"code": "execution-locator-unavailable-or-invalid", "path": "$"}]
+    finally:
+        if store is not None:
+            store.close()
+
+
+class VerifyProgress:
+    def __init__(self, target: Path, selected: Sequence[str], commands: Dict[str, str], order: Sequence[str], selection: Dict[str, object], policy: str, enabled: bool):
+        self.target, self.store, self.path = target, None, None
+        self.value = None
+        self.available = False
+        if not enabled:
+            verify_notice("progress=disabled log-policy=" + policy)
+            return
+        run_id = None
+        try:
+            self.store = VerifyPrivateStore(target)
+            self.store.ignore(".vibe/local/verify/runs")
+            parent = self.store.directory(".vibe/local/verify/runs")
+            try:
+                while True:
+                    run_id = "verify-" + secrets.token_hex(16)
+                    try:
+                        os.mkdir(run_id, 0o700, dir_fd=parent)
+                        child = os.open(run_id, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                        try:
+                            os.fchmod(child, 0o700)
+                        finally:
+                            os.close(child)
+                        os.fsync(parent)
+                        break
+                    except FileExistsError:
+                        pass
+            finally:
+                os.close(parent)
+            self.path = ".vibe/local/verify/runs/" + run_id + "/progress.json"
+            started = verify_timestamp()
+            checks = [{"name": name, "configured": bool(commands.get(name)), "state": "pending" if commands.get(name) else "unconfigured", "started_at": None, "ended_at": None, "outcome": None if commands.get(name) else "unconfigured", "exit_code": None, "reason_code": None if commands.get(name) else "not-configured", "log": verify_log_metadata("pending") if commands.get(name) else verify_log_metadata("not-applicable", "not-configured")} for name in selected]
+            self.value = {"schema_version": 1, "kind": "vibe-verify-execution", "run_id": run_id, "kit_version": framework_version(source_root()), "state": "running", "started_at": started, "updated_at": started, "ended_at": None, "selection": selection, "effective_order": list(order), "log_policy": policy, "current_check": None, "checks": checks, "interruption": None, "result": None, "metadata_sha256": ""}
+            self.available = True
+            self.publish()
+            if self.available:
+                self.store.metadata(".vibe/local/verify/runs/latest.json", {"schema_version": 1, "kind": "vibe-verify-locator", "run_id": run_id, "progress_path": self.path, "started_at": started})
+                verify_notice("run=" + run_id + " progress=available path=" + self.path + " log-policy=" + policy)
+            else:
+                verify_notice("run=" + run_id + " progress=unavailable log-policy=" + policy)
+        except (OSError, VibeError, ValueError, MemoryError) as error:
+            self.available = False
+            self.close()
+            verify_notice(("run=" + run_id + " " if run_id else "") + "progress=unavailable reason=" + verify_storage_reason(error) + " log-policy=" + policy)
+
+    def unavailable(self, error):
+        self.available = False
+        self.close()
+        verify_notice("progress=unavailable reason=" + verify_storage_reason(error))
+
+    def publish(self):
+        if not self.available:
+            return
+        try:
+            self.value["metadata_sha256"] = canonical_json_sha256({key: item for key, item in self.value.items() if key != "metadata_sha256"})
+            if validate_verify_execution(self.value):
+                raise VibeError("invalid producer metadata", "io-error")
+            self.store.metadata(self.path, self.value)
+        except (OSError, VibeError, ValueError, MemoryError) as error:
+            self.unavailable(error)
+
+    def now(self):
+        return verify_timestamp(self.value["updated_at"] if self.value else None)
+
+    def start(self, name):
+        if not self.available:
+            return
+        try:
+            now = self.now()
+            self.value["updated_at"] = now
+            self.value["current_check"] = name
+            check = next(item for item in self.value["checks"] if item["name"] == name)
+            check.update(state="running", started_at=now)
+            self.publish()
+        except MemoryError as error:
+            self.unavailable(error)
+
+    def complete(self, record, log):
+        if not self.available:
+            return
+        try:
+            now = self.now()
+            self.value["updated_at"] = now
+            self.value["current_check"] = None
+            check = next(item for item in self.value["checks"] if item["name"] == record["name"])
+            state = "not-started" if record["reason_code"] == "process-start-failed" else "finished"
+            check.update(state=state, ended_at=now, outcome=record["outcome"], exit_code=record["exit_code"], reason_code=record["reason_code"], log=log)
+            if state == "not-started":
+                check["started_at"] = None
+            self.publish()
+        except MemoryError as error:
+            self.unavailable(error)
+
+    def terminal(self, envelope, code, receipt, interruption):
+        if not self.available:
+            return
+        try:
+            now = self.now()
+            self.value.update(updated_at=now, ended_at=now, current_check=None,
+                              state="incomplete" if interruption else "finished")
+            if interruption:
+                self.value["interruption"] = {"reason": interruption["reason"], "requested_at": min(max(interruption["requested_at"], self.value["started_at"]), now), "direct_child": interruption["direct_child"], "descendants": "not-proven"}
+                for check in self.value["checks"]:
+                    if check["state"] in ("pending", "running"):
+                        started = check["state"] == "running" and interruption.get("started", False)
+                        check.update(state="interrupted" if started else "not-started", ended_at=now, outcome="skipped", exit_code=None, reason_code="execution-interrupted", log=verify_log_metadata("incomplete", "execution-interrupted") if started else verify_log_metadata("not-applicable", "not-started"))
+                        if not started:
+                            check["started_at"] = None
+            self.value["result"] = {"status": envelope["status"], "exit_code": code, "envelope_sha256": canonical_json_sha256(root_relative_receipt(envelope, self.target)), "receipt": receipt}
+            self.publish()
+        except MemoryError as error:
+            self.unavailable(error)
+
+    def close(self):
+        store, self.store = self.store, None
+        if store is not None:
+            try:
+                store.close()
+            except OSError:
+                pass
+
+
+class VerifyDeliveryInterrupted(Exception):
+    """A scoped handled signal interrupted the owned terminal output operation."""
+
+
+def deliver_verify_json(value: object) -> None:
+    # Raw fd writes do not leave an undelivered JSON suffix in TextIOWrapper's
+    # buffer for interpreter shutdown to flush after an interrupted operation.
+    # Escaped bytes remain irreversible; this is not atomic/acknowledged delivery.
+    try:
+        descriptor = sys.stdout.fileno()
+    except (AttributeError, io.UnsupportedOperation):
+        print_json(value)
+        sys.stdout.flush()
+        return
+    sys.stdout.flush()
+    remaining = memoryview((json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8"))
+    while remaining:
+        written = os.write(descriptor, remaining)
+        if written <= 0:
+            raise OSError(errno.EIO, "terminal output did not advance")
+        remaining = remaining[written:]
+
+
+class VerifyCaptureRunner:
+    def __init__(self):
+        self.interruption = None
+        self.child = None
+        self.started = False
+        self.old_handlers = {}
+        self.delivering = False
+        self.delivery_interrupted = False
+
+    def __enter__(self):
+        try:
+            for number, reason in ((signal.SIGINT, "sigint"), (signal.SIGTERM, "sigterm")):
+                self.old_handlers[number] = signal.getsignal(number)
+                def handler(signum, frame, reason=reason):
+                    if self.interruption is None:
+                        direct_child = ("reaped" if self.child is not None and self.child.returncode is not None
+                                        else "unconfirmed" if self.started else "not-started")
+                        self.interruption = {"reason": reason, "requested_at": verify_timestamp(), "direct_child": direct_child, "started": self.started}
+                    if self.delivering and not self.delivery_interrupted:
+                        self.delivery_interrupted = True
+                        raise VerifyDeliveryInterrupted()
+                signal.signal(number, handler)
+        except ValueError:
+            # Embedding outside the main thread cannot install process handlers.
+            for number, handler in self.old_handlers.items():
+                try:
+                    signal.signal(number, handler)
+                except ValueError:
+                    pass
+            self.old_handlers = {}
+        return self
+
+    def __exit__(self, *args):
+        for number, handler in self.old_handlers.items():
+            signal.signal(number, handler)
+
+    def interrupted(self, reason="runner-error"):
+        if self.interruption is None:
+            self.interruption = {"reason": reason, "requested_at": verify_timestamp(), "direct_child": "not-started", "started": self.started}
+        child = self.child
+        if child is not None:
+            try:
+                child.terminate()
+            except OSError:
+                pass
+            try:
+                child.wait(timeout=1)
+                self.interruption["direct_child"] = "reaped"
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    child.kill()
+                except OSError:
+                    pass
+                try:
+                    child.wait(timeout=1)
+                    self.interruption["direct_child"] = "reaped"
+                except (OSError, subprocess.TimeoutExpired):
+                    self.interruption["direct_child"] = "unconfirmed"
+            for handle in (child.stdout, child.stderr):
+                if handle is not None:
+                    handle.close()
+        return None
+
+    def capture(self, command: str, target: Path):
+        self.child, self.started = None, False
+        if self.interruption:
+            return None
+        try:
+            self.child = subprocess.Popen(command, cwd=str(target), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except OSError:
+            if self.interruption:
+                return self.interrupted()
+            raise
+        self.started = True
+        try:
+            while True:
+                if self.interruption:
+                    self.interruption["started"] = True
+                    return self.interrupted()
+                try:
+                    stdout, stderr = self.child.communicate(timeout=0.1)
+                    result = subprocess.CompletedProcess(command, self.child.returncode, stdout, stderr)
+                    self.started = False
+                    return result
+                except subprocess.TimeoutExpired:
+                    continue
+        except (Exception, KeyboardInterrupt):
+            return self.interrupted()
+        finally:
+            if not self.interruption and self.child is not None:
+                for handle in (self.child.stdout, self.child.stderr):
+                    if handle is not None:
+                        handle.close()
+
+
+def capture_verify_check(command: str, target: Path, runner: VerifyCaptureRunner):
+    return runner.capture(command, target)
+
+
+
+def write_verify_receipt(envelope: Dict[str, object], destination: Path, target: Path) -> Dict[str, object]:
+    absolute = Path(os.path.abspath(str(destination)))
+    try:
+        relative = absolute.relative_to(target).as_posix()
+        scope = "project"
+    except ValueError:
+        relative, scope = None, "external"
+    parent = None
+    descriptor = None
+    try:
+        parent = open_existing_directory_nofollow(absolute.parent)
+        descriptor = os.open(absolute.name, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=parent)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_nlink != 1:
+            raise VibeError("receipt destination is unsafe", "unsafe-object")
+        os.fchmod(descriptor, 0o600)
+        data = receipt_bytes(envelope, target)
+        os.ftruncate(descriptor, 0)
+        with os.fdopen(descriptor, "wb", closefd=False) as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(descriptor)
+        os.fsync(parent)
+        observed = os.stat(absolute.name, dir_fd=parent, follow_symlinks=False)
+        VerifyPrivateStore.private_object(observed)
+        if (observed.st_dev, observed.st_ino, observed.st_size) != (metadata.st_dev, metadata.st_ino, len(data)):
+            raise VibeError("receipt destination changed during writing", "unsafe-object")
+        return {"availability": "available", "scope": scope, "path": relative, "sha256": hashlib.sha256(data).hexdigest(), "reason": None}
+    except (OSError, VibeError, MemoryError) as error:
+        return {"availability": "unavailable", "scope": scope, "path": None, "sha256": None, "reason": verify_storage_reason(error)}
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if parent is not None:
+            os.close(parent)
+
+
+def verify(target: Path, only: Sequence[str], output_format: str,
+           log_policy: Optional[str] = None, progress: Optional[bool] = None) -> int:
     target = target.resolve()
     config = target / ".vibe/project.yaml"
     if not config.is_file():
         raise VibeError(f"Project configuration is missing: {config}")
     commands = parse_commands(config)
     checks_config = parse_checks_config(config)
-    check_requires = checks_config["requires"]
     output_limit = int(checks_config["output_limit_bytes"])
-    effective_order = derive_check_order(check_requires, config)
+    effective_order = derive_check_order(checks_config["requires"], config)
+    policy = log_policy if log_policy is not None else checks_config["log_policy"]
+    enabled = progress if progress is not None else checks_config["progress"]
+    if policy not in ("failures", "all-configured") or type(enabled) is not bool:
+        raise VibeError("invalid verification diagnostic settings")
+    requested = [key for key in effective_order if key in set(only)] if only else []
+    selected = requested if only else list(effective_order)
+    selection = {"mode": "only" if only else "default", "requested": requested,
+                 "coverage": "partial" if only else "all-configured"}
     toolchain_expectations = parse_toolchain_config(config)
     observed_toolchain = observe_toolchain(target)
-    unmet_toolchain = unmet_toolchain_expectations(
-        toolchain_expectations, observed_toolchain
-    )
-    requested = (
-        [key for key in effective_order if key in set(only)] if only else []
-    )
-    selected = requested if only else list(effective_order)
-    checks: List[Dict[str, object]] = []
-    for key in selected:
-        command = commands.get(key, "")
-        if not command:
-            checks.append(
-                {
-                    "name": key,
-                    "configured": False,
-                    "applicability": "not-applicable",
-                    "required": False,
-                    "outcome": "unconfigured",
-                    "exit_code": None,
-                    "reason_code": "not-configured",
-                    "provenance": {
-                        "kind": "cli",
-                        "task_id": None,
-                        "operation_id": None,
-                    },
-                    "output": verify_output(b"", b"", target, output_limit),
-                }
-            )
-            continue
-        if output_format == "text":
-            print(f"\n==> {key}: {command}", flush=True)
-        try:
-            result = subprocess.run(
-                command,
-                cwd=str(target),
-                shell=True,
-                check=False,
-                capture_output=True,
-            )
-        except OSError as error:
-            captured = verify_output(
-                b"", str(error).encode("utf-8"), target, output_limit
-            )
-            checks.append(
-                {
-                    "name": key,
-                    "configured": True,
-                    "applicability": "applicable",
-                    "required": True,
-                    "outcome": "skipped",
-                    "exit_code": None,
-                    "reason_code": "process-start-failed",
-                    "provenance": {
-                        "kind": "cli",
-                        "task_id": None,
-                        "operation_id": None,
-                    },
-                    "output": captured,
-                }
-            )
-            if output_format == "text":
-                print(captured["stderr_tail"], file=sys.stderr, end="")
-            continue
-        captured = verify_output(result.stdout, result.stderr, target, output_limit)
-        record: Dict[str, object] = {
-            "name": key,
-            "configured": True,
-            "applicability": "applicable",
-            "required": True,
-            "outcome": "passed" if result.returncode == 0 else "failed",
-            "exit_code": result.returncode,
-            "reason_code": None,
-            "provenance": {
-                "kind": "cli",
-                "task_id": None,
-                "operation_id": None,
-            },
-            "output": captured,
-        }
-        if result.returncode != 0 and unmet_toolchain:
-            record["outcome"] = "environment-limited"
-            record["reason_code"] = "toolchain-mismatch"
-            record["environment"] = {
-                "expectations": unmet_toolchain,
-                "observed": observed_toolchain,
-            }
-        if record["outcome"] in ("failed", "environment-limited"):
-            captured["full"] = write_verify_full_output(
-                target, key, result.stdout, result.stderr
-            )
-        checks.append(record)
-        if output_format == "text":
-            if captured["stdout_tail"]:
-                print(captured["stdout_tail"], end="")
-            if captured["stderr_tail"]:
-                print(captured["stderr_tail"], file=sys.stderr, end="")
-
-    summary = {
-        outcome: sum(1 for check in checks if check["outcome"] == outcome)
-        for outcome in (
-            "passed",
-            "failed",
-            "unconfigured",
-            "skipped",
-            "environment-limited",
-        )
-    }
-    if summary["skipped"] or summary["environment-limited"]:
-        status = "blocked"
-        exit_code = 2
-    elif summary["failed"]:
-        status = "failed"
-        exit_code = 1
-    else:
-        status = "passed"
-        exit_code = 0
-    if output_format == "json":
-        print_json(
-            result_envelope(
-                "verify",
-                status,
-                target=str(target),
-                selection={
-                    "mode": "only" if only else "default",
-                    "requested": requested,
-                    "coverage": "partial" if only else "all-configured",
-                },
-                producer="cli",
-                cli_invoked=True,
-                default_order=list(effective_order),
-                toolchain=observed_toolchain,
-                checks=checks,
-                summary=summary,
-            )
-        )
-        return exit_code
-    configured_names = [
-        str(check["name"]) for check in checks if check["configured"]
-    ]
-    if not configured_names:
-        print("No project verification checks are configured.")
-    elif status == "passed":
-        print("\nVerification passed: " + ", ".join(configured_names))
-    elif status == "failed":
-        failures = [
-            f"{check['name']} ({check['exit_code']})"
-            for check in checks
-            if check["outcome"] == "failed"
-        ]
-        print("\nVerification failed: " + ", ".join(failures), file=sys.stderr)
-    else:
-        blocked_names = [
-            str(check["name"])
-            for check in checks
-            if check["outcome"] in ("skipped", "environment-limited")
-        ]
-        print(
-            "\nVerification blocked: " + ", ".join(blocked_names), file=sys.stderr
-        )
-    return exit_code
+    unmet_toolchain = unmet_toolchain_expectations(toolchain_expectations, observed_toolchain)
+    sidecar = VerifyProgress(target, selected, commands, effective_order, selection, policy, enabled)
+    checks = []
+    log_store = None
+    receipt_context = RECEIPT_CONTEXT[0]
+    # This command owns final persistence, including interruption/error reporting.
+    RECEIPT_CONTEXT[0] = None
+    def record(name, outcome, exit_code=None, reason=None, output=None):
+        configured = bool(commands.get(name))
+        return {"name": name, "configured": configured,
+                "applicability": "applicable" if configured else "not-applicable",
+                "required": configured, "outcome": outcome, "exit_code": exit_code,
+                "reason_code": reason,
+                "provenance": {"kind": "cli", "task_id": None, "operation_id": None},
+                "output": output if output is not None else verify_output(b"", b"", target, output_limit)}
+    try:
+        with VerifyCaptureRunner() as runner:
+            for key in selected:
+                command = commands.get(key, "")
+                if not command:
+                    checks.append(record(key, "unconfigured", reason="not-configured"))
+                    continue
+                if runner.interruption:
+                    checks.append(record(key, "skipped", reason="execution-interrupted"))
+                    continue
+                if output_format == "text":
+                    print("\n==> " + key + ": " + command, flush=True)
+                sidecar.start(key)
+                try:
+                    result = capture_verify_check(command, target, runner)
+                except OSError as error:
+                    checks.append(record(key, "skipped", reason="process-start-failed",
+                        output=verify_output(b"", str(error).encode("utf-8", errors="replace"), target, output_limit)))
+                    sidecar.complete(checks[-1], verify_log_metadata("not-applicable", "not-started"))
+                    continue
+                except (Exception, KeyboardInterrupt):
+                    result = runner.interrupted()
+                if result is None:
+                    checks.append(record(key, "skipped", reason="execution-interrupted"))
+                    continue
+                captured = verify_output(result.stdout, result.stderr, target, output_limit)
+                item = record(key, "passed" if result.returncode == 0 else "failed", result.returncode, output=captured)
+                if result.returncode != 0 and unmet_toolchain:
+                    item.update(outcome="environment-limited", reason_code="toolchain-mismatch",
+                                environment={"expectations": unmet_toolchain, "observed": observed_toolchain})
+                selected_log = item["outcome"] in ("failed", "environment-limited") or policy == "all-configured"
+                log = verify_log_metadata("not-selected", "policy-failures")
+                if selected_log:
+                    try:
+                        if log_store is None:
+                            log_store = VerifyPrivateStore(target)
+                        data = ("=== stdout ===\n" + sanitize_verify_text(target, result.stdout) +
+                                "\n=== stderr ===\n" + sanitize_verify_text(target, result.stderr)).encode("utf-8")
+                        log = log_store.log(data)
+                        captured["full"] = {"path": log["path"], "sha256": log["sha256"]}
+                        verify_notice("check=" + key + " log=available path=" + log["path"] + " sha256=" + log["sha256"])
+                    except (OSError, VibeError, MemoryError) as error:
+                        log = verify_log_metadata("unavailable", verify_storage_reason(error))
+                        verify_notice("check=" + key + " log=unavailable reason=" + log["reason"])
+                checks.append(item)
+                sidecar.complete(item, log)
+                if output_format == "text":
+                    if captured["stdout_tail"]:
+                        print(captured["stdout_tail"], end="")
+                    if captured["stderr_tail"]:
+                        print(captured["stderr_tail"], file=sys.stderr, end="")
+            summary = {outcome: sum(1 for check in checks if check["outcome"] == outcome)
+                       for outcome in ("passed", "failed", "unconfigured", "skipped", "environment-limited")}
+            if runner.interruption or summary["skipped"] or summary["environment-limited"]:
+                status, code = "blocked", 2
+            elif summary["failed"]:
+                status, code = "failed", 1
+            else:
+                status, code = "passed", 0
+            envelope = result_envelope("verify", status, target=str(target), selection=selection,
+                producer="cli", cli_invoked=True, default_order=list(effective_order),
+                toolchain=observed_toolchain, checks=checks, summary=summary)
+            receipt = {"availability": "not-requested", "scope": None, "path": None, "sha256": None, "reason": None}
+            if receipt_context is not None:
+                receipt = write_verify_receipt(envelope, receipt_context[0], target)
+                if receipt["availability"] == "unavailable":
+                    envelope["status"], code = "error", 2
+                    verify_notice("receipt=unavailable reason=" + receipt["reason"])
+            def reconcile_interruption(interruption):
+                nonlocal code, receipt
+                if interruption is None or envelope["status"] in ("blocked", "error"):
+                    return False
+                # A signal observed while producing terminal evidence still
+                # blocks the invocation, even when all checks have completed.
+                envelope["status"], code = "blocked", 2
+                if receipt_context is not None and receipt["availability"] == "available":
+                    receipt = write_verify_receipt(envelope, receipt_context[0], target)
+                    if receipt["availability"] == "unavailable":
+                        envelope["status"] = "error"
+                        verify_notice("receipt=unavailable reason=" + receipt["reason"])
+                return True
+            try:
+                # The first interruption changes once, from None to its record.
+                # Prepare artifacts for that exact observation, then arm before
+                # comparing again. A signal before the arm forces reprepare;
+                # one after the arm raises through the existing delivery handler.
+                for attempt in range(2):
+                    interruption = runner.interruption
+                    reconcile_interruption(interruption)
+                    sidecar.terminal(envelope, code, receipt, interruption)
+                    runner.delivering = True
+                    if runner.interruption is interruption:
+                        break
+                    runner.delivering = False
+                else:
+                    raise VerifyDeliveryInterrupted()
+                if output_format == "json":
+                    deliver_verify_json(envelope)
+                else:
+                    configured = [check["name"] for check in checks if check["configured"]]
+                    if not configured:
+                        print("No project verification checks are configured.", flush=True)
+                    else:
+                        print("\nVerification " + envelope["status"] + ": " + ", ".join(configured),
+                              file=sys.stdout if code == 0 else sys.stderr, flush=True)
+            except VerifyDeliveryInterrupted:
+                runner.delivering = False
+                interruption = runner.interruption
+                reconcile_interruption(interruption)
+                sidecar.terminal(envelope, code, receipt, interruption)
+                # Do not append a replacement JSON to an irreversible prefix.
+                verify_notice("delivery=incomplete reason=" + runner.interruption["reason"])
+            finally:
+                # Completion is the owned write/flush returning, not downstream
+                # consumption. A later signal does not retract completed output.
+                runner.delivering = False
+            return code
+    finally:
+        sidecar.close()
+        if log_store:
+            log_store.close()
+        RECEIPT_CONTEXT[0] = None
 
 
 def normalized_slug(value: str) -> str:
@@ -8275,7 +9237,7 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
         "supported_installed_manifest_schemas": [1],
         "supported_installed_agent_protocols": [0, 1, 2, 3],
         "minimum_installed_kit_version": "0.2.0",
-        "maximum_installed_kit_version_exclusive": "0.10.1",
+        "maximum_installed_kit_version_exclusive": "0.11.0",
         "target_agent_install_schema": AGENT_INSTALL_SCHEMA,
         "target_agent_install_protocol": AGENT_INSTALL_PROTOCOL,
         "target_cli_result_schema": AGENT_RESULT_SCHEMA,
@@ -10246,6 +11208,18 @@ PUBLICATION_PROFILES = {
         "issue_policy": {"mode": "none", "issues": [], "allowed_operations": []},
         "kinds": {"prepublication-qa": "vibe-kit-v0.10.1-prepublication-qa", "configured-checks": "vibe-kit-v0.10.1-configured-checks", "python-3.9": "vibe-kit-v0.10.1-python-3.9", "clean-build": "vibe-kit-v0.10.1-clean-build", "release-gate-evidence": "vibe-kit-v0.10.1-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.10.1-postpublication-acceptance"},
     },
+    6: {
+        "schema": 6, "version": "0.11.0", "tag": "v0.11.0", "title": "Vibe Kit v0.11.0",
+        "profile": "vibe-kit-v0.11.0-prerelease", "body_path": "docs/releases/0.11.0.md",
+        "direct": "vibe-kit-0.11.0.zip", "plugin": "vibe-kit-plugin-0.11.0.zip", "distribution": "vibe-kit-distribution-0.11.0.zip",
+        "smokes": ("public-direct-init-doctor", "public-plugin-bundled-plan-init-doctor", "public-upgrade-v0.3-to-v0.11.0", "public-upgrade-v0.5-to-v0.11.0", "public-upgrade-v0.6-to-v0.11.0", "public-upgrade-v0.7-to-v0.11.0", "public-upgrade-v0.8-to-v0.11.0", "public-upgrade-v0.9-to-v0.11.0", "public-upgrade-v0.10.0-to-v0.11.0", "public-upgrade-v0.10.1-to-v0.11.0", "public-repeat-upgrade-v0.11.0"),
+        "states": {"AC-1": "passed", "AC-2": "passed", "AC-3": "passed", "AC-4": "passed", "AC-5": "passed", "AC-6": "passed", "AC-7": "passed", "AC-8": "passed", "AC-9": "passed", "AC-10.1": "passed", "AC-10.2": "not-runnable-before-publication", "AC-10.3": "not-runnable-before-publication"},
+        "requirements": {"AC-1": "none", "AC-2": "none", "AC-3": "none", "AC-4": "none", "AC-5": "none", "AC-6": "none", "AC-7": "none", "AC-8": "none", "AC-9": "none", "AC-10.1": "none", "AC-10.2": "live-read-back", "AC-10.3": "issue-closeout"},
+        "post_criteria": ["AC-1", "AC-2", "AC-3", "AC-4", "AC-5", "AC-6", "AC-7", "AC-8", "AC-9", "AC-10.1", "AC-10.2"],
+        "authorization_fields": ("authorization_source_ref", "bound_at"),
+        "issue_policy": {"mode": "after-public-verification", "issues": [14, 15, 16, 17, 18], "allowed_operations": ["create-exact-evidence-comment", "close-issue"]},
+        "kinds": {"prepublication-qa": "vibe-kit-v0.11.0-prepublication-qa", "configured-checks": "vibe-kit-v0.11.0-configured-checks", "python-3.9": "vibe-kit-v0.11.0-python-3.9", "clean-build": "vibe-kit-v0.11.0-clean-build", "release-gate-evidence": "vibe-kit-v0.11.0-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.11.0-postpublication-acceptance"},
+    },
 }
 
 REMOTE_WRITE_STATES = ("none", "confirmed-partial", "confirmed-complete", "uncertain")
@@ -10661,12 +11635,12 @@ def validate_profile_closeout_authorization(
         "allowed_operations", "closeout_intent_sha256",
         "destructive_operations_allowed",
     )
-    if schema in (2, 3):
+    if schema in (2, 3, 4):
         fields += ("authorization_source_ref", "bound_at")
     if not exact_keys(value, fields) or not isinstance(value, dict):
         return ["closeout authorization fields are unknown or incomplete"]
     errors: List[str] = []
-    if schema in (2, 3) and (not isinstance(value.get("authorization_source_ref"), str) or not value.get("authorization_source_ref") or contains_secret(value["authorization_source_ref"]) or not is_iso8601(value.get("bound_at"))):
+    if schema in (2, 3, 4) and (not isinstance(value.get("authorization_source_ref"), str) or not value.get("authorization_source_ref") or contains_secret(value["authorization_source_ref"]) or not is_iso8601(value.get("bound_at"))):
         errors.append("closeout authorization source reference or binding time is invalid")
     if (
         not isinstance(value.get("closeout_authorization_id"), str)
@@ -10786,6 +11760,68 @@ def validate_v100_closeout_receipt(value: object, intent: Dict[str, object], aut
     items = value.get("items")
     if not isinstance(items, list) or [item.get("issue_number") for item in items if isinstance(item, dict)] != V100_CLOSEOUT_ISSUES:
         return errors + ["closeout receipt requires exactly the ordered #8-#13 items"]
+    for item, expected in zip(items, intent.get("issues", [])):
+        if not exact_keys(item, ("issue_number", "expected_initial_state", "comment_body_sha256", "comment_id", "comment_url", "comment_write_state", "close_write_state", "observed_post_state", "read_back", "error")):
+            errors.append("closeout receipt item fields are invalid")
+            continue
+        number = item["issue_number"]
+        comment_id = item.get("comment_id")
+        if (item.get("expected_initial_state") != expected.get("observed_state") or item.get("comment_body_sha256") != expected.get("comment_body_sha256") or item.get("observed_post_state") not in (None, "open", "closed") or not isinstance(item.get("read_back"), bool) or item.get("comment_write_state") not in HISTORICAL_CLOSEOUT_OUTCOMES or item.get("close_write_state") not in HISTORICAL_CLOSEOUT_OUTCOMES or (item.get("error") is not None and not valid_publication_error(item["error"]))):
+            errors.append("closeout receipt item identity or state is invalid")
+        if (comment_id is None and item.get("comment_url") is not None) or (comment_id is not None and (not valid_positive_int(comment_id) or item.get("comment_url") != f"https://github.com/mintgao/vibe-kit/issues/{number}#issuecomment-{comment_id}")):
+            errors.append("closeout comment identity is invalid")
+        if value.get("overall_state") == "confirmed-complete" and (not valid_positive_int(comment_id) or item.get("observed_post_state") != "closed" or item.get("read_back") is not True or item.get("error") is not None or item.get("comment_write_state") not in ("created", "read-matched", "confirmed-after-uncertain") or item.get("close_write_state") not in ("created", "read-matched", "confirmed-after-uncertain")):
+            errors.append("complete closeout requires exact comments and closed issue read-back")
+    return errors
+
+
+
+V110_CLOSEOUT_ISSUES = [14, 15, 16, 17, 18]
+
+
+def validate_v110_closeout_parent(parent: Dict[str, object], publication: Dict[str, object], authorization: Dict[str, object], acceptance: Dict[str, object], validation: Dict[str, object]) -> List[str]:
+    profile = PUBLICATION_PROFILES[6]
+    errors = validate_profile_intent(parent, profile=profile)
+    if (validation.get("schema_version") != AGENT_RESULT_SCHEMA or type(validation.get("schema_version")) is not int
+            or validation.get("version") != "0.11.0" or validation.get("remote_write_state") != "confirmed-complete"
+            or validation.get("verification_state") != "passed" or validation.get("errors") != []
+            or validation.get("network_used") is not False or validation.get("host_evidence_authenticated") is not False):
+        errors.append("closeout requires the matching completed schema-2 publication validation result")
+    errors.extend(validate_profile_receipt(publication, parent, profile=profile))
+    errors.extend(validate_profile_authorization(authorization, parent, profile=profile))
+    errors.extend(validate_profile_postpublication_acceptance(acceptance, parent, authorization, str(acceptance.get("source_tree_oid", "")), profile=profile))
+    if (publication.get("remote_write_state") != "confirmed-complete" or publication.get("verification_state") != "passed" or publication.get("error") is not None or acceptance.get("status") != "passed" or not valid_oid(acceptance.get("source_tree_oid"))):
+        errors.append("closeout requires completed public verification and passing acceptance")
+    if (validation.get("command") != "validate-publication" or validation.get("status") != "valid" or validation.get("profile") != profile["profile"] or validation.get("intent_sha256") != canonical_json_sha256(parent) or validation.get("authorization_id") != authorization.get("authorization_id") or validation.get("host_operation_id") != authorization.get("host_operation_id") or acceptance.get("validate_publication_result_sha256") != canonical_json_sha256(validation)):
+        errors.append("closeout validation receipt does not bind the accepted publication")
+    if (publication.get("authorization_id") != authorization.get("authorization_id") or publication.get("host_operation_id") != authorization.get("host_operation_id")):
+        errors.append("closeout parent authorization mismatch")
+    return errors
+
+
+def build_v110_closeout_intent(request: Dict[str, object], parent: Dict[str, object], publication: Dict[str, object], authorization: Dict[str, object], acceptance: Dict[str, object], validation: Dict[str, object]) -> Tuple[Dict[str, object], Dict[str, str]]:
+    errors = validate_v110_closeout_parent(parent, publication, authorization, acceptance, validation)
+    if request.get("publication_receipt_sha256") != canonical_json_sha256(publication) or request.get("verification_receipt_sha256") != canonical_json_sha256(acceptance):
+        errors.append("closeout parent receipt digest mismatch")
+    if errors:
+        raise VibeError("; ".join(errors))
+    return build_profile_closeout_intent(request, version="0.11.0", schema=4, issue_numbers=V110_CLOSEOUT_ISSUES, parent_digest=canonical_json_sha256(parent))
+
+
+def validate_v110_closeout_receipt(value: object, intent: Dict[str, object], authorization: Dict[str, object]) -> List[str]:
+    errors = validate_profile_closeout_authorization(authorization, intent, schema=4)
+    if not isinstance(value, dict) or type(value.get("schema_version")) is not int:
+        errors.append("closeout schema must be an integer")
+    fields = ("schema_version", "kind", "closeout_id", "closeout_intent_sha256", "closeout_authorization_id", "overall_state", "items")
+    if not exact_keys(value, fields):
+        return errors + ["closeout receipt fields are unknown or incomplete"]
+    if (value.get("schema_version") != 4 or value.get("kind") != "vibe-kit-issue-closeout-receipt" or value.get("closeout_id") != intent.get("closeout_id") or value.get("closeout_intent_sha256") != canonical_json_sha256(intent) or value.get("closeout_authorization_id") != authorization.get("closeout_authorization_id") or value.get("overall_state") not in ("not-run", "confirmed-partial", "confirmed-complete", "uncertain", "conflict")):
+        errors.append("closeout receipt identity or state is invalid")
+    items = value.get("items")
+    if (not isinstance(items, list) or len(items) != len(V110_CLOSEOUT_ISSUES)
+            or any(not isinstance(item, dict) for item in items)
+            or [item.get("issue_number") for item in items] != V110_CLOSEOUT_ISSUES):
+        return errors + ["closeout receipt requires exactly the ordered #14-#18 items"]
     for item, expected in zip(items, intent.get("issues", [])):
         if not exact_keys(item, ("issue_number", "expected_initial_state", "comment_body_sha256", "comment_id", "comment_url", "comment_write_state", "close_write_state", "observed_post_state", "read_back", "error")):
             errors.append("closeout receipt item fields are invalid")
@@ -11096,7 +12132,7 @@ def validate_profile_authorization(value: object, intent: Dict[str, object], *, 
     errors: List[str] = []
     if any((not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
         errors.append('publication authorization identity is invalid')
-    if profile['schema'] in (3, 4, 5) and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
+    if profile['schema'] in (3, 4, 5, 6) and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
         errors.append('authorization source reference or binding time is invalid')
     expected = {'repository': 'mintgao/vibe-kit', 'version': profile['version'], 'release_kind': 'prerelease', 'allowed_operations': list(V080_PUBLICATION_ALLOWED_OPERATIONS), 'publication_intent_sha256': canonical_json_sha256(intent)}
     if any((value.get(key) != expected[key] for key in expected)):
@@ -11206,6 +12242,8 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
         return ['schema-2 publication intent fields are unknown or incomplete']
     intent = value
     errors: List[str] = []
+    if profile["schema"] == 6 and type(value.get("schema_version")) is not int:
+        errors.append("publication schema must be an integer")
     if intent.get('schema_version') != profile['schema'] or intent.get('kind') != 'vibe-kit-publication' or intent.get('profile') != profile['profile'] or (intent.get('repository') != publication_repository()) or (intent.get('version') != profile['version']) or (not valid_oid(intent.get('source_commit'))):
         errors.append('schema-2 publication profile identity is invalid')
     main = intent.get('main')
@@ -11230,7 +12268,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
                 errors.append('schema-2 publication asset identity is invalid')
         if intent.get('asset_set_sha256') != canonical_json_sha256(assets):
             errors.append('schema-2 publication asset-set digest is invalid')
-    if profile['schema'] in (3, 4, 5) and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
+    if profile['schema'] in (3, 4, 5, 6) and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
         errors.append('publication requires each exact asset name once')
     gates = intent.get('local_gates')
     if not exact_keys(gates, ('release_gate_evidence_sha256',)) or not valid_sha256(gates.get('release_gate_evidence_sha256')):
@@ -11250,7 +12288,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
         if not exact_keys(operation, fields):
             errors.append('schema-2 publication operation fields are invalid')
             continue
-        if profile['schema'] in (3, 4, 5):
+        if profile['schema'] in (3, 4, 5, 6):
             exact_keys_by_operation = (
                 "mintgao/vibe-kit:main", f"mintgao/vibe-kit:tag:{profile['tag']}",
                 f"mintgao/vibe-kit:release:{profile['tag']}", f"mintgao/vibe-kit:release:{profile['tag']}:assets",
@@ -11300,7 +12338,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
 def validate_publication_intent(value: object) -> List[str]:
     if isinstance(value, dict) and value.get("schema_version") == 1:
         return validate_publication_intent_v1(value)
-    if isinstance(value, dict) and value.get("schema_version") in (2, 3, 4, 5):
+    if isinstance(value, dict) and value.get("schema_version") in (2, 3, 4, 5, 6):
         return validate_profile_intent(value, profile=PUBLICATION_PROFILES[value["schema_version"]])
     return ["publication intent schema/profile is unsupported"]
 
@@ -11352,7 +12390,7 @@ def publication_plan(
             candidate_status = validate_release(release_dir, "json")
         if candidate_status != 0:
             errors.append("publication candidate does not pass validate-release")
-        if schema in (2, 3, 4, 5):
+        if schema in (2, 3, 4, 5, 6):
             if comparison_candidate is None:
                 errors.append("schema-2 publication planning requires --comparison-candidate")
             if release_gate_evidence is None:
@@ -11744,6 +12782,8 @@ def validate_profile_receipt(value: object, intent: Dict[str, object], *, profil
         return ['schema-2 publication receipt fields are unknown or incomplete']
     receipt = value
     errors: List[str] = []
+    if profile["schema"] == 6 and type(value.get("schema_version")) is not int:
+        errors.append("publication receipt schema must be an integer")
     if receipt.get('schema_version') != profile['schema'] or receipt.get('kind') != 'vibe-kit-publication-receipt' or receipt.get('profile') != profile['profile'] or (receipt.get('version') != profile['version']) or (receipt.get('repository') != 'mintgao/vibe-kit') or (receipt.get('intent_sha256') != canonical_json_sha256(intent)) or any((not isinstance(receipt.get(key), str) or not receipt.get(key) or len(receipt[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
         errors.append('schema-2 publication receipt identity is invalid')
     if receipt.get('remote_write_state') not in REMOTE_WRITE_STATES or receipt.get('verification_state') not in VERIFICATION_STATES:
@@ -11850,7 +12890,7 @@ def validate_publication_receipt_shape(
 ) -> List[str]:
     if isinstance(receipt, dict) and receipt.get("schema_version") == 1:
         return validate_publication_receipt_shape_v1(receipt)
-    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3, 4, 5) and isinstance(intent, dict):
+    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3, 4, 5, 6) and isinstance(intent, dict):
         return validate_profile_receipt(receipt, intent, profile=PUBLICATION_PROFILES[receipt["schema_version"]])
     return ["publication receipt schema/profile is unsupported"]
 
@@ -12082,7 +13122,7 @@ def validate_publication(
         if authorization_path is not None:
             raise VibeError("historical schema-1 validation does not accept --authorization")
         return validate_publication_v1(intent_path, receipt_path, release_dir, output_format)
-    if schema in (2, 3, 4, 5):
+    if schema in (2, 3, 4, 5, 6):
         return validate_publication_profile(
             intent_path, receipt_path, release_dir, authorization_path, output_format, profile=PUBLICATION_PROFILES[schema]
         )
@@ -13455,8 +14495,10 @@ def issue_closeout_command(args: argparse.Namespace) -> int:
         build_intent, validate_receipt = build_v090_closeout_intent, validate_v090_closeout_receipt
     elif parent_schema == 4:
         build_intent, validate_receipt = build_v100_closeout_intent, validate_v100_closeout_receipt
+    elif parent_schema == 6:
+        build_intent, validate_receipt = build_v110_closeout_intent, validate_v110_closeout_receipt
     else:
-        raise VibeError("issue closeout requires a schema-3 (v0.9.0) or schema-4 (v0.10.0) parent publication intent")
+        raise VibeError("issue closeout requires a schema-3 (v0.9.0), schema-4 (v0.10.0) or schema-6 (v0.11.0) parent publication intent")
     intent, bodies = build_intent(*(values[key] for key in required))
     errors = []
     if "closeout_receipt" in values:
@@ -13601,6 +14643,10 @@ def build_parser() -> argparse.ArgumentParser:
     publication_validation_parser.add_argument("--receipt", type=Path, required=True)
     publication_validation_parser.add_argument("--candidate", type=Path, required=True)
     publication_validation_parser.add_argument("--authorization", type=Path)
+    publication_validation_parser.add_argument(
+        "--result-receipt", type=Path,
+        help="Create a distinct new validation result artifact; --receipt is read-only input. JSON output is implied.",
+    )
     add_format_argument(publication_validation_parser)
 
     verify_parser = subparsers.add_parser("verify")
@@ -13612,6 +14658,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Run only one configured check; repeat to select more than one.",
     )
+    verify_parser.add_argument("--log-policy", choices=("failures", "all-configured"))
+    progress_options = verify_parser.add_mutually_exclusive_group()
+    progress_options.add_argument("--progress", dest="progress", action="store_true")
+    progress_options.add_argument("--no-progress", dest="progress", action="store_false")
+    verify_parser.set_defaults(progress=None)
     verify_parser.add_argument(
         "--receipt",
         type=Path,
@@ -13667,7 +14718,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def dispatch_main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
@@ -13682,7 +14733,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 args.artifact_sha256,
                 args.host,
             )
-        receipt_option = getattr(args, "receipt", None)
+        if args.command == "validate-publication" and args.result_receipt is not None:
+            args.output_format = "json"
+        receipt_option = (getattr(args, "receipt", None)
+                          if args.command in ("plan", "upgrade", "doctor", "verify", "validate-takeover") else None)
         if receipt_option is not None:
             if getattr(args, "output_format", "json") != "json":
                 args.output_format = "json"
@@ -13724,13 +14778,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 args.output_format,
             )
         if args.command == "validate-publication":
-            return validate_publication(
-                args.intent,
-                args.receipt,
-                args.candidate,
-                args.authorization,
-                args.output_format,
-            )
+            return publication_validation_command(args)
         if args.command == "doctor":
             return doctor(Path(args.target), args.output_format)
         if args.command == "validate-takeover":
@@ -13744,7 +14792,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.command == "inspect-managed-agents":
             return inspect_managed_agents(Path(args.target), args.word_policy, args.max_words, args.output_format)
         if args.command == "verify":
-            return verify(Path(args.target), args.only, args.output_format)
+            return verify(Path(args.target), args.only, args.output_format, args.log_policy, args.progress)
         if args.command == "work-item":
             return work_item(Path(args.target), args.slug, args.size, args.title)
         if args.command == "feedback":
@@ -13848,6 +14896,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     parser.error("unknown command")
     return 2
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    RECEIPT_CONTEXT[0] = None
+    try:
+        return dispatch_main(argv)
+    finally:
+        RECEIPT_CONTEXT[0] = None
 
 
 if __name__ == "__main__":

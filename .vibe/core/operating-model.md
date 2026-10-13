@@ -165,6 +165,20 @@ authority, review, and fallback-host rules.
 
 ## Evidence contract
 
+For prospective multi-stage M/L work delivering part of a larger approved
+outcome, use the optional brief section to record approved outcome/AC references,
+this stage's coverage, Pass/Fail/Blocked/Unverified/Not applicable, evidence,
+next action, role owner and blocker/waiting condition. Source Pass plus external
+API Blocked plus export Unverified completes only the source stage; Close must
+not claim overall delivery. Continue an already-authorized actionable diagnosis
+with its next action and owner. A genuine external permission blocker records
+its waiting condition and owner. This guidance grants no permission and repeats
+no settled product approval. S remains lightweight and completed historical
+documents are not retrofitted. Keep host goal text, transfer payloads and custody
+outside repository documents. Technical review, gate authority and independent
+QA remain required; Unverified is a planning state, not a new QA result enum.
+Static scenarios cannot prove live-model compliance or measured efficiency.
+
 Completion reports should state:
 
 - what changed;

@@ -18,7 +18,13 @@
     "tests/test_readiness_doc_gates.py",
     "docs/decisions/0014-readiness-doc-gates-v09-publication.md",
     "docs/releases/0.9.0.md",
-    "docs/work-items/20260908-readiness-doc-gates-release/verification.md"
+    "docs/work-items/20260908-readiness-doc-gates-release/verification.md",
+    "docs/releases/0.10.0.md",
+    "docs/releases/0.10.1.md",
+    "docs/decisions/0017-verification-contract-closure.md",
+    "docs/decisions/0018-takeover-admission.md",
+    "docs/decisions/0021-v0-10-1-publication.md",
+    "docs/work-items/20260922-v0-10-1-publication/postpublication.md"
   ],
-  "updated_at": "2026-09-08"
+  "updated_at": "2026-10-12"
 }

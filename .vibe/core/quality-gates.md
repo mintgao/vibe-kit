@@ -52,6 +52,33 @@ replace it.
 - A verdict that depends on the host environment is recorded as `environment-limited` with a reason and the observed toolchain. It applies only to a non-zero exit whose declared toolchain expectation the host does not meet, so it never reclassifies a passing check and never launders a real failure.
 - The receipt records the observed toolchain (`python`, `node`, `pnpm`), so a later reader can tell which environment produced the verdict.
 
+- `checks.log_policy` is `failures` by default, or `all-configured` for opt-in
+  complete successful output. `checks.progress` defaults to true; strict boolean
+  values and independent `--log-policy`/`--progress`/`--no-progress` overrides
+  preserve old configurations. Duplicate declarations and unknown values fail
+  before checks run. Complete sanitized logs use exact `stdout-stderr-v1` layout
+  under `.vibe/local/verify/logs/sha256/<sha256>.log`, referenced by existing
+  `output.full={path,sha256}` only after safe publication/reuse succeeds.
+- Execution schema 1 snapshots and the last-successfully-published locator under
+  `.vibe/local/verify/runs/` are metadata-only diagnostics. Progress and log stores
+  are independent. Default successful output is not persisted automatically;
+  only explicit `--receipt` persists the bounded envelope. Optional unavailable
+  storage never changes a project's observed outcome or stops independent checks.
+- Validate snapshots with the bounded closed reader, their metadata checksum,
+  supplied final envelope binding and requested actual artifact checks. Finished
+  is not Pass; running is a last observation, not liveness. Incomplete/blocked
+  evidence never passes, and descendant termination stays `not-proven`. Missing,
+  disabled, stale or invalid progress does not invalidate an independently
+  complete valid receipt. Successful log retention can consume substantial disk;
+  no automatic expiry/deletion is added, and known-pattern sanitization is not
+  universal secret detection. Private logs are not public submission evidence.
+- Handled signals during owned terminal delivery/flush remain exit 2 with
+  incomplete progress and blocked/error explicit receipt when safely available.
+  Escaped stdout cannot be retracted and can remain partial/unusable; append no
+  replacement JSON and claim no atomic delivery or downstream acknowledgement.
+  Preserve complete check outcomes. Optional progress resource exhaustion closes
+  owned resources and reports unavailable without stopping later checks/logs.
+
 ## Post-upgrade takeover gate
 
 - A safe apply plus target doctor proves `upgraded`, never `activated` or `ready`.

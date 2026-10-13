@@ -275,12 +275,12 @@ class WorkflowContractTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "does not currently parse work-item readiness or mechanically prevent file writes",
+            "validates bounded work-item readiness evidence read-only",
             readme,
         )
         self.assertIn("文档字符串测试不能替代这类行为证据", chinese_readme)
         self.assertIn(
-            "当前不会解析 work-item 状态或机械阻止文件写入",
+            "只读验证有限格式的 work-item 就绪证据",
             chinese_readme,
         )
 
@@ -288,7 +288,7 @@ class WorkflowContractTests(unittest.TestCase):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         self.assertEqual(contract["schema_version"], 4)
         self.assertEqual(contract["protocol_version"], 4)
-        self.assertEqual(contract["kit_version"], "0.10.1")
+        self.assertEqual(contract["kit_version"], "0.11.0")
         self.assertEqual(contract["adapter"]["protocol"], 7)
         self.assertEqual(contract["adapter"]["name"], "codex")
         self.assertEqual(set(contract["hosts"]), {"codex", "hermes"})
@@ -307,7 +307,7 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual(
             contract["maintenance_bridge"]["maximum_installed_kit_version_exclusive"],
-            "0.10.1",
+            "0.11.0",
         )
         self.assertEqual(
             contract["lifecycle"]["stages"],

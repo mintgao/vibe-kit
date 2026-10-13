@@ -14,7 +14,7 @@
 
 Vibe Kit 是一套随项目固定版本的 Agent 开发工作范式。你只需要描述项目和想要的结果。Codex 会负责可信接入、项目理解、工作流选择、技术决策就绪检查、实现和验证。
 
-这套工作方式会跟随项目仓库。协作者换到另一台电脑后，仍能获得同一版本的指令和项目上下文。目前经过验证的 Agent 运行环境是 Codex。Hermes 已作为一等声明宿主发布：拥有自己的能力声明、payload 选择与角色映射，记录为「已支持、未完整验证」。其他 coding Agent 需要单独的适配器和一致性证据，才能获得同样的兼容性声明。
+这套工作方式会跟随项目仓库。协作者换到另一台电脑后，仍能获得同一版本的指令和项目上下文。目前经过验证的 Agent 运行环境是 Codex。Hermes 已作为一等声明宿主发布：拥有自己的能力声明、payload 选择与角色映射，依据已完成的五阶段一致性记录，标记为「已验证」。其他 coding Agent 需要单独的适配器和一致性证据，才能获得同样的兼容性声明。
 
 ## 主要能力
 
@@ -82,13 +82,38 @@ Vibe Kit 由一个无第三方依赖的 Python CLI、项目级指令、专门角
 
 `doctor --format json` 会分别报告安装健康度和项目理解是否就绪，并为每条警告/错误给出固定的 readiness 影响。`verify --format json` 会输出 lint、typecheck、test、build 的完整矩阵，区分通过、失败、未配置和跳过。`verify` 只执行 `.vibe/project.yaml` 中明确配置的项目命令。
 
+### 本地验证可观察性（0.11.0 候选）
+
+旧配置保持 `log_policy: "failures"` 与 `progress: true` 的默认行为。
+设置 `checks.log_policy: "all-configured"`，或使用
+`verify --log-policy all-configured`，可保留超过 16 KiB 尾部的完整、脱敏成功输出。
+失败和环境受限检查的完整日志默认仍会保留。固定标签分别保留 stdout 与 stderr，
+日志以内容摘要寻址并带 SHA-256；默认策略不会自动把成功输出写到磁盘。
+
+`checks.progress` 只接受 `true` 或 `false`，`--progress`/`--no-progress` 只覆盖进度设置。
+元数据快照在执行前记录当前检查与开始时间。启动时的 stderr 提示给出本次运行身份；
+`latest.json` 指向最后成功发布的定位记录，不能证明存活或验收通过。
+完整送达的 JSON stdout 只有一个最终结果。最终输出期间收到可处理信号时返回非零，
+可能留下不可用的 JSON 片段；不会追加替代文档。可写的显式回执记录 blocked/error
+证据。中断不能证明所有
+子孙进程都已停止。进度缺失不会使独立完整的有效回执失效。
+
+私有证据目录为 0700、文件为 0600，并有嵌套 Git 忽略规则。可选存储失败只报告 unavailable，
+保留已经观察到的检查结果；显式 `--receipt` 才请求保存有界最终结果，写失败返回非零。
+不会自动另存结果、清理或到期删除；完整捕获占用内存，选入的完整日志可能占用较多磁盘。
+已知模式脱敏不能保证识别所有秘密，日志须保持私有。详见[设置与安全读取器](docs/verification-observability.md)。
+
+适用的后续多阶段 M/L brief 可记录已批准目标/AC 引用、阶段覆盖、状态、证据、下一步、角色负责人
+和等待条件。源码 Pass、API Blocked、导出 Unverified 只表示源码阶段完成。
+S 保持轻量；技术评审与独立 QA 继续适用，宿主目标文本和接管 custody 不写入仓库文档。
+
 ### 信任、发布与兼容性
 
 默认信任契约只承认 `https://github.com/mintgao/vibe-kit`。准确的 tag 和 Release URL 会选择一个明确的已发布版本，安装前还会校验 Release 元数据和 SHA-256。移动引用 `main`、未经验证的压缩包、静默切换仓库和 `curl | sh` 都会被拒绝。
 
-面向人和机器的规范契约分别是 [AGENT_INSTALL.md](AGENT_INSTALL.md) 与 [agent-install.json](agent-install.json)。0.10.1 Pre-release 使用 core/Codex protocol 7 与 Hermes adapter protocol 1、Agent-install schema/protocol 4、takeover schema 2、maintenance bridge schema 2、publication schema 5 及独立 closeout schema 3、CLI result schema 2、release-manifest schema 2、transaction/commit schema 1 和 feedback protocol 2；历史发布保持不变。
+面向人和机器的规范契约分别是 [AGENT_INSTALL.md](AGENT_INSTALL.md) 与 [agent-install.json](agent-install.json)。当前源码候选 0.11.0 使用 core/Codex protocol 7 与 Hermes adapter protocol 1、Agent-install schema/protocol 4、takeover schema 2、maintenance bridge schema 2、publication schema 6 及独立 closeout schema 4、CLI result schema 2、独立的本地 execution schema 1、release-manifest schema 2、transaction/commit schema 1 和 feedback protocol 2；历史发布保持不变。
 
-0.10.1 会把这两份 Agent-install 契约作为 framework-managed 文件安装到项目中，并纳入 manifest 与激活身份。`bin/vibe validate-takeover --format json` 会先验证已安装契约与编译后 registry，再对 stdin 中的完整封闭 takeover 结构做校验，不持久化或回显输入。`valid` 只代表结构自洽，不代表宿主回执已被认证，也不代表已就绪。
+当前源码候选会把这两份 Agent-install 契约作为 framework-managed 文件安装到项目中，并纳入 manifest 与激活身份。`bin/vibe validate-takeover --format json` 会先验证已安装契约与编译后 registry，再对 stdin 中的完整封闭 takeover 结构做校验，不持久化或回显输入。`valid` 只代表结构自洽，不代表宿主回执已被认证，也不代表已就绪。
 
 `bin/vibe init`、`adopt` 和 `upgrade` 接受逗号分隔的 `--host` 选择（默认 `codex`），可选范围为契约声明的宿主。安装副本会把该选择记入 manifest 与契约的激活身份，并且只携带所选宿主的 payload；发布产物本身始终包含每个已声明宿主的文件。记录的选择与已安装 payload 不一致时会 fail-closed。
 
@@ -103,7 +128,7 @@ Vibe Kit 由一个无第三方依赖的 Python CLI、项目级指令、专门角
 
 升级会在替换托管文件前比较安装记录、本地内容和新版本内容。如果项目与新版本同时修改了同一个托管文件，Vibe Kit 会在改动托管文件前停止，并把待审核的新版本候选写入 `.vibe/conflicts/<timestamp>/`。
 
-0.10.1 Pre-release 只提供一个精确的兼容例外：对官方、健康的 v0.5.0 source checkout，将原本未记入 manifest 的两份 Agent-install 契约作为一个完整集认证，然后替换并纳入托管。缺失、修改、混合、符号链接、竞态或其他不健康状态仍会冲突；其他未跟踪文件不会因此获得自动接管。
+0.11.0 源码候选保留一个精确的兼容例外：对官方、健康的 v0.5.0 source checkout，将原本未记入 manifest 的两份 Agent-install 契约作为一个完整集认证，然后替换并纳入托管。缺失、修改、混合、符号链接、竞态或其他不健康状态仍会冲突；其他未跟踪文件不会因此获得自动接管。
 
 v0.7 只允许经过审计的 v0.2 fixture 与官方 v0.3/v0.4 身份创建 `pending` onboarding；已有合法状态保持字节不变，v0.5/v0.6 缺失状态会在写入前阻断。升级现在是范围明确、可恢复的事务：失败只会报告已回滚、需要执行 `recover-upgrade`，或无法分类且禁止自动覆盖。
 
@@ -118,12 +143,12 @@ v0.7 只允许经过审计的 v0.2 fixture 与官方 v0.3/v0.4 身份创建 `pen
 ```bash
 python3 -m unittest discover -s tests -v
 ./bin/vibe package --status prerelease
-./bin/vibe validate-release dist/vibe-kit-0.10.1
+./bin/vibe validate-release dist/vibe-kit-0.11.0
 ```
 
 维护者通过仓库内 `vibe-release` Skill 和离线的 `publication-plan`、`validate-publication` 管理精确五资产 Pre-release。GitHub 凭据与远端写入仍归 Agent/宿主所有；精确选择和 SHA-256 校验不等于平台强制不可变。
 
-发布校验会检查压缩包路径安全、摘要、版本、Agent 契约与编译后 registry 一致性、激活 v2 独立重算、有界生产 validator 用例，以及直接 Release、Plugin payload 和展开后的 marketplace 之间是否漂移。详细信息见 [0.10.1 发布说明](docs/releases/0.10.1.md)、[升级后接管决策](docs/decisions/0009-post-upgrade-takeover.md)与[可复现发布决策](docs/decisions/0004-reproducible-release-contract.md)。
+发布校验会检查压缩包路径安全、摘要、版本、Agent 契约与编译后 registry 一致性、激活 v2 独立重算、有界生产 validator 用例，以及直接 Release、Plugin payload 和展开后的 marketplace 之间是否漂移。详细信息见 [0.11.0 候选说明](docs/releases/0.11.0.md)、[升级后接管决策](docs/decisions/0009-post-upgrade-takeover.md)与[可复现发布决策](docs/decisions/0004-reproducible-release-contract.md)。
 
 静态契约测试能够确认分发指令包含必要边界。真实 Agent 是否正确执行这套流程，仍需受控场景和独立 QA。文档字符串测试不能替代这类行为证据。
 
@@ -141,11 +166,11 @@ Vibe Kit 不采集遥测，也不会静默提交反馈。可复现的 Kit 缺口
 
 ### 当前限制
 
-- `v0.10.1` 是本次选定的 Pre-release 版本；公开发布完成情况另行记录。目前没有 stable Release、公共 Plugin Directory 条目、自动联网更新器，也没有发布者签名和外部 provenance 证明。
+- `v0.10.1` 仍是最新已发布的 Pre-release；`0.11.0` 是未发布的源码候选，最终 QA、公开发布与读回、五个 Issue 的关闭仍须后续证据。目前没有 stable Release、公共 Plugin Directory 条目、自动联网更新器，也没有发布者签名和外部 provenance 证明。
 - SHA-256 元数据能验证附件和 manifest 是否一致。发布者身份仍然依赖 GitHub 账号、commit 和 tag。
-- Codex 是目前唯一经过验证的 Agent 适配；Hermes 已声明为一等宿主并记录为「已支持、未完整验证」，在五阶段一致性记录完成前保持最严格的 fail-closed 规则。当前仓库与 Plugin 对升级激活仅声称手动兜底；同任务重载、自动后继任务、真实 Linux 和真实 Plugin host 仍缺少正向证据。
+- Codex 与 Hermes 是目前经过验证的 Agent 适配；Hermes 的声明依据是已完成的五阶段一致性记录。缺少完整一致性记录的宿主仍须遵守最严格的 fail-closed 规则。当前仓库与 Plugin 对升级激活仅声称手动兜底；同任务重载、自动后继任务、真实 Linux 和真实 Plugin host 仍缺少正向证据。
 - 安装不是整个目录级事务。升级只对托管/工具维护状态及狭窄的 onboarding 兼容桥提供可恢复事务，不覆盖业务文件或整个 Git 工作区。
-- 技术决策就绪依靠 prompt、角色分离和 Markdown 证据组成一套遇到缺口就停止的仓库工作流契约。CLI 会分发并校验这些文件的摘要，当前不会解析 work-item 状态或机械阻止文件写入。
+- 技术决策就绪依靠 prompt、角色分离和 Markdown 证据组成一套遇到缺口就停止的仓库工作流契约。CLI 会只读验证有限格式的 work-item 就绪证据并校验分发契约摘要；人和 Agent 仍负责适用性与放行，CLI 不会机械阻止文件写入。
 - 接入阶段只做浅层技术栈识别。安装后的项目理解流程会根据仓库证据建立更深入的上下文。
 
 更多实现细节见 [Agent-first 接入决策](docs/decisions/0007-agent-first-adoption-contract.md)、[技术决策就绪契约](.vibe/core/technical-decision-readiness.md)和[分发设计](docs/work-items/20260827-distribution-architecture/design.md)。

@@ -43,10 +43,10 @@ Provide a project-pinned development system that lets coding Agents carry truste
 
 ## Non-goals and boundaries
 
-- Vibe Kit v0.10.0 is the latest published non-draft GitHub Pre-release, and
-  v0.10.1 is the prepared candidate; its public completion is recorded only after
-  live verification. The v0.10.0 publication, public verification and issue #8/#13
-  closeout evidence is recorded in
+- Vibe Kit v0.10.1 is the latest published non-draft GitHub Pre-release. Its
+  public completion and live verification are recorded in
+  `docs/work-items/20260922-v0-10-1-publication/postpublication.md`. The historical
+  v0.10.0 publication, public verification and issue #8–#13 closeout are recorded in
   `docs/work-items/20260922-v0-10-0-publication/postpublication.md`, and the
   earlier v0.9.0 evidence in
   `docs/work-items/20260908-readiness-doc-gates-release/verification.md`. Both
@@ -71,4 +71,13 @@ Provide a project-pinned development system that lets coding Agents carry truste
 - Verification results must distinguish executed evidence from assumptions or skipped checks.
 - Upgrade completion language must distinguish installed files, active target rules, adapted context, configured-check coverage, and original-goal routability.
 
-The published v0.9.0 release added bounded preimplementation evidence validation and authenticated AGENTS-region integration without changing project word budgets. The published v0.10.0 release added the widened readiness grammar, the closed verification contract, published takeover admission and the per-host registry with the schema-4 Agent-install contract and the first-class Hermes entry, and its closeout closed issues #8–#13. The v0.10.1 candidate publishes the Hermes label raise: the conformance label rose from `supported-unverified` to `verified` on its completed five-stage record, and the version boundary advances with publication schema 5 and no issue closeout. Both release homepages are reviewed and synchronized; independent public acceptance is recorded in the current work item.
+The published v0.9.0 release added bounded preimplementation evidence validation and authenticated AGENTS-region integration without changing project word budgets. The published v0.10.0 release added the widened readiness grammar, the closed verification contract, published takeover admission and the per-host registry with the schema-4 Agent-install contract and the first-class Hermes entry, and its closeout closed issues #8–#13. The published v0.10.1 release publishes the Hermes label raise: the conformance label rose from `supported-unverified` to `verified` on its completed five-stage record, and the version boundary advances with publication schema 5 and no issue closeout. Both release homepages are reviewed and synchronized; independent public acceptance is recorded in the current work item.
+
+The current source candidate is unpublished 0.11.0. It implements the accepted
+five feedback targets: safe publication result persistence, repeatable maintenance
+transactions, opt-in complete sanitized success logs, private diagnostic progress
+and prospective multi-stage outcome coverage. Source implementation does not
+establish final independent QA, public completion or issue closure; those remain
+separate evidence phases. Default successful output is not written by progress,
+optional storage failure preserves observed checks, and interruption remains
+incomplete with descendant cancellation unproven.

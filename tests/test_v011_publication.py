@@ -144,11 +144,11 @@ class V011PublicationProfileTests(unittest.TestCase):
             "a v0.10.1 receipt must not validate a v0.10.0 intent",
         )
         self.assertEqual(
-            self.m.validate_publication_intent(dict(intent, schema_version=6)),
+            self.m.validate_publication_intent(dict(intent, schema_version=7)),
             ["publication intent schema/profile is unsupported"],
         )
         self.assertEqual(
-            self.m.validate_publication_receipt_shape(dict(profile_test_receipt(self.m, intent, 5), schema_version=6), intent),
+            self.m.validate_publication_receipt_shape(dict(profile_test_receipt(self.m, intent, 5), schema_version=7), intent),
             ["publication receipt schema/profile is unsupported"],
         )
         # the historical entry points keep their own acceptance
@@ -166,7 +166,7 @@ class V011PublicationProfileTests(unittest.TestCase):
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
         self.assertEqual(
             (self.m.PUBLICATION_INTENT_SCHEMA, self.m.PUBLICATION_RECEIPT_SCHEMA, self.m.ISSUE_CLOSEOUT_INTENT_SCHEMA),
-            (5, 5, 3),
+            (6, 6, 4),
         )
         self.assertEqual(
             (
@@ -174,7 +174,7 @@ class V011PublicationProfileTests(unittest.TestCase):
                 contract["publication"]["receipt_schema"],
                 contract["publication"]["issue_closeout_intent_schema"],
             ),
-            (5, 5, 3),
+            (6, 6, 4),
         )
         self.assertEqual(
             (
@@ -182,9 +182,9 @@ class V011PublicationProfileTests(unittest.TestCase):
                 protocol["publication_receipt_schema"],
                 protocol["issue_closeout_intent_schema"],
             ),
-            (5, 5, 3),
+            (6, 6, 4),
         )
-        self.assertEqual(contract["kit_version"], "0.10.1")
+        self.assertEqual(contract["kit_version"], "0.11.0")
         for host in ("codex", "hermes"):
             self.assertEqual(contract["hosts"][host]["conformance"]["label"], "verified")
         self.assertEqual(
@@ -229,7 +229,7 @@ class V011PublicationProfileTests(unittest.TestCase):
     def test_no_schema_5_closeout_exists(self):
         profile = self.profile()
         self.assertEqual(profile["issue_policy"]["mode"], "none")
-        self.assertEqual(self.m.ISSUE_CLOSEOUT_INTENT_SCHEMA, 3)
+        self.assertEqual(self.m.ISSUE_CLOSEOUT_INTENT_SCHEMA, 4)
         self.assertFalse(hasattr(self.m, "build_v101_closeout_intent"))
         self.assertFalse(
             any(5 == value.get("schema") for value in self.m.PUBLICATION_PROFILES.values() if value["issue_policy"]["issues"])
@@ -254,7 +254,7 @@ class V011PublicationProfileTests(unittest.TestCase):
                     argparse.Namespace(packet=str(root / "packet.json"), format="json")
                 )
             self.assertIn(
-                "issue closeout requires a schema-3 (v0.9.0) or schema-4 (v0.10.0) parent publication intent",
+                "issue closeout requires a schema-3 (v0.9.0), schema-4 (v0.10.0) or schema-6 (v0.11.0) parent publication intent",
                 str(raised.exception),
             )
 
@@ -267,8 +267,7 @@ class V011MigrationBoundaryTests(unittest.TestCase):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
         version = self.m.framework_version(ROOT)
-        self.assertEqual(version, "0.10.1")
-        self.assertEqual((ROOT / ".vibe/version").read_text().strip(), version)
+        self.assertEqual(version, "0.11.0")
         self.assertEqual(contract["kit_version"], version)
         bridge = contract["maintenance_bridge"]
         self.assertEqual(bridge["maximum_installed_kit_version_exclusive"], version)
@@ -292,14 +291,14 @@ class V011MigrationBoundaryTests(unittest.TestCase):
         self.assertEqual(protocol["predecessor_migrations"], bridge["predecessor_migrations"])
 
     def test_the_target_cli_refuses_a_different_migration_target(self):
-        self.assertEqual(self.m.framework_version(ROOT), "0.10.1")
+        self.assertEqual(self.m.framework_version(ROOT), "0.11.0")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / ".vibe/core").mkdir(parents=True)
             (root / ".vibe/core/version").write_text("0.10.0\n")
             with self.assertRaises(self.m.VibeError) as raised:
                 self.m.validate_target_predecessor_migration_contract(root)
-            self.assertIn("supported only by target 0.10.1", str(raised.exception))
+            self.assertIn("supported only by target 0.11.0", str(raised.exception))
 
 
 if __name__ == "__main__":

@@ -170,7 +170,7 @@ class ReadinessDocGateTests(unittest.TestCase):
         with (target/'AGENTS.md').open('a') as stream:stream.write(owned)
         result=run_cli(target/'bin/vibe','doctor',str(target),'--format','json')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-        result=run_cli(CLI,'upgrade',str(target),'--format','json','--source-type','local-payload','--source-ref','0.10.1')
+        result=run_cli(CLI,'upgrade',str(target),'--format','json','--source-type','local-payload','--source-ref','0.11.0')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertTrue((target/'AGENTS.md').read_text().endswith(owned))
         result=run_cli(target/'bin/vibe','doctor',str(target),'--format','json')

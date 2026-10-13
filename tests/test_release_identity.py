@@ -21,7 +21,8 @@ REGENERATION = (
     "payload_tree_sha256(ROOT) and source_activation_identity(ROOT), generate the manifest "
     "through a production `init --source-type local-payload --source-ref <version>` install in "
     "a disposable directory, then update the Plugin manifest payload digest and "
-    ".vibe/manifest.json source/activation mirrors in the same change."
+    "installed manifest only in that disposable directory; never rewrite source-checkout "
+    "installation state to manufacture health."
 )
 HOST_NEUTRAL_ACTION = "create a new task in the same project"
 
@@ -35,9 +36,7 @@ class ReleaseIdentityTests(unittest.TestCase):
     def test_payload_identity_mirrors_match_the_tree(self) -> None:
         digest = self.module.payload_tree_sha256(ROOT)
         declared = json.loads(PLUGIN_MANIFEST.read_text())["payload_tree_sha256"]
-        mirrored = json.loads(MANIFEST.read_text())["source"]["payload_tree_sha256"]
         self.assertEqual(declared, digest, f"Plugin payload identity is stale. {REGENERATION}")
-        self.assertEqual(mirrored, digest, f"Manifest source payload identity is stale. {REGENERATION}")
 
     def test_release_package_builds_from_the_current_tree(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -47,9 +46,19 @@ class ReleaseIdentityTests(unittest.TestCase):
     def test_activation_identity_mirrors_match_the_recomputed_identity(self) -> None:
         digest = self.module.source_activation_identity(ROOT)["activation_set_sha256"]
         declared = json.loads(CONTRACT.read_text())["activation"]["activation_set_sha256"]
-        mirrored = json.loads(MANIFEST.read_text())["activation"]["activation_set_sha256"]
         self.assertEqual(declared, digest, f"Contract activation identity is stale. {REGENERATION}")
-        self.assertEqual(mirrored, digest, f"Manifest activation identity is stale. {REGENERATION}")
+
+    def test_disposable_install_records_source_and_activation_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "installed"
+            # source_activation_identity includes every distributed host. Select
+            # that same set explicitly instead of comparing a Codex-only install.
+            installed = run_cli(CLI, "init", str(target), "--host", "codex,hermes", "--format", "json")
+            self.assertEqual(installed.returncode, 0, installed.stdout + installed.stderr)
+            manifest = json.loads((target / ".vibe/manifest.json").read_text())
+            self.assertEqual(manifest["source"]["payload_tree_sha256"], self.module.payload_tree_sha256(ROOT))
+            self.assertEqual(manifest["activation"]["activation_set_sha256"], self.module.source_activation_identity(ROOT)["activation_set_sha256"])
+            self.assertEqual((target / ".vibe/version").read_text().strip(), self.module.framework_version(ROOT))
 
     def test_takeover_schema_references_agree_with_the_installed_contract(self) -> None:
         declared = json.loads(CONTRACT.read_text())["takeover"]["schema_version"]

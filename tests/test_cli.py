@@ -2256,7 +2256,8 @@ class VibeCliTests(unittest.TestCase):
                 target / "bin/vibe", "verify", str(target), "--format", "json"
             )
             self.assertEqual(result.returncode, 1, result.stderr)
-            self.assertEqual(result.stderr, "")
+            self.assertIn("progress=available", result.stderr)
+            self.assertNotIn("sk-test_abcdefghijklmnop", result.stderr)
             receipt = json.loads(result.stdout)
             self.assertEqual(receipt["schema_version"], 2)
             self.assertEqual(receipt["status"], "failed")
@@ -2302,11 +2303,12 @@ class VibeCliTests(unittest.TestCase):
             stdout = io.StringIO()
             stderr = io.StringIO()
             with mock.patch.object(
-                module.subprocess, "run", side_effect=OSError("fixture start failure")
+                module, "capture_verify_check", side_effect=OSError("fixture start failure")
             ), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 return_code = module.verify(target, [], "json")
             self.assertEqual(return_code, 2)
-            self.assertEqual(stderr.getvalue(), "")
+            self.assertIn("progress=available", stderr.getvalue())
+            self.assertNotIn("fixture start failure", stderr.getvalue())
             blocked = json.loads(stdout.getvalue())
             self.assertEqual(blocked["status"], "blocked")
             self.assertEqual(blocked["summary"]["skipped"], 3)

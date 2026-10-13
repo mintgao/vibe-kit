@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.0 — unpublished candidate
+
+- Keep publication input receipts read-only and add create-only result receipts.
+- Validate equal upgrade images against each operation's required pre/post state.
+- Add opt-in complete sanitized success logs and independent private metadata-only progress.
+- Preserve honest interruption, closed-reader validation, receipt identity and storage availability.
+- Add prospective outcome coverage for applicable multi-stage M/L work without new S obligations.
+- Add exact publication schema 6 and separate [14,15,16,17,18] closeout schema 4; retain historical profiles.
+- Advance current source/Plugin/migration/bridge identities to 0.11.0; keep other protocols and Python 3.9 boundaries.
+- Final QA, deterministic release gates, public acceptance and issue closure remain separately evidenced future phases.
+
 ## 0.10.1 — 2026-09-22
 
 - Raised the Hermes host label to `verified` on its completed five-stage

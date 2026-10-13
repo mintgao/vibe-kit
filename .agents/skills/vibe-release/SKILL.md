@@ -1,6 +1,6 @@
 ---
 name: vibe-release
-description: Plan, authorize, publish, and verify exact Vibe Kit v0.7.0 and v0.8.0 GitHub Pre-releases through offline intents and host-owned remote operations.
+description: Plan, authorize, publish, and verify exact versioned Vibe Kit GitHub Pre-releases through offline intents and host-owned remote operations.
 ---
 
 # Vibe Kit release
@@ -104,3 +104,43 @@ acceptance or measured token reduction without corresponding evidence.
 ADR0021 governs schema-5 `vibe-kit-v0.10.1-prerelease`: six publication operations, five exact assets, issue policy `none` and no closeout — the schema-3 closeout graph stays bound to the historical v0.10.0 parent. `publication-plan` and `validate-publication` select the closed profile from its exact schema; the historical schema-1, schema-2, schema-3 and schema-4 entry points keep their exact semantics, and a v0.10.1 candidate never passes them. Existing authorization is bound to the frozen intent through `authorization_source_ref` and `bound_at`; never invent a later user approval. The read-only `issue-closeout --packet <file> --format json` validates a bounded set of relative evidence-file references, exact comments and separately authorized receipt, dispatching on the parent publication intent's schema. No command performs network writes.
 
 Before final release QA, review both README.md and README.zh-CN.md version, links, installation commands, capabilities and limitations. Synchronize changed facts and record reasons for unchanged sections in the implementation report. Publication completion facts are a later evidence commit without tag movement.
+
+## v0.11.0 exact profile and separate five-issue closeout
+
+ADR0022 governs schema-6 `vibe-kit-v0.11.0-prerelease`: the same six ordered
+publication operations, exactly five assets, eleven ordered public smokes,
+including two same-version upgrades, and ordered issue policy [14,15,16,17,18].
+Historical publication profiles 1–5 and closeout profiles 1–3 stay fixed.
+Publication receipt `issue_closeout` is null. Prepublication AC-10.1, publication
+AC-10.2 and separate issue closeout AC-10.3 are distinct evidence phases.
+Publication acceptance includes AC-1–AC-9, AC-10.1 and AC-10.2; it excludes
+AC-10.3, so verified publication does not depend on future closeout.
+
+`validate-publication --receipt` is read-only input. With no output option it
+writes no result artifact. Use optional `--result-receipt <new-path>` to create a
+distinct result exactly once; aliases, candidate descendants, existing leaves
+and unsafe/unavailable parents are refused without overwriting. Nested validators
+cannot persist intermediate results. Existing authorization is bound using
+`authorization_source_ref` and `bound_at`; do not ask for another approval of
+an already-authorized unchanged exact scope.
+
+After validated schema-6 public verification and passing postpublication
+acceptance, use `issue-closeout --packet <file> --format json` for the separate
+schema-4 profile over ordered [14,15,16,17,18]. Bind separate exact closeout
+authorization, verify each issue's evidence, then comment, read back, close and
+read back in the ten-operation order. Markers are exactly
+`<!-- vibe-kit:v0.11.0:issue-<number>:<closeout-id> -->`.
+Issue #14 binds AC-1; #15 binds AC-2 and the published repeat smoke; #16 binds
+AC-3/AC-4; #17 binds AC-5/AC-6; #18 binds AC-7/AC-8, with static evidence only
+and no live-model compliance claim. A completed pair proves only that issue;
+uncertain/unfinished items remain non-passing. Complete AC-10.3 only after all
+five exact comment identities and closed-state read-backs pass. Reconcile the
+same authorized intent only; no divergence, force, replacement or deletion.
+
+Record public acceptance in `postpublication.md` and issue evidence/comment/
+closed-state and bound digests separately in `closeout.md` within work item
+`20261010-feedback-closure`. These are audit summaries, not new receipt fields.
+Review both homepages before final QA and retain 0.10.1 as latest published until
+observed live 0.11.0 completion. No offline profile definition claims publication
+or issue closure. Private logs and host goal/custody payloads never enter public
+receipts, comments or summaries.

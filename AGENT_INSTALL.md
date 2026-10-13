@@ -1,7 +1,7 @@
 # Agent installation and takeover contract
 
 This document is the Agent-host-facing adoption and maintenance entry point for
-Vibe Kit 0.10.1. The machine-readable source of truth is `agent-install.json`. Keep
+Vibe Kit 0.11.0. The machine-readable source of truth is `agent-install.json`. Keep
 CLI commands, JSON receipts, hashes and archive details internal during a healthy
 flow; report them only when they establish evidence or explain a blocker.
 
@@ -155,7 +155,7 @@ Without a live receipt, stop the source task after upgrade/doctor with
 `overall_status=degraded`, `reason_code=manual-new-task-required`, and exactly one
 action: create a new task in the same project. Say:
 
-> Vibe Kit 文件已升级到 0.10.1，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个任务（Codex、Hermes 或任何能新建任务的宿主均可）。
+> Vibe Kit 文件已升级到 0.11.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个任务（Codex、Hermes 或任何能新建任务的宿主均可）。
 
 Use a host-prefilled continuation when available. Otherwise include one copyable
 sentence containing the active objective. Do not require a CLI command, Skill name
@@ -285,15 +285,20 @@ installation state.
 ## Publication boundary
 
 The repository release Skill preserves the exact v0.7.0 schema-1 publication and
-closeout path, presents the closed v0.10.1 schema-5 Pre-release plan, and keeps the
-separate schema-3 closeout bound to the historical v0.10.0 profile.
+closeout path, presents the closed v0.11.0 schema-6 Pre-release plan, and keeps the
+separate schema-4 closeout over ordered issues [14,15,16,17,18] bound to that
+validated publication. Historical publication profiles 1–5 and closeout profiles
+1–3 retain their identities and verdicts.
 Offline `publication-plan` and `validate-publication` build and
 check canonical intents and receipts; they never gain GitHub credentials or
 network authority. The Agent/host performs compare-and-swap main advancement,
 exact annotated tag/Release/five-asset reconciliation, public read-back/download
-checks and, only for the historical v0.7 profile, a separately authorized
-idempotent #1–#5 closeout. The v0.8 profile contains no Issue operation or
-closeout authorization. Divergent or extra remote state blocks. Delete, replace,
+checks and separately authorized idempotent closeout for the exact applicable
+profile. v0.11.0 publication acceptance excludes future issue closeout; its
+receipt keeps issue_closeout null. The v0.8 and v0.10.1 profiles contain no Issue
+operation or closeout authorization. validate-publication --receipt is read-only
+input; optional --result-receipt creates one distinct new outer result and
+refuses aliases, existing leaves, candidate descendants and unsafe parents. Divergent or extra remote state blocks. Delete, replace,
 force and stable/draft transitions require separate authorization.
 
 ## Takeover object contract
@@ -382,7 +387,15 @@ A `maintenance-only` goal stays `none` with no custody history. An `unfinished` 
 
 ### Receipt artifact
 
-Takeover-capable commands (`doctor`, `verify`, `plan`, `upgrade`, `validate-takeover`) accept `--receipt <path>` and write the exact result envelope they print as a byte-stable, root-relative artifact: two runs on the same tree, and fresh installs under different parent directories, produce identical bytes. Hosts cite the artifact path as `ref` and its SHA-256 as the evidence digest. The framework never writes goal text.
+Takeover-capable commands (`doctor`, `verify`, `plan`, `upgrade`, `validate-takeover`) accept `--receipt <path>` and write the exact result envelope they print as a root-relative artifact. For the same envelope values after root-relative rewriting, serialization produces identical UTF-8 JSON bytes (sorted keys, indent=2, one terminal LF). Actual process output, toolchain observations, transaction identities and other runtime evidence may differ between invocations; receipt writing does not make executions deterministic. Hosts cite the artifact path as `ref` and SHA-256 over its actual serialized bytes. Progress run IDs/timestamps never enter the verification envelope, and no result body is automatically persisted. The framework never writes goal text.
+
+A handled interruption during `verify` terminal delivery/flush returns exit 2.
+Escaped stdout can remain partial/unusable; no replacement JSON is appended and
+no atomic delivery or consumer acknowledgement is promised. Already observed
+checks keep their outcomes, while the canonical interrupted result is blocked/
+error and an explicit writable receipt records it. Available progress is
+incomplete and can bind that result without storing its body. A prefix or stale
+finished snapshot is not complete invocation evidence.
 
 ### Minimal manual-transfer payload
 
