@@ -2,7 +2,7 @@
 
 - ID: `20261010-feedback-closure`
 - Size: `L`
-- Status: implementing
+- Status: complete
 - Created: 2026-10-10 (host-local date from work-item command)
 
 ## Technical decision readiness
@@ -31,7 +31,7 @@ Improve Vibe Kit's local verification evidence, long-running check visibility, m
 
 Source baseline is GitHub main `ac549fa69319ef92ba859bd7a43d3607ec226e43` (0.10.1), synchronized by clean fast-forward. This is source development from a new iteration request, not an application project's installed-Kit upgrade or takeover; no installed downstream project is changed.
 
-The five current public open issues are [#14](https://github.com/mintgao/vibe-kit/issues/14) (publication receipt input overwritten by generic result persistence), [#15](https://github.com/mintgao/vibe-kit/issues/15) (same-version upgrade no-op items prevent target-state validation), [#16](https://github.com/mintgao/vibe-kit/issues/16) (L01: complete sanitized success logs), [#17](https://github.com/mintgao/vibe-kit/issues/17) (L02: persistent verification execution progress), and [#18](https://github.com/mintgao/vibe-kit/issues/18) (L03: lightweight multi-stage outcome/next-action/role-owner continuity).
+The accepted five-issue scope was [#14](https://github.com/mintgao/vibe-kit/issues/14) (publication receipt input overwritten by generic result persistence), [#15](https://github.com/mintgao/vibe-kit/issues/15) (same-version upgrade no-op items prevent target-state validation), [#16](https://github.com/mintgao/vibe-kit/issues/16) (L01: complete sanitized success logs), [#17](https://github.com/mintgao/vibe-kit/issues/17) (L02: persistent verification execution progress), and [#18](https://github.com/mintgao/vibe-kit/issues/18) (L03: lightweight multi-stage outcome/next-action/role-owner continuity).
 
 Issues #16–#18 contain the exact approved suggestion bodies. L01–L03 remain traceability aliases only; no new feedback submission or retry of denied feedback egress is part of this iteration. Source implementation, exact v0.11.0 Pre-release publication after its checks, and separately bound issue closeout after verified improvements are within the accepted scope.
 
@@ -46,16 +46,16 @@ Applicable existing decisions include ADR0010 (lossless recoverable upgrade), AD
 
 ## Acceptance criteria
 
-- [ ] AC-1 (#14): validate-publication reads its input receipt byte-for-byte without overwriting it on valid or invalid results; explicit output persistence has distinct semantics and rejects input/output aliases before any write; historical validation profiles retain their verdicts.
-- [ ] AC-2 (#15): same-version upgrade is deterministic and safely repeatable; no-op entries can satisfy target validation; genuine drift, race preservation, rollback/recovery and cross-version upgrade guards stay intact.
-- [ ] AC-3 (#16 / L01): explicit success-log retention preserves complete sanitized output beyond the default 16 KiB tail in a private local artifact with verifiable identity; the bounded result stays bounded and existing failure logs remain available.
-- [ ] AC-4 (#16 / L01): absent/unwritable/unsafe artifact destinations report honest availability; secrets/control characters are sanitized; documented privacy and disk-retention boundaries do not silently change old configurations.
-- [ ] AC-5 (#17 / L02): during both output-producing and silent slow checks, a caller can locate the current check, start time and running state through a durable local artifact without corrupting final JSON.
-- [ ] AC-6 (#17 / L02): interruption leaves honest incomplete evidence; no path reports Pass for incomplete work or asserts all descendant processes were cancelled without proof; project assertions/timeouts and external permissions remain owned by their original layers.
-- [ ] AC-7 (#18 / L03): prospective multi-stage M/L guidance records approved outcome references, scope/result coverage, unfinished status, next action, role owner and genuine blockers; stage Pass plus API Blocked plus unverified output cannot become overall completion.
-- [ ] AC-8 (#18 / L03): S remains lightweight, existing authority/QA requirements remain, no host goal text or takeover custody is persisted to the repository, and no static fixture is claimed to prove live model behavior.
-- [ ] AC-9: Python >=3.9, standard-library-only and offline operation remain; old configs/receipts/compiled profiles preserve their recorded semantics; negative unknown-field/tamper/trust cases remain fail-closed.
-- [ ] AC-10: every change maps to regression evidence, independent review and one final-candidate default verification; two clean deterministic candidate builds validate; both release homepages are reviewed; public publication and issue closeout follow separately applicable exact scopes.
+- [x] AC-1 (#14): validate-publication reads its input receipt byte-for-byte without overwriting it on valid or invalid results; explicit output persistence has distinct semantics and rejects input/output aliases before any write; historical validation profiles retain their verdicts.
+- [x] AC-2 (#15): same-version upgrade is deterministic and safely repeatable; no-op entries can satisfy target validation; genuine drift, race preservation, rollback/recovery and cross-version upgrade guards stay intact.
+- [x] AC-3 (#16 / L01): explicit success-log retention preserves complete sanitized output beyond the default 16 KiB tail in a private local artifact with verifiable identity; the bounded result stays bounded and existing failure logs remain available.
+- [x] AC-4 (#16 / L01): absent/unwritable/unsafe artifact destinations report honest availability; secrets/control characters are sanitized; documented privacy and disk-retention boundaries do not silently change old configurations.
+- [x] AC-5 (#17 / L02): during both output-producing and silent slow checks, a caller can locate the current check, start time and running state through a durable local artifact without corrupting final JSON.
+- [x] AC-6 (#17 / L02): interruption leaves honest incomplete evidence; no path reports Pass for incomplete work or asserts all descendant processes were cancelled without proof; project assertions/timeouts and external permissions remain owned by their original layers.
+- [x] AC-7 (#18 / L03): prospective multi-stage M/L guidance records approved outcome references, scope/result coverage, unfinished status, next action, role owner and genuine blockers; stage Pass plus API Blocked plus unverified output cannot become overall completion.
+- [x] AC-8 (#18 / L03): S remains lightweight, existing authority/QA requirements remain, no host goal text or takeover custody is persisted to the repository, and no static fixture is claimed to prove live model behavior.
+- [x] AC-9: Python >=3.9, standard-library-only and offline operation remain; old configs/receipts/compiled profiles preserve their recorded semantics; negative unknown-field/tamper/trust cases remain fail-closed.
+- [x] AC-10: every change maps to regression evidence, independent review and one final-candidate default verification; two clean deterministic candidate builds validate; both release homepages are reviewed; public publication and issue closeout follow separately applicable exact scopes.
 
 ## Completion phases and evidence
 
@@ -63,11 +63,11 @@ AC-10.1 covers local review, final-candidate QA, Python/release gates, two deter
 
 | Approved reference | This phase covers | State | Evidence | Next action | Role owner | Blocker / waiting condition |
 |---|---|---|---|---|---|---|
-| AC-1–AC-9, AC-10.1 | Local implementation and release-candidate verification | Unverified | `verification.md` (to be populated) | Implement, independently verify, and freeze the passing candidate | Sole RD writer; independent QA | Accepted ADR0022, approved adoption review, and orchestrator readiness confirmation |
-| AC-10.2 | v0.11.0 public publication and acceptance | Unverified | `postpublication.md` (to be created) | Execute the bound publication and independently verify public assets | Host release executor; independent QA | Passing AC-10.1 and exact publication authorization binding |
-| AC-10.3 | Per-issue evidence comments and closure of #14–#18 | Unverified | `closeout.md` (to be created) | Verify each issue's mapped evidence, comment, close, and read back under the separate intent | Host closeout executor; independent QA | Passing AC-10.2 and exact issue-closeout authorization binding |
+| AC-1–AC-9, AC-10.1 | Local implementation and release-candidate verification | Pass | [verification.md](verification.md) | Complete; evidence retained | Sole RD writer; independent reviewer and QA | None |
+| AC-10.2 | v0.11.0 public publication and acceptance | Pass | [postpublication.md](postpublication.md) | Complete; frozen tag/assets retained | Host release executor; independent QA | None |
+| AC-10.3 | Per-issue evidence comments and closure of #14–#18 | Pass | [closeout.md](closeout.md) | Complete; exact comments and closed states read back | Host closeout executor; independent QA | None |
 
-Issue evidence maps #14 to AC-1, #15 to AC-2 plus the published repeat smoke, #16 to AC-3/AC-4, #17 to AC-5/AC-6, and #18 to AC-7/AC-8. Each completed closeout pair proves only its issue; AC-10.3 remains non-passing until all five are confirmed complete. The table records prospective coverage, not executed QA results, and adds no receipt field/schema or host-custody persistence.
+Issue evidence maps #14 to AC-1, #15 to AC-2 plus the published repeat smoke, #16 to AC-3/AC-4, #17 to AC-5/AC-6, and #18 to AC-7/AC-8. Each completed closeout pair proves only its issue; AC-10.3 remains non-passing until all five are confirmed complete. The table now records separately executed and independently verified completion phases; overall AC-10 passed after all three phases. No receipt field/schema or host-custody persistence was added.
 
 ## Design and technical notes
 

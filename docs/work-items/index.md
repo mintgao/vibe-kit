@@ -10,6 +10,8 @@ Each generated folder contains a brief and verification record. Add design or im
 
 ## Active and recent
 
+- [Verification observability and feedback closure — v0.11.0 completed](20261010-feedback-closure/brief.md)
+
 - [Publish Vibe Kit v0.8.0 GitHub Pre-release](20260902-v0-8-publication/brief.md)
 - [Token-efficient adaptive workflow](20260902-token-efficient-adaptive-workflow/brief.md)
 - [Vibe Kit v0.7.0 — resilient upgrades and first-class prerelease publication](20260831-v0-7-resilient-upgrades-publication/brief.md)

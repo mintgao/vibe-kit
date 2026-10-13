@@ -8,7 +8,7 @@
 
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-<p align="center">最新已发布 · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.10.1"><code>v0.10.1 Pre-release</code></a></p>
+<p align="center">最新已发布 · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.11.0"><code>v0.11.0 Pre-release</code></a></p>
 
 ## Vibe Kit 是做什么的
 
@@ -36,13 +36,13 @@ Vibe Kit 是一套随项目固定版本的 Agent 开发工作范式。你只需�
 
 用 Codex 打开项目，然后发送下面这段请求。
 
-> 请把 https://github.com/mintgao/vibe-kit/releases/tag/v0.10.1 安全接入当前项目。使用这个可信的固定版本，保留现有业务文件和项目文档，完成健康检查和基于仓库证据的项目理解，然后继续处理下面这个目标。[我的开发目标]
+> 请把 https://github.com/mintgao/vibe-kit/releases/tag/v0.11.0 安全接入当前项目。使用这个可信的固定版本，保留现有业务文件和项目文档，完成健康检查和基于仓库证据的项目理解，然后继续处理下面这个目标。[我的开发目标]
 
 ### 基于 Vibe Kit 创建新项目
 
 在同一条请求里写清应用、目标目录和期望技术栈。
 
-> 请使用官方框架生成器，在 `./my-app` 创建一个 Next.js 记账应用。随后把 https://github.com/mintgao/vibe-kit/releases/tag/v0.10.1 接入生成的项目，检查安装结果，建立项目上下文，并继续实现第一个可用版本。
+> 请使用官方框架生成器，在 `./my-app` 创建一个 Next.js 记账应用。随后把 https://github.com/mintgao/vibe-kit/releases/tag/v0.11.0 接入生成的项目，检查安装结果，建立项目上下文，并继续实现第一个可用版本。
 
 这里使用准确的 Release URL，它已经明确选择当前 Pre-release。如果只提供仓库主页链接，而仓库还没有 stable Release，Codex 应当在选择 Pre-release 前询问一次。
 
@@ -54,7 +54,7 @@ Vibe Kit 是一套随项目固定版本的 Agent 开发工作范式。你只需�
 
 > 验证当前版本是否适合发布，并列出每条标准对应的证据。
 
-Codex 最终应当说明版本与来源、安装健康度、新规则激活、项目上下文、已配置检查和下一步。0.10.1 契约定义了同任务重载和自动后继任务回执，但当前 Codex/Plugin 没有正向宿主证据，因此仅保证一个兜底动作：在同一项目中新建一个任务——任何能新建任务的宿主都可以接手，包括没有 Kit 适配器的宿主。源任务应预填或提供一句可复制的原目标；新任务不需要再确认升级或执行内部命令。
+Codex 最终应当说明版本与来源、安装健康度、新规则激活、项目上下文、已配置检查和下一步。当前契约定义了同任务重载和自动后继任务回执，但当前 Codex/Plugin 没有正向宿主证据，因此仅保证一个兜底动作：在同一项目中新建一个任务——任何能新建任务的宿主都可以接手，包括没有 Kit 适配器的宿主。源任务应预填或提供一句可复制的原目标；新任务不需要再确认升级或执行内部命令。
 
 ## 专业开发者与维护者附录
 
@@ -82,7 +82,7 @@ Vibe Kit 由一个无第三方依赖的 Python CLI、项目级指令、专门角
 
 `doctor --format json` 会分别报告安装健康度和项目理解是否就绪，并为每条警告/错误给出固定的 readiness 影响。`verify --format json` 会输出 lint、typecheck、test、build 的完整矩阵，区分通过、失败、未配置和跳过。`verify` 只执行 `.vibe/project.yaml` 中明确配置的项目命令。
 
-### 本地验证可观察性（0.11.0 候选）
+### 本地验证可观察性（0.11.0）
 
 旧配置保持 `log_policy: "failures"` 与 `progress: true` 的默认行为。
 设置 `checks.log_policy: "all-configured"`，或使用
@@ -111,9 +111,9 @@ S 保持轻量；技术评审与独立 QA 继续适用，宿主目标文本和�
 
 默认信任契约只承认 `https://github.com/mintgao/vibe-kit`。准确的 tag 和 Release URL 会选择一个明确的已发布版本，安装前还会校验 Release 元数据和 SHA-256。移动引用 `main`、未经验证的压缩包、静默切换仓库和 `curl | sh` 都会被拒绝。
 
-面向人和机器的规范契约分别是 [AGENT_INSTALL.md](AGENT_INSTALL.md) 与 [agent-install.json](agent-install.json)。当前源码候选 0.11.0 使用 core/Codex protocol 7 与 Hermes adapter protocol 1、Agent-install schema/protocol 4、takeover schema 2、maintenance bridge schema 2、publication schema 6 及独立 closeout schema 4、CLI result schema 2、独立的本地 execution schema 1、release-manifest schema 2、transaction/commit schema 1 和 feedback protocol 2；历史发布保持不变。
+面向人和机器的规范契约分别是 [AGENT_INSTALL.md](AGENT_INSTALL.md) 与 [agent-install.json](agent-install.json)。已发布的 0.11.0 使用 core/Codex protocol 7 与 Hermes adapter protocol 1、Agent-install schema/protocol 4、takeover schema 2、maintenance bridge schema 2、publication schema 6 及独立 closeout schema 4、CLI result schema 2、独立的本地 execution schema 1、release-manifest schema 2、transaction/commit schema 1 和 feedback protocol 2；历史发布（包括 [v0.10.1](https://github.com/mintgao/vibe-kit/releases/tag/v0.10.1)）保持不变。
 
-当前源码候选会把这两份 Agent-install 契约作为 framework-managed 文件安装到项目中，并纳入 manifest 与激活身份。`bin/vibe validate-takeover --format json` 会先验证已安装契约与编译后 registry，再对 stdin 中的完整封闭 takeover 结构做校验，不持久化或回显输入。`valid` 只代表结构自洽，不代表宿主回执已被认证，也不代表已就绪。
+0.11.0 会把这两份 Agent-install 契约作为 framework-managed 文件安装到项目中，并纳入 manifest 与激活身份。`bin/vibe validate-takeover --format json` 会先验证已安装契约与编译后 registry，再对 stdin 中的完整封闭 takeover 结构做校验，不持久化或回显输入。`valid` 只代表结构自洽，不代表宿主回执已被认证，也不代表已就绪。
 
 `bin/vibe init`、`adopt` 和 `upgrade` 接受逗号分隔的 `--host` 选择（默认 `codex`），可选范围为契约声明的宿主。安装副本会把该选择记入 manifest 与契约的激活身份，并且只携带所选宿主的 payload；发布产物本身始终包含每个已声明宿主的文件。记录的选择与已安装 payload 不一致时会 fail-closed。
 
@@ -128,7 +128,7 @@ S 保持轻量；技术评审与独立 QA 继续适用，宿主目标文本和�
 
 升级会在替换托管文件前比较安装记录、本地内容和新版本内容。如果项目与新版本同时修改了同一个托管文件，Vibe Kit 会在改动托管文件前停止，并把待审核的新版本候选写入 `.vibe/conflicts/<timestamp>/`。
 
-0.11.0 源码候选保留一个精确的兼容例外：对官方、健康的 v0.5.0 source checkout，将原本未记入 manifest 的两份 Agent-install 契约作为一个完整集认证，然后替换并纳入托管。缺失、修改、混合、符号链接、竞态或其他不健康状态仍会冲突；其他未跟踪文件不会因此获得自动接管。
+0.11.0 保留一个精确的兼容例外：对官方、健康的 v0.5.0 source checkout，将原本未记入 manifest 的两份 Agent-install 契约作为一个完整集认证，然后替换并纳入托管。缺失、修改、混合、符号链接、竞态或其他不健康状态仍会冲突；其他未跟踪文件不会因此获得自动接管。
 
 v0.7 只允许经过审计的 v0.2 fixture 与官方 v0.3/v0.4 身份创建 `pending` onboarding；已有合法状态保持字节不变，v0.5/v0.6 缺失状态会在写入前阻断。升级现在是范围明确、可恢复的事务：失败只会报告已回滚、需要执行 `recover-upgrade`，或无法分类且禁止自动覆盖。
 
@@ -148,7 +148,7 @@ python3 -m unittest discover -s tests -v
 
 维护者通过仓库内 `vibe-release` Skill 和离线的 `publication-plan`、`validate-publication` 管理精确五资产 Pre-release。GitHub 凭据与远端写入仍归 Agent/宿主所有；精确选择和 SHA-256 校验不等于平台强制不可变。
 
-发布校验会检查压缩包路径安全、摘要、版本、Agent 契约与编译后 registry 一致性、激活 v2 独立重算、有界生产 validator 用例，以及直接 Release、Plugin payload 和展开后的 marketplace 之间是否漂移。详细信息见 [0.11.0 候选说明](docs/releases/0.11.0.md)、[升级后接管决策](docs/decisions/0009-post-upgrade-takeover.md)与[可复现发布决策](docs/decisions/0004-reproducible-release-contract.md)。
+发布校验会检查压缩包路径安全、摘要、版本、Agent 契约与编译后 registry 一致性、激活 v2 独立重算、有界生产 validator 用例，以及直接 Release、Plugin payload 和展开后的 marketplace 之间是否漂移。详细信息见 [0.11.0 发布说明](docs/releases/0.11.0.md)、[升级后接管决策](docs/decisions/0009-post-upgrade-takeover.md)与[可复现发布决策](docs/decisions/0004-reproducible-release-contract.md)。
 
 静态契约测试能够确认分发指令包含必要边界。真实 Agent 是否正确执行这套流程，仍需受控场景和独立 QA。文档字符串测试不能替代这类行为证据。
 
@@ -166,7 +166,7 @@ Vibe Kit 不采集遥测，也不会静默提交反馈。可复现的 Kit 缺口
 
 ### 当前限制
 
-- `v0.10.1` 仍是最新已发布的 Pre-release；`0.11.0` 是未发布的源码候选，最终 QA、公开发布与读回、五个 Issue 的关闭仍须后续证据。目前没有 stable Release、公共 Plugin Directory 条目、自动联网更新器，也没有发布者签名和外部 provenance 证明。
+- `v0.11.0` 已发布并通过独立验收。五个公开资产与两份独立构建一致，11 项公开安装与升级 smoke 通过，[#14–#18](docs/work-items/20261010-feedback-closure/closeout.md) 已逐项确认关闭。详细证据见[最终验证](docs/work-items/20261010-feedback-closure/verification.md)与[公开验收](docs/work-items/20261010-feedback-closure/postpublication.md)。目前没有 stable Release、公共 Plugin Directory 条目、自动联网更新器，也没有发布者签名和外部 provenance 证明。
 - SHA-256 元数据能验证附件和 manifest 是否一致。发布者身份仍然依赖 GitHub 账号、commit 和 tag。
 - Codex 与 Hermes 是目前经过验证的 Agent 适配；Hermes 的声明依据是已完成的五阶段一致性记录。缺少完整一致性记录的宿主仍须遵守最严格的 fail-closed 规则。当前仓库与 Plugin 对升级激活仅声称手动兜底；同任务重载、自动后继任务、真实 Linux 和真实 Plugin host 仍缺少正向证据。
 - 安装不是整个目录级事务。升级只对托管/工具维护状态及狭窄的 onboarding 兼容桥提供可恢复事务，不覆盖业务文件或整个 Git 工作区。
