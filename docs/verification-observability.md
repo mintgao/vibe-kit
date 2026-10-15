@@ -1,6 +1,6 @@
 # Local verification observability
 
-This describes the 0.11.0 source candidate. Execution metadata is diagnostic;
+This describes local verification in Vibe Kit 0.11.0. Execution metadata is diagnostic;
 independent acceptance still requires the complete applicable verification result.
 
 ## Settings and final results
