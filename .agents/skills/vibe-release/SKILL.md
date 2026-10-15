@@ -8,6 +8,15 @@ description: Plan, authorize, publish, and verify exact versioned Vibe Kit GitHu
 Use this Skill only for the Vibe Kit repository release lifecycle. The CLI stays
 offline; GitHub authentication, network reads and writes belong to the Agent/host.
 
+## Homepage review for every release
+
+Before final release QA, review `README.md` and `README.zh-CN.md` together:
+
+- Compare the proposed release's actual capabilities with the user-facing introduction. Lead with what users can do, short examples, quick start, and supported scope; link deep contracts and implementation details to maintained guides.
+- Keep both languages aligned on capabilities, defaults, limitations, exact version, Pre-release/stable status, install/upgrade entry points, and published asset names. Review section length, order, and duplication rather than only replacing the version badge. Record changed facts and reasons for unchanged sections in the existing implementation or verification record.
+- Describe workflow guidance as guidance. Preserve evidence boundaries; do not invent model outcomes, efficiency savings, screenshots, or endorsements.
+- Keep latest-published claims tied to observed publication. After confirmed release completion, update and read back both homepages in the later evidence commit. Never rewrite an older tag, Release body, or asset to refresh the introduction.
+
 ## Historical v0.7 profile
 
 1. Confirm the accepted version, release kind and scope. For v0.7.0 the exact
