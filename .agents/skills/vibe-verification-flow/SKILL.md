@@ -43,13 +43,40 @@ reduction.
 For newly adopted applicable M/L work, the orchestrator runs `./bin/vibe validate-readiness . --brief docs/work-items/<id>/brief.md --format json` before implementation release and after referenced evidence changes. Nonzero blocks release. QA verifies the persisted release evidence; a passed structural check does not establish human applicability, independence or product acceptance. Implemented notes do not replace Accepted ADRs.
 
 Execution schema 1 under `.vibe/local/verify/runs/` is private diagnostic metadata.
-Use the CLI's bounded `read_verify_execution`/`validate_verify_execution` reader
-with the supplied final envelope and requested artifact verification. A locator
-is discovery-only and last-successfully-published; running is a last observation,
-not liveness. Finished is not Pass. Missing, disabled, stale, unavailable or
-invalid progress does not invalidate an independently complete valid receipt;
-progress never promotes missing, partial, interrupted or non-passing evidence.
-Logs are opt-in for successful checks through `all-configured`, independently of
-progress; default progress persists no output body. Handled interruption records
-incomplete/blocked evidence and `descendants=not-proven`. Keep logs private and
-preserve QA's four criterion result states and default coverage requirement.
+Use `inspect-run <target> --run-id <startup-id> [--final-receipt <path>] --format json`
+for safe public consumption. Keep the explicit private receipt, when requested,
+and select `--log-policy all-configured` only when complete successful logs are
+needed. `inspected` reports an inspection, not passing current-source acceptance.
+Metadata state, complete receipt status, binding, coverage, artifact scope and
+historical receipt/run verdicts remain separate. The selected explicit receipt
+wins; its original metadata receipt slot is not reopened or attested. A valid
+receipt owns the sole selected log set, even if metadata disagrees; otherwise
+valid metadata owns it. No fallback or union is performed.
+
+Running is a last observation, never liveness; finished is not Pass. Missing,
+disabled or invalid progress cannot erase a complete independent receipt, and
+progress never promotes partial/interrupted evidence. Inspection performs no
+checks, probes, writes, process control or automatic reruns. Applicability is
+always unproven and origin not attested. Prepare any private receipt parent via
+the project's normal setup: neither verify nor inspection creates receipt parents.
+Independent acceptance retains QA's four states and default coverage requirement.
+
+
+## Applicable affected-entry evidence
+
+For a changed shared helper or adapter, supply a bounded impact slice and explain
+why its affected entries are sufficient. Use the configured command's actual
+default discovery or package script for focused execution, observe the loaded
+origin and arguments, and preserve intentionally historical callers. Static
+search locates callers; it does not prove that they ran. A direct helper test
+alone does not establish live default wiring. Projects own probes and assertions;
+no call-graph builder or additional executor is required.
+
+| Configured check | Actual default entry | Affected live caller/helper | Observed origin/arguments | Focused command/result | Preserved historical caller |
+|---|---|---|---|---|---|
+| test | project discovery/script | bounded project path/name | runtime observation | project command and evidence | path/assertion, or none |
+
+Mark this inapplicable when no shared entry changes; S work gains no mandatory
+table or ceremony. RD runs focused checks; independent QA still owns one complete
+default verification per unchanged final candidate. See the
+[Python and Node example](../vibe-implementation-flow/references/affected-entry-evidence.md) in the installed workflow.

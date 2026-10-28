@@ -106,7 +106,7 @@ class V010PublicationProfileTests(unittest.TestCase):
             "a v0.10.0 candidate must not pass the schema-5 dispatch",
         )
         self.assertEqual(
-            self.m.validate_publication_intent(dict(intent, schema_version=7)),
+            self.m.validate_publication_intent(dict(intent, schema_version=99)),
             ["publication intent schema/profile is unsupported"],
         )
         self.assertTrue(
@@ -125,7 +125,7 @@ class V010PublicationProfileTests(unittest.TestCase):
     def test_publication_schemas_and_identity_are_mirrored_everywhere(self):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
-        expected = (6, 6, 4)
+        expected = (7, 7, 5)
         self.assertEqual(
             (
                 contract["publication"]["intent_schema"],
@@ -150,24 +150,24 @@ class V010PublicationProfileTests(unittest.TestCase):
             ),
             expected,
         )
-        self.assertEqual(contract["kit_version"], "0.11.0")
-        self.assertEqual((ROOT / ".vibe/core/version").read_text().strip(), "0.11.0")
+        self.assertEqual(contract["kit_version"], "0.12.0")
+        self.assertEqual((ROOT / ".vibe/core/version").read_text().strip(), "0.12.0")
         plugin = json.loads(
             (ROOT / "distribution/plugin-src/vibe-kit/.codex-plugin/plugin.json").read_text()
         )
-        self.assertEqual(plugin["version"], "0.11.0")
+        self.assertEqual(plugin["version"], "0.12.0")
 
     def test_bridge_bound_and_predecessor_migration_advance_to_the_current_target(self):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
         bridge = contract["maintenance_bridge"]
-        self.assertEqual(bridge["maximum_installed_kit_version_exclusive"], "0.11.0")
+        self.assertEqual(bridge["maximum_installed_kit_version_exclusive"], "0.12.0")
         self.assertEqual(bridge["minimum_installed_kit_version"], "0.2.0")
         self.assertEqual(bridge["supported_installed_agent_protocols"], [0, 1, 2, 3])
         self.assertEqual(bridge["target_agent_install_schema"], 4)
         self.assertEqual(bridge["target_agent_install_protocol"], 4)
         entry = self.m.PREDECESSOR_MIGRATION_REGISTRY["entries"][3]
-        self.assertEqual(entry["target"]["framework_version"], "0.11.0")
+        self.assertEqual(entry["target"]["framework_version"], "0.12.0")
         self.assertEqual(entry["predecessor"]["framework_version"], "0.5.0")
         self.assertEqual(
             self.m.PREDECESSOR_MIGRATION_REGISTRY_SHA256,
@@ -348,23 +348,27 @@ class ManagedGuideDriftTests(unittest.TestCase):
         self.version = self.m.framework_version(ROOT)
 
     def test_framework_version_is_the_release_version(self):
-        self.assertEqual(self.version, "0.11.0")
+        self.assertEqual(self.version, "0.12.0")
 
     def test_managed_guide_version_literals_agree_with_the_framework_version(self):
+        publication_profile = self.m.PUBLICATION_PROFILES[
+            self.m.PUBLICATION_INTENT_SCHEMA
+        ]
+        self.assertEqual(publication_profile["version"], "0.12.0")
         sites = {
-            "identification line": r"This document is the Agent-host-facing adoption and maintenance entry point for\s+Vibe Kit (?P<version>\d+\.\d+\.\d+)\.",
-            "activation notice": r"> Vibe Kit 文件已升级到 (?P<version>\d+\.\d+\.\d+)，",
-            "publication boundary": r"presents the closed v(?P<version>\d+\.\d+\.\d+) schema-(?P<schema>\d+) Pre-release",
+            "identification line": (r"This document is the Agent-host-facing adoption and maintenance entry point for\s+Vibe Kit (?P<version>\d+\.\d+\.\d+)\.", self.version),
+            "activation notice": (r"> Vibe Kit 文件已升级到 (?P<version>\d+\.\d+\.\d+)，", self.version),
+            "publication boundary": (r"presents the closed v(?P<version>\d+\.\d+\.\d+) schema-(?P<schema>\d+) Pre-release", publication_profile["version"]),
         }
-        for name, pattern in sites.items():
+        for name, (pattern, expected_version) in sites.items():
             match = re.search(pattern, self.guide)
             if match is None:
                 self.fail(f"the managed guide no longer carries its {name}")
                 continue
             self.assertEqual(
                 match.group("version"),
-                self.version,
-                f"the managed guide's {name} version literal diverged from the framework version",
+                expected_version,
+                f"the managed guide's {name} version literal diverged from its current-source or exact-publication boundary",
             )
             if "schema" in match.groupdict():
                 self.assertEqual(match.group("schema"), str(self.m.PUBLICATION_INTENT_SCHEMA))

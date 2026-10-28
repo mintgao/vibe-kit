@@ -43,7 +43,7 @@ Provide a project-pinned development system that lets coding Agents carry truste
 
 ## Non-goals and boundaries
 
-- Vibe Kit v0.10.1 is the latest published non-draft GitHub Pre-release. Its
+- Vibe Kit v0.11.0 is the latest published non-draft GitHub Pre-release. Its public acceptance is recorded in `docs/work-items/20261010-feedback-closure/postpublication.md`; the earlier v0.10.1
   public completion and live verification are recorded in
   `docs/work-items/20260922-v0-10-1-publication/postpublication.md`. The historical
   v0.10.0 publication, public verification and issue #8–#13 closeout are recorded in
@@ -73,11 +73,26 @@ Provide a project-pinned development system that lets coding Agents carry truste
 
 The published v0.9.0 release added bounded preimplementation evidence validation and authenticated AGENTS-region integration without changing project word budgets. The published v0.10.0 release added the widened readiness grammar, the closed verification contract, published takeover admission and the per-host registry with the schema-4 Agent-install contract and the first-class Hermes entry, and its closeout closed issues #8–#13. The published v0.10.1 release publishes the Hermes label raise: the conformance label rose from `supported-unverified` to `verified` on its completed five-stage record, and the version boundary advances with publication schema 5 and no issue closeout. Both release homepages are reviewed and synchronized; independent public acceptance is recorded in the current work item.
 
-The current source candidate is unpublished 0.11.0. It implements the accepted
+The published 0.11.0 source implements the accepted
 five feedback targets: safe publication result persistence, repeatable maintenance
 transactions, opt-in complete sanitized success logs, private diagnostic progress
-and prospective multi-stage outcome coverage. Source implementation does not
-establish final independent QA, public completion or issue closure; those remain
-separate evidence phases. Default successful output is not written by progress,
+and prospective multi-stage outcome coverage. Source implementation alone does not establish QA, public completion or issue closure. Those separate phases are recorded in `docs/work-items/20261010-feedback-closure/verification.md`, `postpublication.md` and `closeout.md`. Default successful output is not written by progress,
 optional storage failure preserves observed checks, and interruption remains
 incomplete with descendant cancellation unproven.
+
+
+The current source candidate is 0.12.0, unpublished. ADR0023 adds exact onboarding
+schema-version validation, applicable real-entry focused evidence and the bounded
+read-only inspect-run consumer. It reports historical evidence only, with
+unproven candidate applicability and unattested origin. Producer defaults and
+historical publication profiles remain fixed; #21/#26 are assessment-only and
+#24/#25 deferred. The preserved root installation state is not rewritten to claim
+0.12 activation. Independent acceptance belongs to the new work item.
+
+
+The 0.12.0 candidate now also declares its exact Pre-release publication and
+separate #20/#22/#23 closeout profiles under ADR0024. Source review, merged-source
+release QA, public acceptance, issue closure and project upgrade retain distinct
+outcomes. Latest-published links remain v0.11.0 until observed public completion;
+no offline profile definition supplies that completion evidence. The governing
+scope is [the public 0.12.0 brief](../work-items/20261028-v0-12-publication/brief.md).

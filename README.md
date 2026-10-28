@@ -10,6 +10,8 @@
 
 <p align="center">Latest published · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.11.0"><code>v0.11.0 Pre-release</code></a></p>
 
+This checkout also contains an **unpublished 0.12.0 source candidate**, including exact onboarding-version validation, bounded read-only `inspect-run` and focused entry evidence. See the [local candidate notes](docs/releases/0.12.0.md); the published installation links below remain v0.11.0.
+
 ## Turn a goal into work you can follow
 
 Tell your Agent what you want to build or fix. Vibe Kit supplies project instructions, reusable workflows, and local verification tools so the work has a place to start, a way to be checked, and a record of what remains.
@@ -61,3 +63,7 @@ Progress is diagnostic and can be stale or unavailable. Complete success logs ar
 - **For explicit control over sharing.** There is no telemetry or silent public feedback submission. Logs remain private; known-pattern sanitization cannot detect every secret.
 
 This is a Pre-release, with no stable Release or publisher signing. Read the [capabilities and limits](docs/maintainers-guide.md), [verification and log settings](docs/verification-observability.md), or [Agent installation contract](AGENT_INSTALL.md). Earlier release: [v0.10.1](https://github.com/mintgao/vibe-kit/releases/tag/v0.10.1).
+
+## Maintainer checks
+
+The CLI `validate-readiness` validates bounded work-item readiness evidence read-only. `inspect-managed-agents` uses the `unicode-whitespace-v1` word policy when requested; a 2858-word file fails a 2800-word ceiling. These checks preserve project policy. Documentation string tests cannot replace this kind of behavioral evidence; live Agent scenarios remain separate verification. See the [maintainers guide](docs/maintainers-guide.md) for commands and the earlier v0.10.1 contract history.

@@ -1,6 +1,19 @@
 # Changelog
 
-## 0.11.0 — unpublished candidate
+## 0.12.0 — intended Pre-release
+
+- Require exact integer onboarding schema 1 while preserving valid state and bytes.
+- Add applicable real-entry focused evidence guidance with Python/Node scenarios.
+- Add bounded read-only `inspect-run` with separate historical receipt/run verdicts,
+  explicit receipt precedence, one artifact set and unproven candidate applicability.
+- Keep producer defaults and all historical publication/closeout profiles unchanged.
+- Advance only current source/Plugin/bridge/migration mirrors; installed source-checkout
+  state is preserved and edited source is not claimed activated.
+- Add exclusive publication schema 7 and separate ordered [20,22,23] closeout schema 5;
+  actual publication, public acceptance, closure and upgrade remain separately evidenced stages.
+- Candidate lineage and outcome rollup are assessment-only; output-policy/profiles remain deferred.
+
+## 0.11.0 — published Pre-release
 
 - Keep publication input receipts read-only and add create-only result receipts.
 - Validate equal upgrade images against each operation's required pre/post state.
@@ -9,7 +22,7 @@
 - Add prospective outcome coverage for applicable multi-stage M/L work without new S obligations.
 - Add exact publication schema 6 and separate [14,15,16,17,18] closeout schema 4; retain historical profiles.
 - Advance current source/Plugin/migration/bridge identities to 0.11.0; keep other protocols and Python 3.9 boundaries.
-- Final QA, deterministic release gates, public acceptance and issue closure remain separately evidenced future phases.
+- Public acceptance and separate issue closure are recorded in the v0.11.0 work item.
 
 ## 0.10.1 — 2026-09-22
 

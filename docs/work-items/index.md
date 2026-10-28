@@ -10,6 +10,8 @@ Each generated folder contains a brief and verification record. Add design or im
 
 ## Active and recent
 
+- [Vibe Kit v0.12.0 publication candidate: F1–F3 and exact publication/closeout profiles](20261028-v0-12-publication/brief.md)
+
 - [Verification observability and feedback closure — v0.11.0 completed](20261010-feedback-closure/brief.md)
 
 - [Publish Vibe Kit v0.8.0 GitHub Pre-release](20260902-v0-8-publication/brief.md)

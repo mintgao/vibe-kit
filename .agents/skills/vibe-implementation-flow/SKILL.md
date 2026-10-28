@@ -58,3 +58,23 @@ historical work gain no required artifact. Keep host goal text, transfer payload
 and custody outside repository documents; readiness and independent QA remain
 required. Unverified is a coverage state, not a new QA result enum. Static
 scenarios do not prove live-model compliance or measured efficiency.
+
+
+## Applicable affected-entry evidence
+
+For a changed shared helper or adapter, supply a bounded impact slice and explain
+why its affected entries are sufficient. Use the configured command's actual
+default discovery or package script for focused execution, observe the loaded
+origin and arguments, and preserve intentionally historical callers. Static
+search locates callers; it does not prove that they ran. A direct helper test
+alone does not establish live default wiring. Projects own probes and assertions;
+no call-graph builder or additional executor is required.
+
+| Configured check | Actual default entry | Affected live caller/helper | Observed origin/arguments | Focused command/result | Preserved historical caller |
+|---|---|---|---|---|---|
+| test | project discovery/script | bounded project path/name | runtime observation | project command and evidence | path/assertion, or none |
+
+Mark this inapplicable when no shared entry changes; S work gains no mandatory
+table or ceremony. RD runs focused checks; independent QA still owns one complete
+default verification per unchanged final candidate. See the
+[Python and Node example](references/affected-entry-evidence.md) in the installed workflow.
