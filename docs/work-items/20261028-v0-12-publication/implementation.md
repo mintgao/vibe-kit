@@ -140,3 +140,52 @@ payload is `afb5d0fc3dbed7c1af16c428b19dc93f8b9eb26a862005d4f85be922aefc986c`.
 These supersede the earlier candidate identities above. Original feature and
 installation-state bytes remain unchanged. Complete independent QA for this new
 candidate and public completion remain pending; no remote operation occurred.
+
+
+## Packaged-reference closure after intermediate H2 review
+
+The earlier guide/Skill correction passed 10 focused tests. A subsequent repair
+converted the release-note and consumption-contract references, passed nine
+focused tests and built/validated one offline package. H1's 195-test independent
+QA and both prior focused runs retain their original source identities; no H2
+complete QA had started. The intermediate package payload was
+`476cbae3786a851de422886db3723a631982378b098b5f4f81bc947927610702`.
+
+The intermediate closure claim used target membership and incorrectly classified
+a newly added README guide-link occurrence as inherited. Reusing an old target
+does not make a new occurrence historical. Its earlier count-based audit had
+correctly identified only five unchanged missing occurrences; changing that
+classification to six did not close the remaining new occurrence. Private prior
+evidence is retained with this scope correction, without claiming a repeated
+failure of the same product test.
+
+The final bounded correction changes only the newly added guide-link occurrence
+in each homepage to the canonical v0.12.0 English source guide and refreshes the
+existing Plugin payload mirror. All five earlier canonical references remain.
+The audit compares individual Markdown occurrences with the actual public
+baseline `ddeaec74ae6cea03e71f30e8f88d3b235dfce722`. All nine new references in
+shipped Markdown resolve in both direct and Plugin payloads or name tracked files
+through versioned source URLs. All sixteen new source-only references resolve in
+the reviewed source. These counts include seven new canonical source references
+across both languages. The direct and Plugin payloads contain the same 37 source
+members; the Plugin contains 44 total members. Prospective tag URLs were not
+fetched; live availability remains a later publication obligation.
+
+Five unchanged package-relative README references remain recorded limitations:
+`docs/maintainers-guide.md` twice, `docs/releases/0.11.0.md`,
+`docs/work-items/20261010-feedback-closure/postpublication.md`, and
+`docs/verification-observability.md`. Exact unchanged occurrences match the
+public baseline. Historical cleanup and distribution expansion remain outside
+this correction, so the existing allowlist and these references are preserved.
+
+On the final corrected bytes, six focused release-identity tests and three
+managed-guide tests passed on CPython 3.9.6. One retained offline
+`release-candidate-unpublished` package and explicit `validate-release` passed;
+the occurrence audit has no new-reference failures. No complete default
+verification ran. Runtime, profiles, tests and original feature/installation
+state remain unchanged. Production calculation preserves activation
+`f2bccba7ec741eb9fad904576f5515df556f8593564a67e299e5bfc1a936d6f3`
+and refreshes payload to
+`d8ce4dc0843902b869d52fff4c9c8d7ded6c16f3bb9f4f292cb74a4eaa1bc598`.
+RD writer ownership is released. Final-candidate independent QA and all public
+completion stages remain pending; no commit or remote operation occurred.

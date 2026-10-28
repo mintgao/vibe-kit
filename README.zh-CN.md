@@ -66,4 +66,4 @@
 
 ## 维护检查
 
-CLI `validate-readiness` 只读验证有限格式的 work-item 就绪证据。`inspect-managed-agents` 可使用 `unicode-whitespace-v1` 计数策略；2858 词的文件不能通过 2800 词上限，检查不会降低项目标准。文档字符串测试不能替代这类行为证据，真实 Agent 场景仍需单独验证。命令与先前 v0.10.1 契约历史见[维护指南](docs/maintainers-guide.zh-CN.md)。
+CLI `validate-readiness` 只读验证有限格式的 work-item 就绪证据。`inspect-managed-agents` 可使用 `unicode-whitespace-v1` 计数策略；2858 词的文件不能通过 2800 词上限，检查不会降低项目标准。文档字符串测试不能替代这类行为证据，真实 Agent 场景仍需单独验证。命令与先前 v0.10.1 契约历史见[维护指南](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/maintainers-guide.md)。

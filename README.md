@@ -66,4 +66,4 @@ This is a Pre-release, with no stable Release or publisher signing. Read the [ca
 
 ## Maintainer checks
 
-The CLI `validate-readiness` validates bounded work-item readiness evidence read-only. `inspect-managed-agents` uses the `unicode-whitespace-v1` word policy when requested; a 2858-word file fails a 2800-word ceiling. These checks preserve project policy. Documentation string tests cannot replace this kind of behavioral evidence; live Agent scenarios remain separate verification. See the [maintainers guide](docs/maintainers-guide.md) for commands and the earlier v0.10.1 contract history.
+The CLI `validate-readiness` validates bounded work-item readiness evidence read-only. `inspect-managed-agents` uses the `unicode-whitespace-v1` word policy when requested; a 2858-word file fails a 2800-word ceiling. These checks preserve project policy. Documentation string tests cannot replace this kind of behavioral evidence; live Agent scenarios remain separate verification. See the [maintainers guide](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/maintainers-guide.md) for commands and the earlier v0.10.1 contract history.

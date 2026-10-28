@@ -430,7 +430,7 @@ statuses are `inspected`, `invalid`, `error`; authority is
 `historical-evidence-only` and side effects are `none`. `--final-receipt` is input
 only and never enables generic output receipt persistence. The existing verify
 envelope and declaration remain unchanged. See
-[the consumption contract](docs/verification-observability.md) for exact fields,
+[the consumption contract](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/verification-observability.md) for exact fields,
 findings, limits, independent receipt/run verdicts and explicit-copy semantics.
 Current-candidate applicability is always `unproven`, project origin
 `not-attested`, and liveness `not-assessed`. The separate schema-7 publication
