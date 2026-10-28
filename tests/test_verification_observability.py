@@ -130,58 +130,63 @@ class PublicationInputOwnershipTests(unittest.TestCase):
         self.assertFalse(stale.exists())
 
     def test_actual_profile_validation_preserves_inputs_and_only_publishes_outer_result(self):
-        # Real closed profile validation and local file hashes; the nested
-        # release validator is controlled, so this is not a release gate.
-        profile = self.m.PUBLICATION_PROFILES[6]
-        intent = profile_test_intent(self.m, 6)
-        for asset in intent["assets"]:
-            data = ("synthetic local artifact " + asset["name"]).encode()
-            (self.candidate / asset["name"]).write_bytes(data)
-            asset.update(size=len(data), sha256=hashlib.sha256(data).hexdigest())
-        intent["asset_set_sha256"] = self.m.canonical_json_sha256(intent["assets"])
-        for asset, operation in zip(intent["assets"], intent["operations"][3]["asset_operations"]):
-            operation.update(size=asset["size"], sha256=asset["sha256"])
-            identity = {"schema_version": 6, "profile": profile["profile"],
-                        "parent_operation_id": intent["operations"][3]["operation_id"],
-                        "natural_key": operation["natural_key"],
-                        "remote_snapshot_sha256": intent["remote_snapshot_sha256"],
-                        "asset": asset, "initial_observation": {"state": "absent", "id": None,
-                        "size": None, "sha256": None, "download_url": None}}
-            operation["expected_precondition"]["identity_sha256"] = self.m.canonical_json_sha256(identity)
-        receipt = profile_test_receipt(self.m, intent, 6)
-        authorization = {"authorization_id": receipt["authorization_id"], "repository": "mintgao/vibe-kit",
-                         "version": "0.11.0", "release_kind": "prerelease",
-                         "allowed_operations": list(self.m.V080_PUBLICATION_ALLOWED_OPERATIONS),
-                         "publication_intent_sha256": self.m.canonical_json_sha256(intent),
-                         "host_operation_id": receipt["host_operation_id"],
-                         "authorization_source_ref": "test:existing-bound-authorization",
-                         "bound_at": "2026-10-13T00:00:00Z"}
-        self.intent.write_text(json.dumps(intent))
-        self.authorization.write_text(json.dumps(authorization))
-        def nested_validator(*args):
-            self.m.print_json(self.m.result_envelope("validate-release", "valid"))
-            return 0
-        for invalid in (False, True):
-            for explicit_output in (False, True):
-                candidate_receipt = copy.deepcopy(receipt)
-                if invalid:
-                    candidate_receipt["downloads"][0]["matched"] = False
-                self.receipt.write_text(json.dumps(candidate_receipt) + "\n")
-                before = self.receipt.read_bytes()
-                destination = self.base / (str(invalid) + str(explicit_output) + ".result.json")
-                extra = ["--authorization", str(self.authorization)]
-                if explicit_output:
-                    extra += ["--result-receipt", str(destination)]
-                with mock.patch.object(self.m, "validate_release", nested_validator), \
-                     mock.patch.object(self.m, "publish_exclusive_bytes", wraps=self.m.publish_exclusive_bytes) as publication:
-                    code, value = self.invoke(*extra)
-                expected = 1 if invalid or sys.version_info[:2] != (3, 9) else 0
-                self.assertEqual(code, expected, value.get("errors"))
-                self.assertEqual(value["status"], "invalid" if expected else "valid")
-                self.assertEqual(self.receipt.read_bytes(), before)
-                self.assertEqual(publication.call_count, int(explicit_output))
-                if explicit_output:
-                    self.assertEqual(json.loads(destination.read_bytes())["command"], "validate-publication")
+        for schema in (6, 7):
+            # Real closed profile validation and local file hashes; the nested
+            # release validator is controlled, so this is not a release gate.
+            profile = self.m.PUBLICATION_PROFILES[schema]
+            intent = profile_test_intent(self.m, schema)
+            for asset in intent["assets"]:
+                data = ("synthetic local artifact " + asset["name"]).encode()
+                (self.candidate / asset["name"]).write_bytes(data)
+                asset.update(size=len(data), sha256=hashlib.sha256(data).hexdigest())
+            intent["asset_set_sha256"] = self.m.canonical_json_sha256(intent["assets"])
+            for asset, operation in zip(intent["assets"], intent["operations"][3]["asset_operations"]):
+                operation.update(size=asset["size"], sha256=asset["sha256"])
+                identity = {"schema_version": schema, "profile": profile["profile"],
+                            "parent_operation_id": intent["operations"][3]["operation_id"],
+                            "natural_key": operation["natural_key"],
+                            "remote_snapshot_sha256": intent["remote_snapshot_sha256"],
+                            "asset": asset, "initial_observation": {"state": "absent", "id": None,
+                            "size": None, "sha256": None, "download_url": None}}
+                operation["expected_precondition"]["identity_sha256"] = self.m.canonical_json_sha256(identity)
+            receipt = profile_test_receipt(self.m, intent, schema)
+            authorization = {"authorization_id": receipt["authorization_id"], "repository": "mintgao/vibe-kit",
+                             "version": profile["version"], "release_kind": "prerelease",
+                             "allowed_operations": list(self.m.V080_PUBLICATION_ALLOWED_OPERATIONS),
+                             "publication_intent_sha256": self.m.canonical_json_sha256(intent),
+                             "host_operation_id": receipt["host_operation_id"],
+                             "authorization_source_ref": "test:existing-bound-authorization",
+                             "bound_at": "2026-10-13T00:00:00Z"}
+            self.intent.write_text(json.dumps(intent))
+            self.authorization.write_text(json.dumps(authorization))
+            def nested_validator(*args):
+                self.m.print_json(self.m.result_envelope("validate-release", "valid"))
+                return 0
+            for invalid in (None, "download", "main"):
+                for explicit_output in (False, True):
+                    candidate_receipt = copy.deepcopy(receipt)
+                    if invalid == "download":
+                        candidate_receipt["downloads"][0]["matched"] = False
+                    elif invalid == "main":
+                        candidate_receipt["main"]["observed_oid"] = "9" * 40
+                    self.receipt.write_text(json.dumps(candidate_receipt) + "\n")
+                    before = self.receipt.read_bytes()
+                    destination = self.base / (str(schema) + str(invalid) + str(explicit_output) + ".result.json")
+                    extra = ["--authorization", str(self.authorization)]
+                    if explicit_output:
+                        extra += ["--result-receipt", str(destination)]
+                    with mock.patch.object(self.m, "validate_release", nested_validator), \
+                         mock.patch.object(self.m, "publish_exclusive_bytes", wraps=self.m.publish_exclusive_bytes) as publication:
+                        code, value = self.invoke(*extra)
+                    expected = 1 if invalid or sys.version_info[:2] != (3, 9) else 0
+                    self.assertEqual(code, expected, value.get("errors"))
+                    self.assertEqual(value["status"], "invalid" if expected else "valid")
+                    if invalid == "main":
+                        self.assertIn("schema-2 final main read-back does not match", value["errors"])
+                    self.assertEqual(self.receipt.read_bytes(), before)
+                    self.assertEqual(publication.call_count, int(explicit_output))
+                    if explicit_output:
+                        self.assertEqual(json.loads(destination.read_bytes())["command"], "validate-publication")
 
 
 class EqualityAwareUpgradeTests(unittest.TestCase):

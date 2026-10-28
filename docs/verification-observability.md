@@ -1,6 +1,6 @@
 # Local verification observability
 
-This describes local verification in Vibe Kit 0.11.0. Execution metadata is diagnostic;
+This describes local verification in the unpublished Vibe Kit 0.12.0 source candidate. Execution metadata is diagnostic;
 independent acceptance still requires the complete applicable verification result.
 
 ## Settings and final results
@@ -63,39 +63,113 @@ published, which may differ from start-time order. It never implies current
 liveness, completion or acceptance. Use your startup run ID when tracking your own
 invocation.
 
-The CLI exposes one pure `validate_verify_execution` validator and safe
-`read_verify_execution`/`read_verify_locator` readers for maintainers and tests.
-For an explicitly persisted result, a trusted local consumer can use:
+Use the explicit public consumer for an existing run:
 
-```python
-import json
-from pathlib import Path
-import runpy
-
-api = runpy.run_path("bin/vibe")
-root = Path(".").resolve()
-locator, locator_errors = api["read_verify_locator"](root)
-if locator_errors:
-    raise ValueError("Progress discovery is unavailable")
-# Prefer the caller's startup ID when supplied, rather than this discovery locator.
-run_id = locator["run_id"]
-envelope = json.loads(Path("verification.json").read_bytes())
-snapshot, errors = api["read_verify_execution"](
-    root, run_id, envelope, artifacts=True
-)
-if errors:
-    raise ValueError("Diagnostic evidence is unavailable or invalid")
+```text
+./bin/vibe inspect-run . --run-id verify-<startup-id> --format json
+./bin/vibe inspect-run . --run-id verify-<startup-id> --final-receipt .vibe/local/verify/receipts/qa-unique.json --format json
 ```
 
-The safe reader checks private objects without following symlinks, owner/modes,
-single-link regular-file identity, 64 KiB snapshot/2 KiB locator bounds, strict
-JSON without duplicates/nonfinite values, closed fields/enums/combinations,
-numeric major.minor.patch versions without leading-zero components,
-calendar-valid UTC microsecond timestamps, metadata checksum, supplied envelope
-selection/order/check binding, and requested log/receipt bytes/digests. External
-receipt paths are never persisted; pass `external_receipt=<authorized bytes>` to
-verify one when supplied. Errors expose bounded rule IDs and field paths only.
-Checksums detect inconsistent changes, not a malicious same-OS-principal writer.
+Target and startup run ID are required. There is no implicit latest lookup,
+rerun, repair, process control or liveness probe. `--final-receipt` is read-only
+input; relative explicit paths follow the invocation working directory. Without
+it, only an available project receipt selected by valid metadata is read.
+External receipts always require an explicit path. A bad explicit input never
+falls back. The original metadata receipt path is not reopened in explicit mode:
+a safe byte-identical copy can bind even if the original slot is gone, and the
+informational `inspection-original-receipt-path-not-inspected` finding discloses
+that limit. The original slot's existence/integrity is not attested.
+
+A complete valid selected receipt owns the only artifact set. Otherwise valid
+metadata owns its available logs; otherwise the set is empty. `artifact_scope`
+is `receipt`, `metadata` or `none`. At most four references in selected check
+order are hashed, without reading a second conflicting identity. Conflicting
+metadata references produce a binding mismatch and
+`inspection-metadata-artifacts-not-inspected`. The independent receipt verdict
+can still pass after its own logs verify; the run verdict remains unverified.
+
+The schema-2 result has exactly `schema_version`, `command`, `status`,
+`inspection`. Its nested schema 1 has exactly: `schema_version`, `run_id`,
+`metadata`, `receipt`, `binding`, `coverage`, `artifact_scope`, `artifacts`,
+`historical_receipt_verdict`, `historical_run_verdict`, `candidate_applicability`,
+`project_origin`, `liveness`, `findings`, `next_actions`.
+
+- Metadata projects only state, last run state, original result status, validated
+  update time and metadata digest. Receipt projects only state/source, original
+  status, actual byte digest and canonical root-relative envelope digest.
+- Binding is matched/mismatch/unavailable, coverage all-configured/partial/unknown.
+  Artifacts project check/state/digest/verified byte count only; bodies and paths
+  are absent. Historical verdicts are passed/not-passed/unverified.
+- A historical receipt pass needs a complete CLI schema-2 default/all-configured
+  passed receipt, exact summary and every referenced log verified. A run pass also
+  needs valid finished/passed metadata and matched binding. Partial coverage and
+  original failed/blocked/error results remain non-passing. Missing/invalid or
+  unbound evidence remains unverified.
+- `candidate_applicability=unproven`, `project_origin=not-attested` and
+  `liveness=not-assessed` are unconditional. Hash binding is correspondence, not
+  provenance: copying an identical consistent root-relative evidence set cannot
+  be detected. Current source changes do not acquire a historical pass.
+
+| Status / exit | Meaning |
+|---|---|
+| inspected / 0 | Valid metadata and no selected evidence integrity failure; optional missing envelope and partial/non-passing original results remain explicit gaps. |
+| invalid / 1 | Required metadata missing/invalid, selected evidence unavailable/invalid, or binding/integrity mismatch. Independent receipt facts remain separate. |
+| error / 2 | Unsafe/unopenable target, unsupported filesystem primitives or internal safe-processing failure. |
+
+Inspection pins the lexical root using component-wise no-follow traversal; all
+project reads retain that root descriptor. Receipt inputs are at most 1 MiB;
+logs at most 64 MiB each, hashed in 64 KiB chunks. Declared and observed bounds
+are enforced. Private regular one-link 0600 leaves require current ownership and
+stable device/inode/mode/owner/link/size/mtime/ctime. Project-store parent rules
+remain unchanged. Symlinks and unsafe types/modes/owners fail closed. No parent,
+ignore rule, cache or evidence is created or modified. These are consumer limits;
+producer retention and receipt behavior are unchanged. Unsupported/oversized
+input is a gap, never proof the historical execution failed or an instruction to
+rerun checks.
+
+Complete receipts use strict UTF-8 JSON without duplicate keys or nonfinite
+numbers. Unknown/missing fields, bool-as-integer versions/exits/counts, invalid
+selection/order/outcome/provenance/environment/output or summary fail closed.
+Valid error and terminal-delivery blocked receipts keep their original status.
+The old `read_verify_execution`, `validate_verify_execution` and locator APIs
+remain available with their existing defaults; their optional artifact reads are
+not the bounded public inspection interface.
+
+Findings are at most 64 fixed codes/field paths; output is at most 32768 UTF-8
+bytes and never contains tails, commands, exceptions, user keys, absolute paths,
+toolchain free text or bodies. Existing `execution-*` codes describe metadata.
+The closed new registry is:
+
+```text
+inspection-run, inspection-target, inspection-receipt-shape,
+inspection-receipt-size, inspection-receipt-unavailable,
+inspection-receipt-binding, inspection-original-receipt-path-not-inspected,
+inspection-metadata-artifacts-not-inspected, inspection-artifact-size,
+inspection-artifact-integrity, inspection-coverage-partial,
+inspection-envelope-not-supplied, inspection-current-candidate-unproven,
+inspection-unsupported-filesystem, inspection-internal-error
+```
+
+Next actions are at most eight deduplicated fixed codes from
+`supply-final-receipt`, `recover-existing-evidence`, `inspect-evidence-finding`,
+`assess-current-candidate`, `review-nonpassing-result`, `await-owned-run-evidence`.
+They never request a process action or an automatic rerun.
+
+For a long owned QA invocation, first establish an existing symlink-free private
+receipt directory (0700), with the project's ignore coverage (for example a
+private `.gitignore` containing `*` and `!.gitignore`). Use a new filename for each
+invocation; verify does not create receipt parents. Then, when QA already owns
+the authorized canonical run:
+
+```text
+./bin/vibe verify . --progress --log-policy all-configured --receipt .vibe/local/verify/receipts/qa-unique.json --format json
+./bin/vibe inspect-run . --run-id verify-<startup-id> --final-receipt .vibe/local/verify/receipts/qa-unique.json --format json
+```
+
+Progress, complete success logs and explicit receipt persistence are independent
+choices. This example does not add an RD full-matrix pre-run. Keep all logs and
+receipts private. Checksums detect inconsistency, not a malicious writer with the
+same OS principal.
 
 `available` logs have exact path/bytes/digest. Other availability states carry
 null identity: pending, not-selected, not-applicable, unavailable, incomplete.

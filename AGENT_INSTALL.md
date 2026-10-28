@@ -1,7 +1,8 @@
 # Agent installation and takeover contract
 
 This document is the Agent-host-facing adoption and maintenance entry point for
-Vibe Kit 0.11.0. The machine-readable source of truth is `agent-install.json`. Keep
+Vibe Kit 0.12.0. Publication status is established by release evidence. The machine-readable
+source of truth is `agent-install.json`. Keep
 CLI commands, JSON receipts, hashes and archive details internal during a healthy
 flow; report them only when they establish evidence or explain a blocker.
 
@@ -155,7 +156,7 @@ Without a live receipt, stop the source task after upgrade/doctor with
 `overall_status=degraded`, `reason_code=manual-new-task-required`, and exactly one
 action: create a new task in the same project. Say:
 
-> Vibe Kit 文件已升级到 0.11.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个任务（Codex、Hermes 或任何能新建任务的宿主均可）。
+> Vibe Kit 文件已升级到 0.12.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个任务（Codex、Hermes 或任何能新建任务的宿主均可）。
 
 Use a host-prefilled continuation when available. Otherwise include one copyable
 sentence containing the active objective. Do not require a CLI command, Skill name
@@ -285,21 +286,40 @@ installation state.
 ## Publication boundary
 
 The repository release Skill preserves the exact v0.7.0 schema-1 publication and
-closeout path, presents the closed v0.11.0 schema-6 Pre-release plan, and keeps the
-separate schema-4 closeout over ordered issues [14,15,16,17,18] bound to that
-validated publication. Historical publication profiles 1–5 and closeout profiles
-1–3 retain their identities and verdicts.
-Offline `publication-plan` and `validate-publication` build and
-check canonical intents and receipts; they never gain GitHub credentials or
-network authority. The Agent/host performs compare-and-swap main advancement,
-exact annotated tag/Release/five-asset reconciliation, public read-back/download
-checks and separately authorized idempotent closeout for the exact applicable
-profile. v0.11.0 publication acceptance excludes future issue closeout; its
-receipt keeps issue_closeout null. The v0.8 and v0.10.1 profiles contain no Issue
-operation or closeout authorization. validate-publication --receipt is read-only
-input; optional --result-receipt creates one distinct new outer result and
-refuses aliases, existing leaves, candidate descendants and unsafe parents. Divergent or extra remote state blocks. Delete, replace,
-force and stable/draft transitions require separate authorization.
+closeout path, presents the closed v0.12.0 schema-7 Pre-release plan, and keeps the
+separate schema-5 closeout over ordered issues [20,22,23] bound to that validated
+publication. Historical publication profiles 1–6 and closeout profiles 1–4 retain
+their identities and verdicts; schema 6 remains exclusively v0.11.0.
+
+Offline `publication-plan` and `validate-publication` build and check canonical
+intents and receipts; they never gain GitHub credentials or network authority.
+The Agent/host first merges the reviewed public source through a normal PR,
+then freezes the actual merged commit and tree for distinct release QA and two
+clean identical builds. The six-operation intent binds that source, notes,
+annotated tag, five exact assets and a fresh remote snapshot. When main already
+equals that frozen source, confirm it with no write; divergence blocks.
+
+The host owns exact tag/Release/asset reconciliation and public read-back,
+download validation and all seventeen profile smokes. Prepublication AC-1–AC-8
+pass only after the merged-source release gate; AC-9–AC-12 are later stages.
+v0.12.0 publication acceptance contains AC-1–AC-10 only. Future closeout AC-11 and
+project upgrade AC-12 are separate; publication receipt issue_closeout stays
+null. The v0.8 and v0.10.1 profiles contain no Issue operation or closeout
+authorization. The separate v0.12.0 closeout binds the exact accepted publication,
+existing separately authorized [20,22,23] scope and mapped semantic evidence.
+Each exact comment is read back before close, then closed state is read back.
+The evidence digest does not authenticate its semantic truth.
+
+Existing authorization is bound with authorization_source_ref and bound_at;
+these record source and binding time, never invented new consent.
+`validate-publication --receipt` is read-only input; optional `--result-receipt`
+creates one distinct new outer result and refuses aliases, existing leaves,
+candidate descendants and unsafe parents. Remote writes require read-back
+before retry, with at most two writes per natural key. Denial, divergence or
+still-unknown state stops the affected operation. Delete, replace, force and
+stable/draft transitions require separate authorization. See
+[ADR0024 — versioned source decision](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/decisions/0024-v0-12-publication-and-separate-closeout.md) for the
+closed identities, ordered smokes, closeout mapping and recovery contract.
 
 ## Takeover object contract
 
@@ -400,3 +420,19 @@ finished snapshot is not complete invocation evidence.
 ### Minimal manual-transfer payload
 
 When custody moves manually, the successor validates the transfer with `validate-takeover --manual-transfer <path>`. The payload is exactly `transfer_schema_version` (1), `transfer_id` (opaque, <=256; equals `goal.transfer_id` when the object carries one), `goal` (host-supplied text, <=4096; never persisted by the framework), `decisions` (<=16 strings <=512), `unfinished` (<=16 strings <=512), and `evidence` (<=32 entries of exactly `ref` and `sha256`; a `./`-prefixed `ref` must resolve under the project root and match its digest).
+
+
+## Read-only historical run inspection
+
+`inspect-run <target> --run-id <id> [--final-receipt <path>] --format json`
+uses the existing result schema 2 and a closed nested inspection schema 1. Its
+statuses are `inspected`, `invalid`, `error`; authority is
+`historical-evidence-only` and side effects are `none`. `--final-receipt` is input
+only and never enables generic output receipt persistence. The existing verify
+envelope and declaration remain unchanged. See
+[the consumption contract](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/verification-observability.md) for exact fields,
+findings, limits, independent receipt/run verdicts and explicit-copy semantics.
+Current-candidate applicability is always `unproven`, project origin
+`not-attested`, and liveness `not-assessed`. The separate schema-7 publication
+profile does not turn inspection into current-candidate acceptance; schema 6
+remains exclusively v0.11.0.

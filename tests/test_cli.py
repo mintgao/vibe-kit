@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -2760,7 +2761,7 @@ class VibeCliTests(unittest.TestCase):
             fake_gh = fake_bin / "gh"
             fake_gh.write_text(
                 "#!/bin/sh\n"
-                f"touch {marker}\n"
+                f"touch {shlex.quote(str(marker))}\n"
                 "exit 0\n"
             )
             fake_gh.chmod(0o755)
@@ -2869,7 +2870,7 @@ class VibeCliTests(unittest.TestCase):
             fake_gh = fake_bin / "gh"
             fake_gh.write_text(
                 "#!/bin/sh\n"
-                f"touch {marker}\n"
+                f"touch {shlex.quote(str(marker))}\n"
                 'if [ "$2" = "create" ]; then echo '
                 '"https://github.com/mintgao/example/issues/1"; else echo "[]"; fi\n'
                 "exit 0\n"
@@ -4310,12 +4311,50 @@ class VibeCliTests(unittest.TestCase):
             prepared = json.loads((active / "prepared.json").read_text())
             capabilities = json.loads((active / "capabilities.json").read_text())
             commit = json.loads((active / "commit.json").read_text())
-            self.assertEqual(len(intent["directory_units"]), 1)
-            unit = intent["directory_units"][0]
+            expected_roots = {
+                ".agents/skills/vibe-release",
+                ".agents/skills/vibe-implementation-flow/references",
+            }
+            units = {
+                item["final_root"]: item for item in intent["directory_units"]
+            }
+            self.assertEqual(len(intent["directory_units"]), len(expected_roots))
+            self.assertEqual(set(units), expected_roots)
+            unit = units[".agents/skills/vibe-release"]
             self.assertEqual(unit["final_root"], ".agents/skills/vibe-release")
             self.assertEqual(unit["protocol"], "directory-no-clobber-v1")
             self.assertEqual(unit["directories"][0]["mode"], 0o755)
             self.assertEqual(set(unit["parent_object"]), {"device", "inode"})
+            reference_unit = units[
+                ".agents/skills/vibe-implementation-flow/references"
+            ]
+            reference_path = (
+                ".agents/skills/vibe-implementation-flow/references/"
+                "affected-entry-evidence.md"
+            )
+            self.assertEqual(reference_unit["protocol"], "directory-no-clobber-v1")
+            self.assertEqual(reference_unit["preimage_state"], "absent")
+            self.assertEqual(reference_unit["directories"], [{
+                "path": reference_unit["final_root"], "mode": 0o755,
+            }])
+            self.assertEqual(
+                set(reference_unit["parent_object"]), {"device", "inode"}
+            )
+            self.assertEqual(
+                [member["path"] for member in reference_unit["members"]],
+                [reference_path],
+            )
+            self.assertEqual(
+                (committed / reference_path).read_bytes(),
+                (ROOT / reference_path).read_bytes(),
+            )
+            self.assertEqual(
+                len(prepared["directory_stages"]), len(expected_roots)
+            )
+            self.assertEqual(
+                {stage["unit_id"] for stage in prepared["directory_stages"]},
+                {item["unit_id"] for item in intent["directory_units"]},
+            )
             self.assertEqual(
                 prepared["directory_postimage_set_sha256"],
                 intent["directory_postimage_set_sha256"],
@@ -4357,57 +4396,62 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(recovery_code, 0)
             self.assertFalse(active.exists())
 
-            raced = base / "directory-unit-race"
-            official_v060_project(raced)
-            original_no_replace = module.LeafAtomicityAdapter.no_replace
-            injected = False
-
-            def directory_race(instance, source_parent, source, destination_parent, destination):
-                nonlocal injected
-                if destination == "vibe-release" and not injected:
-                    injected = True
-                    external = raced / ".agents/skills/vibe-release"
-                    external.mkdir()
-                    (external / "external.txt").write_text("third-party\n")
-                return original_no_replace(
-                    instance, source_parent, source, destination_parent, destination
-                )
-
-            output = io.StringIO()
-            with mock.patch.object(
-                module.LeafAtomicityAdapter, "no_replace", new=directory_race
-            ), contextlib.redirect_stdout(output):
-                code = module.upgrade(
-                    raced, "json", "local-payload", KIT_VERSION, None
-                )
-            self.assertEqual(code, 2)
-            receipt = json.loads(output.getvalue())
-            self.assertTrue(injected)
-            self.assertEqual(
-                receipt["error"]["code"], "upgrade_directory_race_preserved"
-            )
-            self.assertEqual(receipt["transaction"]["outcome"], "unknown-partial")
-            self.assertEqual(
-                receipt["transaction"]["failure_kind"],
-                "external-directory-race-preserved",
-            )
-            self.assertEqual(receipt["write_state"], "unknown-partial")
-            self.assertTrue(receipt["writes_performed"])
-            self.assertEqual(receipt["installation_state"], "unknown")
-            self.assertEqual(
-                receipt["transaction"]["failed_path"],
+            for final_root in (
                 ".agents/skills/vibe-release",
-            )
-            self.assertEqual(
-                receipt["next_action"]["code"], "inspect-upgrade-transaction"
-            )
-            self.assertEqual(
-                (raced / ".agents/skills/vibe-release/external.txt").read_text(),
-                "third-party\n",
-            )
-            self.assertFalse(
-                (raced / ".vibe/local/upgrade-transactions/active/commit.json").exists()
-            )
+                ".agents/skills/vibe-implementation-flow/references",
+            ):
+                with self.subTest(directory_unit=final_root):
+                    raced = base / ("directory-unit-race-" + Path(final_root).name)
+                    official_v060_project(raced)
+                    original_no_replace = module.LeafAtomicityAdapter.no_replace
+                    injected = False
+
+                    def directory_race(instance, source_parent, source, destination_parent, destination):
+                        nonlocal injected
+                        if destination == Path(final_root).name and not injected:
+                            injected = True
+                            external = raced / final_root
+                            external.mkdir()
+                            (external / "external.txt").write_text("third-party\n")
+                        return original_no_replace(
+                            instance, source_parent, source, destination_parent, destination
+                        )
+
+                    output = io.StringIO()
+                    with mock.patch.object(
+                        module.LeafAtomicityAdapter, "no_replace", new=directory_race
+                    ), contextlib.redirect_stdout(output):
+                        code = module.upgrade(
+                            raced, "json", "local-payload", KIT_VERSION, None
+                        )
+                    self.assertEqual(code, 2)
+                    receipt = json.loads(output.getvalue())
+                    self.assertTrue(injected)
+                    self.assertEqual(
+                        receipt["error"]["code"], "upgrade_directory_race_preserved"
+                    )
+                    self.assertEqual(receipt["transaction"]["outcome"], "unknown-partial")
+                    self.assertEqual(
+                        receipt["transaction"]["failure_kind"],
+                        "external-directory-race-preserved",
+                    )
+                    self.assertEqual(receipt["write_state"], "unknown-partial")
+                    self.assertTrue(receipt["writes_performed"])
+                    self.assertEqual(receipt["installation_state"], "unknown")
+                    self.assertEqual(
+                        receipt["transaction"]["failed_path"],
+                        final_root,
+                    )
+                    self.assertEqual(
+                        receipt["next_action"]["code"], "inspect-upgrade-transaction"
+                    )
+                    self.assertEqual(
+                        (raced / final_root / "external.txt").read_text(),
+                        "third-party\n",
+                    )
+                    self.assertFalse(
+                        (raced / ".vibe/local/upgrade-transactions/active/commit.json").exists()
+                    )
 
             for winner_kind in ("file", "symlink"):
                 raced_entry = base / f"directory-unit-{winner_kind}-race"

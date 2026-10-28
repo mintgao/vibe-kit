@@ -23,3 +23,6 @@ Record durable architectural choices here when the tradeoff matters beyond one w
 - [0019: Host adapters — per-host capability declarations, on-demand host payloads, a first-class Hermes entry, and per-host conformance evidence](0019-host-adapters.md)
 - [0020: Publish exact v0.10.0 — the advanced maintenance-bridge bound, the closed schema-4 publication profile, and the #8–#13 issue closeout](0020-v0-10-0-publication.md)
 - [0021: Publish exact v0.10.1 — the advanced maintenance-bridge bound, the closed schema-5 publication profile, and the published Hermes verified label](0021-v0-10-1-publication.md)
+- [0022: Verification observability and prospective outcome coverage](0022-verification-observability-and-outcome-coverage.md)
+- [0023: Read-only historical verification inspection and affected-entry evidence](0023-readonly-run-inspection-and-entrypoint-evidence.md)
+- [0024: Exact v0.12.0 publication and separate issue closeout](0024-v0-12-publication-and-separate-closeout.md)

@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
   "protocol_version": 4,
-  "kit_version": "0.11.0",
+  "kit_version": "0.12.0",
   "adapter": {
     "name": "codex",
     "protocol": 7
@@ -76,13 +76,13 @@
       3
     ],
     "minimum_installed_kit_version": "0.2.0",
-    "maximum_installed_kit_version_exclusive": "0.11.0",
+    "maximum_installed_kit_version_exclusive": "0.12.0",
     "target_agent_install_schema": 4,
     "target_agent_install_protocol": 4,
     "target_cli_result_schema": 2,
     "predecessor_migrations": {
       "schema_version": 2,
-      "registry_sha256": "6873eeac1952d6ba3d1d049eae75b58e7d6319e98e2fc10d0baeb878f5d9819c",
+      "registry_sha256": "2bd4f69282952136004fbe5a66a7efe785ae407d55f36ed3b6b9f08bedb669d0",
       "authority": "target-cli-compiled",
       "modes": [
         "create-pending-onboarding-if-absent",
@@ -178,6 +178,7 @@
       ".agents/skills/vibe-feedback-flow/SKILL.md",
       ".agents/skills/vibe-feedback-flow/agents/openai.yaml",
       ".agents/skills/vibe-implementation-flow/SKILL.md",
+      ".agents/skills/vibe-implementation-flow/references/affected-entry-evidence.md",
       ".agents/skills/vibe-project-onboarding/SKILL.md",
       ".agents/skills/vibe-release/SKILL.md",
       ".agents/skills/vibe-verification-flow/SKILL.md",
@@ -205,7 +206,7 @@
       "hermes"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "903725fcf82460cb72237aba777fc210042316f45e182e2e1e0ea7bfb92ba197",
+    "activation_set_sha256": "f2bccba7ec741eb9fad904576f5515df556f8593564a67e299e5bfc1a936d6f3",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",
@@ -997,6 +998,11 @@
         "valid",
         "invalid",
         "error"
+      ],
+      "inspect-run": [
+        "inspected",
+        "invalid",
+        "error"
       ]
     },
     "write_states": [
@@ -1084,6 +1090,17 @@
       },
       "output_tail_bytes": 16384,
       "network_attestation": "not-provided"
+    },
+    "inspect_run": {
+      "result_schema_version": 2,
+      "inspection_schema_version": 1,
+      "statuses": [
+        "inspected",
+        "invalid",
+        "error"
+      ],
+      "authority": "historical-evidence-only",
+      "side_effects": "none"
     }
   },
   "onboarding": {
@@ -1135,9 +1152,9 @@
     "ordinary_upgrade_auto_recovers": false
   },
   "publication": {
-    "intent_schema": 6,
-    "receipt_schema": 6,
-    "issue_closeout_intent_schema": 4,
+    "intent_schema": 7,
+    "receipt_schema": 7,
+    "issue_closeout_intent_schema": 5,
     "commands": [
       "publication-plan",
       "validate-publication"

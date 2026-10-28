@@ -10,6 +10,8 @@
 
 <p align="center">最新已发布 · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.11.0"><code>v0.11.0 Pre-release</code></a></p>
 
+本 checkout 另含 **未发布的 0.12.0 源码候选**，增加精确的 onboarding 版本校验、有界只读 `inspect-run` 与真实入口聚焦证据指引。见[本地候选说明](docs/releases/0.12.0.md)；下方公开安装链接仍指向 v0.11.0。
+
 ## 把开发目标变成有依据、可跟进的工作
 
 告诉 Agent 你想做什么、哪里出了问题。Vibe Kit 提供项目指令、可复用的工作流和本地验证工具，让工作有起点、检查有依据、没完成的步骤有记录。
@@ -61,3 +63,7 @@
 - **希望明确控制分享。** 不采集遥测，也不会静默公开提交反馈。日志须保持私有；按已知模式脱敏不能识别所有秘密。
 
 当前是 Pre-release，没有 stable Release 或发布者签名。进一步了解[能力与限制](docs/maintainers-guide.zh-CN.md)、[验证和日志设置](docs/verification-observability.md)、[Agent 安装契约](AGENT_INSTALL.md)。历史版本：[v0.10.1](https://github.com/mintgao/vibe-kit/releases/tag/v0.10.1)。
+
+## 维护检查
+
+CLI `validate-readiness` 只读验证有限格式的 work-item 就绪证据。`inspect-managed-agents` 可使用 `unicode-whitespace-v1` 计数策略；2858 词的文件不能通过 2800 词上限，检查不会降低项目标准。文档字符串测试不能替代这类行为证据，真实 Agent 场景仍需单独验证。命令与先前 v0.10.1 契约历史见[维护指南](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/maintainers-guide.md)。

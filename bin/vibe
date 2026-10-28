@@ -65,6 +65,7 @@ AGENT_COMMAND_STATUSES = {
     "recover-upgrade": ("success", "blocked", "error"),
     "doctor": ("healthy", "warning", "broken", "error"),
     "verify": ("passed", "failed", "blocked", "error"),
+    "inspect-run": ("inspected", "invalid", "error"),
     "validate-takeover": ("valid", "invalid", "error"),
     "validate-release": ("valid", "invalid", "error"),
     "publication-plan": ("safe", "blocked", "error"),
@@ -78,11 +79,11 @@ MAINTENANCE_BRIDGE_SCHEMA_VERSION = 2
 COMPATIBILITY_MIGRATION_REGISTRY_SCHEMA = 2
 TRANSACTION_JOURNAL_SCHEMA = 1
 TRANSACTION_COMMIT_SCHEMA = 1
-PUBLICATION_INTENT_SCHEMA = 6
-PUBLICATION_RECEIPT_SCHEMA = 6
+PUBLICATION_INTENT_SCHEMA = 7
+PUBLICATION_RECEIPT_SCHEMA = 7
 HISTORICAL_PUBLICATION_INTENT_SCHEMA = 1
 HISTORICAL_PUBLICATION_RECEIPT_SCHEMA = 1
-ISSUE_CLOSEOUT_INTENT_SCHEMA = 4
+ISSUE_CLOSEOUT_INTENT_SCHEMA = 5
 TRANSACTION_ACTIVE_PATH = Path(".vibe/local/upgrade-transactions/active")
 TRANSACTION_ROOT_PATH = TRANSACTION_ACTIVE_PATH.parent
 LEAF_ATOMICITY_PLAN_PATH = ".vibe/local/upgrade-leaf-atomicity"
@@ -268,7 +269,7 @@ PREDECESSOR_MIGRATION_REGISTRY = {
                 "manifest_schema": 1,
             },
             "target": {
-                "framework_version": "0.11.0",
+                "framework_version": "0.12.0",
                 "source_types": list(SOURCE_TYPES),
             },
         },
@@ -283,7 +284,7 @@ PREDECESSOR_MIGRATION_REGISTRY_SHA256 = hashlib.sha256(
     ).encode("utf-8")
 ).hexdigest()
 EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256 = (
-    "6873eeac1952d6ba3d1d049eae75b58e7d6319e98e2fc10d0baeb878f5d9819c"
+    "2bd4f69282952136004fbe5a66a7efe785ae407d55f36ed3b6b9f08bedb669d0"
 )
 if PREDECESSOR_MIGRATION_REGISTRY_SHA256 != (
     EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256
@@ -1235,7 +1236,8 @@ def onboarding_readiness(target: Path) -> Tuple[str, List[str]]:
             f"invalid onboarding state {path}: {error}",
             "invalid_onboarding_state",
         ) from error
-    if not isinstance(value, dict) or value.get("schema_version") != 1:
+    if (not isinstance(value, dict) or type(value.get("schema_version")) is not int
+            or value.get("schema_version") != 1):
         raise VibeError(
             f"invalid onboarding state {path}: expected schema_version 1 object",
             "invalid_onboarding_state",
@@ -1495,8 +1497,8 @@ def predecessor_migration_evidence(phase: str) -> Dict[str, object]:
 
 
 def validate_target_predecessor_migration_contract(root: Path) -> None:
-    if framework_version(root) != "0.11.0":
-        raise VibeError("predecessor migration is supported only by target 0.11.0")
+    if framework_version(root) != "0.12.0":
+        raise VibeError("predecessor migration is supported only by target 0.12.0")
     contract = load_agent_install_contract(root)
     try:
         protocol = load_json_object_strict(root / ".vibe/core/protocol.json")
@@ -2608,15 +2610,18 @@ def transaction_platform_supported() -> bool:
 class ProjectRootFD:
     """Pinned-root, no-follow filesystem access for upgrade transaction paths."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, descriptor: Optional[int] = None) -> None:
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         if hasattr(os, "O_CLOEXEC"):
             flags |= os.O_CLOEXEC
         self.root = root
-        self.fd = os.open(str(root), flags)
-        if not stat.S_ISDIR(os.fstat(self.fd).st_mode):
-            os.close(self.fd)
-            raise VibeError("upgrade target is not a supported directory")
+        self.fd = os.open(str(root), flags) if descriptor is None else os.dup(descriptor)
+        try:
+            if not stat.S_ISDIR(os.fstat(self.fd).st_mode):
+                raise VibeError("upgrade target is not a supported directory")
+        except BaseException:
+            self.close()
+            raise
 
     def close(self) -> None:
         if self.fd >= 0:
@@ -5753,7 +5758,7 @@ def upgrade_plan(
             )],
             "<transaction-active>", version, [], bridge,
         )
-    if version == "0.11.0":
+    if version == "0.12.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -6212,7 +6217,7 @@ def upgrade(
             None, "inspect-upgrade-transaction" if active_kind == "invalid" else "recover-upgrade",
             output_format,
         )
-    if version == "0.11.0":
+    if version == "0.12.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -7831,11 +7836,11 @@ def verify_log_metadata(availability: str, reason: Optional[str] = None, *, path
 
 class VerifyPrivateStore:
     """Pinned, no-follow access to independent local metadata and log stores."""
-    def __init__(self, target: Path):
+    def __init__(self, target: Path, *, root_fd: Optional[int] = None):
         if (not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY")
                 or not hasattr(os, "getuid") or os.open not in os.supports_dir_fd):
             raise VibeError("private evidence storage is unsupported", "unsupported-filesystem")
-        self.project = ProjectRootFD(target)
+        self.project = ProjectRootFD(target, descriptor=root_fd)
 
     def close(self):
         self.project.close()
@@ -8237,18 +8242,29 @@ def strict_verify_json(data: bytes, maximum: int) -> object:
     return json.loads(data.decode("utf-8"), object_pairs_hook=reject_duplicate_json_keys, parse_constant=reject_constant)
 
 
+def _read_verify_execution_snapshot(store: VerifyPrivateStore, run_id: str,
+                                    envelope: Optional[object] = None, *,
+                                    root: Optional[Path] = None):
+    """Read only the bounded closed snapshot through the caller's pinned store."""
+    value = strict_verify_json(store.read(
+        ".vibe/local/verify/runs/" + run_id + "/progress.json", maximum=65536), 65536)
+    findings = validate_verify_execution(value, envelope, root=root)
+    if findings:
+        return None, findings
+    if value["run_id"] != run_id:
+        return None, [{"code": "execution-run-id", "path": "$.run_id"}]
+    return value, []
+
+
 def read_verify_execution(target: Path, run_id: str, envelope: Optional[object] = None, *, artifacts=False, external_receipt: Optional[bytes] = None) -> Tuple[Optional[Dict[str, object]], List[Dict[str, str]]]:
     if not isinstance(run_id, str) or re.fullmatch(VERIFY_RUN_PATTERN, run_id) is None:
         return None, [{"code": "execution-run-id", "path": "$.run_id"}]
     store = None
     try:
         store = VerifyPrivateStore(target.resolve())
-        value = strict_verify_json(store.read(".vibe/local/verify/runs/" + run_id + "/progress.json", maximum=65536), 65536)
-        findings = validate_verify_execution(value, envelope, root=target)
+        value, findings = _read_verify_execution_snapshot(store, run_id, envelope, root=target)
         if findings:
             return None, findings
-        if value["run_id"] != run_id:
-            return None, [{"code": "execution-run-id", "path": "$.run_id"}]
         if artifacts:
             for index, check in enumerate(value["checks"]):
                 log = check["log"]
@@ -8319,6 +8335,437 @@ def read_verify_locator(target: Path) -> Tuple[Optional[Dict[str, object]], List
     finally:
         if store is not None:
             store.close()
+
+
+
+INSPECT_RECEIPT_LIMIT = 1024 * 1024
+INSPECT_LOG_LIMIT = 64 * 1024 * 1024
+INSPECT_READ_BUFFER = 64 * 1024
+INSPECT_RESULT_LIMIT = 32768
+INSPECT_RUN_CONTRACT = {
+    "result_schema_version": 2, "inspection_schema_version": 1,
+    "statuses": ["inspected", "invalid", "error"],
+    "authority": "historical-evidence-only", "side_effects": "none",
+}
+INSPECT_FINDING_CODES = (
+    "inspection-run", "inspection-target", "inspection-receipt-shape",
+    "inspection-receipt-size", "inspection-receipt-unavailable",
+    "inspection-receipt-binding", "inspection-original-receipt-path-not-inspected",
+    "inspection-metadata-artifacts-not-inspected", "inspection-artifact-size",
+    "inspection-artifact-integrity", "inspection-coverage-partial",
+    "inspection-envelope-not-supplied", "inspection-current-candidate-unproven",
+    "inspection-unsupported-filesystem", "inspection-internal-error",
+)
+INSPECT_NEXT_ACTIONS = (
+    "supply-final-receipt", "recover-existing-evidence", "inspect-evidence-finding",
+    "assess-current-candidate", "review-nonpassing-result", "await-owned-run-evidence",
+)
+
+
+def validate_complete_verify_receipt(value: object) -> List[str]:
+    """Validate the current complete CLI envelope; return fixed field paths only."""
+    findings = []
+    def add(path):
+        if path not in findings and len(findings) < 64:
+            findings.append(path)
+    def integer(item):
+        return type(item) is int and -(2 ** 63) <= item <= 2 ** 63 - 1
+    def text(item):
+        return type(item) is str and 0 < len(item) <= 4096
+    def observed(item):
+        return item is None or text(item)
+    def digest(item):
+        return type(item) is str and re.fullmatch(r"[0-9a-f]{64}", item) is not None
+    fields = ("schema_version", "command", "status", "target", "selection", "producer",
+              "cli_invoked", "default_order", "toolchain", "checks", "summary")
+    if not exact_keys(value, fields):
+        return ["$"]
+    if (type(value["schema_version"]) is not int or value["schema_version"] != 2
+            or value["command"] != "verify" or value["producer"] != "cli"
+            or value["cli_invoked"] is not True or value["target"] != "."
+            or value["status"] not in ("passed", "failed", "blocked", "error")):
+        add("$")
+    order = value["default_order"]
+    if (not isinstance(order, list) or len(order) != 4
+            or any(type(name) is not str or name not in VERIFY_ORDER for name in order)
+            or len(set(order)) != 4):
+        add("$.default_order")
+        order = list(VERIFY_ORDER)
+    selection, selected = value["selection"], []
+    if not exact_keys(selection, ("mode", "requested", "coverage")):
+        add("$.selection")
+    elif selection["mode"] == "default":
+        if selection["requested"] != [] or selection["coverage"] != "all-configured":
+            add("$.selection")
+        selected = order
+    elif selection["mode"] == "only":
+        requested = selection["requested"]
+        if (not isinstance(requested, list) or not requested
+                or any(type(name) is not str or name not in VERIFY_ORDER for name in requested)
+                or requested != [name for name in order if name in requested]
+                or selection["coverage"] != "partial"):
+            add("$.selection")
+        else:
+            selected = requested
+    else:
+        add("$.selection")
+    toolchain = value["toolchain"]
+    if not exact_keys(toolchain, TOOLCHAIN_KEYS) or any(
+            not observed(item) for item in toolchain.values()):
+        add("$.toolchain")
+    checks = value["checks"]
+    if (not isinstance(checks, list) or len(checks) != len(selected)
+            or [item.get("name") if isinstance(item, dict) else None for item in checks] != selected):
+        add("$.checks")
+        checks = []
+    outcomes = []
+    for index, check in enumerate(checks):
+        path = "$.checks[" + str(index) + "]"
+        fields = ("name", "configured", "applicability", "required", "outcome", "exit_code",
+                  "reason_code", "provenance", "output")
+        outcome = check.get("outcome")
+        if not exact_keys(check, fields + (("environment",) if outcome == "environment-limited" else ())):
+            add(path)
+            continue
+        outcomes.append(outcome)
+        configured, code, reason = check["configured"], check["exit_code"], check["reason_code"]
+        if (type(configured) is not bool or type(check["required"]) is not bool
+                or check["required"] is not configured
+                or check["applicability"] != ("applicable" if configured else "not-applicable")):
+            add(path)
+        valid = ((outcome == "unconfigured" and configured is False and code is None and reason == "not-configured")
+                 or (outcome == "passed" and configured is True and integer(code) and code == 0 and reason is None)
+                 or (outcome == "failed" and configured is True and integer(code) and code != 0 and reason is None)
+                 or (outcome == "environment-limited" and configured is True and integer(code) and code != 0 and reason == "toolchain-mismatch")
+                 or (outcome == "skipped" and configured is True and code is None and reason in ("process-start-failed", "execution-interrupted")))
+        if not valid:
+            add(path)
+        provenance = check["provenance"]
+        if (not exact_keys(provenance, ("kind", "task_id", "operation_id"))
+                or provenance != {"kind": "cli", "task_id": None, "operation_id": None}):
+            add(path + ".provenance")
+        output = check["output"]
+        output_fields = ("stdout_tail", "stderr_tail", "stdout_truncated", "stderr_truncated")
+        if (not isinstance(output, dict) or set(output) not in (set(output_fields), set(output_fields + ("full",)))
+                or any(type(output.get(key)) is not str for key in ("stdout_tail", "stderr_tail"))
+                or any(type(output.get(key)) is not bool for key in ("stdout_truncated", "stderr_truncated"))):
+            add(path + ".output")
+        elif "full" in output:
+            full = output["full"]
+            if (outcome not in ("passed", "failed", "environment-limited")
+                    or not exact_keys(full, ("path", "sha256")) or not digest(full.get("sha256"))
+                    or full.get("path") != ".vibe/local/verify/logs/sha256/" + str(full.get("sha256")) + ".log"):
+                add(path + ".output.full")
+        if outcome == "environment-limited":
+            environment = check["environment"]
+            if not exact_keys(environment, ("expectations", "observed")):
+                add(path + ".environment")
+                continue
+            expectations, actual = environment["expectations"], environment["observed"]
+            if (not exact_keys(actual, TOOLCHAIN_KEYS) or actual != toolchain
+                    or not isinstance(expectations, dict) or not expectations
+                    or any(tool not in TOOLCHAIN_KEYS for tool in expectations)):
+                add(path + ".environment")
+                continue
+            for tool, pair in expectations.items():
+                if (not exact_keys(pair, ("expected", "observed")) or not text(pair.get("expected"))
+                        or not observed(pair.get("observed")) or pair.get("observed") != actual[tool]):
+                    add(path + ".environment")
+    summary = value["summary"]
+    names = ("passed", "failed", "unconfigured", "skipped", "environment-limited")
+    if (not exact_keys(summary, names) or any(type(item) is not int or not 0 <= item <= 4 for item in summary.values())
+            or any(summary[name] != outcomes.count(name) for name in names)):
+        add("$.summary")
+    if value["status"] == "passed" and any(item not in ("passed", "unconfigured") for item in outcomes):
+        add("$.status")
+    if value["status"] == "failed" and ("failed" not in outcomes or any(item in ("skipped", "environment-limited") for item in outcomes)):
+        add("$.status")
+    return findings
+
+
+class InspectionReadError(Exception):
+    """Fixed read failure category; never carries a pathname or input body."""
+
+
+
+def inspection_require_supported(error: BaseException) -> None:
+    if ((isinstance(error, VibeError) and error.code == "unsupported-filesystem")
+            or (isinstance(error, OSError) and error.errno in (errno.ENOTSUP, errno.ENOSYS))):
+        raise VibeError("unsupported inspection filesystem", "unsupported-filesystem") from None
+
+
+def inspection_private_leaf(parent: int, name: str, maximum: int, *, retain: bool):
+    """Bounded stable private-file read, optionally retaining only its digest."""
+    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+    try:
+        first = os.fstat(descriptor)
+        VerifyPrivateStore.private_object(first)
+        if first.st_size > maximum:
+            raise InspectionReadError("size")
+        chunks, count, digest = [], 0, hashlib.sha256()
+        while True:
+            chunk = os.read(descriptor, min(INSPECT_READ_BUFFER, maximum - count + 1))
+            if not chunk:
+                break
+            count += len(chunk)
+            if count > maximum:
+                raise InspectionReadError("size")
+            digest.update(chunk)
+            if retain:
+                chunks.append(chunk)
+        second = os.fstat(descriptor)
+        VerifyPrivateStore.private_object(second)
+        signature = lambda item: (item.st_dev, item.st_ino, item.st_mode, item.st_uid,
+                                  item.st_nlink, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
+        if signature(first) != signature(second) or count != second.st_size:
+            raise InspectionReadError("integrity")
+        return b"".join(chunks) if retain else None, digest.hexdigest(), count
+    finally:
+        os.close(descriptor)
+
+
+def inspection_project_receipt(project: ProjectRootFD, relative: str):
+    if not verify_safe_path(relative):
+        raise VibeError("unsafe receipt path", "unsafe-path")
+    parent = project.open_directory(str(PurePosixPath(relative).parent))
+    try:
+        return inspection_private_leaf(parent, PurePosixPath(relative).name, INSPECT_RECEIPT_LIMIT, retain=True)
+    finally:
+        os.close(parent)
+
+
+def inspection_explicit_receipt(project: ProjectRootFD, root: Path, path: Path):
+    absolute = Path(os.path.abspath(str(path)))
+    try:
+        relative = absolute.relative_to(root).as_posix()
+    except ValueError:
+        relative = None
+    if relative is not None:
+        return inspection_project_receipt(project, relative)
+    parent = open_existing_directory_nofollow(absolute.parent)
+    try:
+        return inspection_private_leaf(parent, absolute.name, INSPECT_RECEIPT_LIMIT, retain=True)
+    finally:
+        os.close(parent)
+
+
+def inspection_log(store: VerifyPrivateStore, relative: str):
+    parent = store.directory(str(PurePosixPath(relative).parent))
+    try:
+        return inspection_private_leaf(parent, PurePosixPath(relative).name, INSPECT_LOG_LIMIT, retain=False)
+    finally:
+        os.close(parent)
+
+
+def inspect_run(target: Path, run_id: str, final_receipt: Optional[Path], output_format: str) -> int:
+    """Inspect selected historical evidence without configuration, probes or writes."""
+    inspection = {
+        "schema_version": 1, "run_id": None,
+        "metadata": {"state": "unavailable", "run_state": None, "result_status": None,
+                     "updated_at": None, "metadata_sha256": None},
+        "receipt": {"state": "not-supplied", "source": None, "result_status": None,
+                    "sha256": None, "envelope_sha256": None},
+        "binding": "unavailable", "coverage": "unknown", "artifact_scope": "none", "artifacts": [],
+        "historical_receipt_verdict": "unverified", "historical_run_verdict": "unverified",
+        "candidate_applicability": "unproven", "project_origin": "not-attested", "liveness": "not-assessed",
+        "findings": [], "next_actions": [],
+    }
+    def add(code, path):
+        item = {"code": code, "path": path}
+        if item not in inspection["findings"] and len(inspection["findings"]) < 64:
+            inspection["findings"].append(item)
+    def action(code):
+        if code not in inspection["next_actions"] and len(inspection["next_actions"]) < 8:
+            inspection["next_actions"].append(code)
+    project, store, status, code = None, None, "invalid", 1
+    try:
+        if type(run_id) is not str or re.fullmatch(VERIFY_RUN_PATTERN, run_id) is None:
+            add("inspection-run", "$.run_id")
+        else:
+            inspection["run_id"] = run_id
+            if (not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK", "getuid"))
+                    or os.open not in os.supports_dir_fd):
+                raise VibeError("unsupported inspection filesystem", "unsupported-filesystem")
+            root = Path(os.path.abspath(str(target)))
+            explicit_path = Path(os.path.abspath(str(final_receipt))) if final_receipt is not None else None
+            try:
+                descriptor = open_existing_directory_nofollow(root)
+                try:
+                    project = ProjectRootFD(root, descriptor=descriptor)
+                finally:
+                    os.close(descriptor)
+            except OSError as error:
+                inspection_require_supported(error)
+                add("inspection-target", "$")
+                status, code = "error", 2
+            if project is not None:
+                store = VerifyPrivateStore(root, root_fd=project.fd)
+                snapshot, receipt, failed = None, None, False
+                try:
+                    snapshot, findings = _read_verify_execution_snapshot(store, run_id)
+                    for finding in findings:
+                        add(finding["code"], finding["path"])
+                    inspection["metadata"]["state"] = "invalid" if findings else "valid"
+                except FileNotFoundError:
+                    inspection["metadata"]["state"] = "missing"
+                    add("execution-unavailable-or-invalid", "$")
+                except (OSError, VibeError) as error:
+                    inspection_require_supported(error)
+                    inspection["metadata"]["state"] = "unavailable"
+                    add("execution-unavailable-or-invalid", "$")
+                except (ValueError, UnicodeError, RecursionError):
+                    inspection["metadata"]["state"] = "invalid"
+                    add("execution-unavailable-or-invalid", "$")
+                if snapshot is not None:
+                    result = snapshot["result"]
+                    inspection["metadata"].update(run_state=snapshot["state"],
+                        result_status=result["status"] if result else None,
+                        updated_at=snapshot["updated_at"], metadata_sha256=snapshot["metadata_sha256"])
+                selected_path = None
+                if final_receipt is not None:
+                    inspection["receipt"]["source"] = "explicit"
+                    selected_path = explicit_path
+                elif snapshot is not None and snapshot["result"] is not None:
+                    recorded = snapshot["result"]["receipt"]
+                    if recorded["availability"] == "available" and recorded["scope"] == "project":
+                        inspection["receipt"]["source"] = "metadata-project"
+                        selected_path = recorded["path"]
+                if selected_path is not None:
+                    try:
+                        if final_receipt is not None:
+                            raw, raw_hash, _ = inspection_explicit_receipt(project, root, explicit_path)
+                        else:
+                            raw, raw_hash, _ = inspection_project_receipt(project, selected_path)
+                        inspection["receipt"]["sha256"] = raw_hash
+                        receipt = root_relative_receipt(strict_verify_json(raw, INSPECT_RECEIPT_LIMIT), root)
+                        receipt_findings = validate_complete_verify_receipt(receipt)
+                        if receipt_findings:
+                            for path in receipt_findings:
+                                add("inspection-receipt-shape", path)
+                            receipt = None
+                            inspection["receipt"]["state"] = "invalid"
+                            failed = True
+                        else:
+                            envelope_hash = canonical_json_sha256(receipt)
+                            inspection["receipt"].update(state="valid", result_status=receipt["status"],
+                                                         envelope_sha256=envelope_hash)
+                            inspection["coverage"] = receipt["selection"]["coverage"]
+                    except FileNotFoundError:
+                        inspection["receipt"]["state"] = "missing"
+                        add("inspection-receipt-unavailable", "$.receipt")
+                        receipt, failed = None, True
+                    except InspectionReadError as error:
+                        inspection["receipt"]["state"] = "unavailable"
+                        add("inspection-receipt-size" if error.args == ("size",) else "inspection-receipt-unavailable", "$.receipt")
+                        receipt, failed = None, True
+                    except (OSError, VibeError) as error:
+                        inspection_require_supported(error)
+                        inspection["receipt"]["state"] = "unavailable"
+                        add("inspection-receipt-unavailable", "$.receipt")
+                        receipt, failed = None, True
+                    except (ValueError, TypeError, UnicodeError, RecursionError, KeyError, AttributeError):
+                        inspection["receipt"]["state"] = "invalid"
+                        add("inspection-receipt-shape", "$")
+                        receipt, failed = None, True
+                else:
+                    add("inspection-envelope-not-supplied", "$.receipt")
+                    action("supply-final-receipt")
+                if snapshot is not None and receipt is not None:
+                    recorded = snapshot["result"]["receipt"] if snapshot["result"] else None
+                    binding_findings = validate_verify_execution(snapshot, receipt)
+                    for finding in binding_findings:
+                        add(finding["code"], finding["path"])
+                    mismatch = bool(binding_findings) or (recorded is not None and recorded["availability"] == "available"
+                        and recorded["sha256"] != inspection["receipt"]["sha256"])
+                    inspection["binding"] = "mismatch" if mismatch else "matched"
+                    if mismatch:
+                        add("inspection-receipt-binding", "$.binding")
+                        failed = True
+                    if final_receipt is not None and recorded is not None and recorded["availability"] == "available" and recorded["scope"] == "project":
+                        add("inspection-original-receipt-path-not-inspected", "$.receipt")
+                    expected = [(item["name"], {"path": item["log"]["path"], "sha256": item["log"]["sha256"]}
+                                 if item["log"]["availability"] == "available" else None) for item in snapshot["checks"]]
+                    supplied = [(item["name"], item["output"].get("full")) for item in receipt["checks"]]
+                    if supplied != expected:
+                        add("inspection-metadata-artifacts-not-inspected", "$.artifacts")
+                source = receipt["checks"] if receipt is not None else snapshot["checks"] if snapshot is not None else []
+                inspection["artifact_scope"] = "receipt" if receipt is not None else "metadata" if snapshot is not None else "none"
+                artifacts_valid = True
+                for index, item in enumerate(source):
+                    log = item["output"].get("full") if receipt is not None else item["log"] if item["log"]["availability"] == "available" else None
+                    record = {"check": item["name"], "state": "not-referenced", "sha256": None, "bytes": None}
+                    if log is not None:
+                        record["sha256"] = log["sha256"]
+                        try:
+                            declared = (log["bytes"] if receipt is None else
+                                snapshot["checks"][index]["log"]["bytes"]
+                                if snapshot is not None and inspection["binding"] == "matched" else None)
+                            if declared is not None and declared > INSPECT_LOG_LIMIT:
+                                raise InspectionReadError("size")
+                            _, actual_hash, count = inspection_log(store, log["path"])
+                            if actual_hash != log["sha256"] or (receipt is None and count != log["bytes"]):
+                                raise InspectionReadError("integrity")
+                            record.update(state="verified", bytes=count)
+                            if receipt is not None and snapshot is not None and inspection["binding"] == "matched":
+                                metadata_log = snapshot["checks"][index]["log"]
+                                if metadata_log["availability"] == "available" and count != metadata_log["bytes"]:
+                                    add("inspection-artifact-integrity", "$.artifacts[" + str(index) + "]")
+                                    add("inspection-receipt-binding", "$.binding")
+                                    inspection["binding"], failed = "mismatch", True
+                        except InspectionReadError as error:
+                            record["state"] = "unavailable" if error.args == ("size",) else "invalid"
+                            add("inspection-artifact-size" if error.args == ("size",) else "inspection-artifact-integrity", "$.artifacts[" + str(index) + "]")
+                            artifacts_valid, failed = False, True
+                        except (OSError, VibeError) as error:
+                            inspection_require_supported(error)
+                            record["state"] = "unavailable"
+                            add("inspection-artifact-integrity", "$.artifacts[" + str(index) + "]")
+                            artifacts_valid, failed = False, True
+                    inspection["artifacts"].append(record)
+                if receipt is not None:
+                    if inspection["coverage"] == "partial":
+                        add("inspection-coverage-partial", "$.coverage")
+                    if inspection["coverage"] == "partial" or receipt["status"] != "passed":
+                        inspection["historical_receipt_verdict"] = "not-passed"
+                    elif artifacts_valid:
+                        inspection["historical_receipt_verdict"] = "passed"
+                    if receipt["status"] != "passed":
+                        action("review-nonpassing-result")
+                if snapshot is not None and receipt is not None and inspection["binding"] == "matched":
+                    if snapshot["state"] == "finished" and inspection["historical_receipt_verdict"] == "passed":
+                        inspection["historical_run_verdict"] = "passed"
+                    elif snapshot["state"] != "running" and inspection["historical_receipt_verdict"] != "unverified":
+                        inspection["historical_run_verdict"] = "not-passed"
+                if snapshot is not None and snapshot["state"] == "running":
+                    action("await-owned-run-evidence")
+                status, code = ("inspected", 0) if snapshot is not None and not failed else ("invalid", 1)
+    except VibeError as error:
+        add("inspection-unsupported-filesystem" if error.code == "unsupported-filesystem" else "inspection-target", "$")
+        status, code = "error", 2
+    except (Exception, MemoryError):
+        add("inspection-internal-error", "$")
+        status, code = "error", 2
+    finally:
+        if store is not None:
+            store.close()
+        if project is not None:
+            project.close()
+    if status != "inspected":
+        action("recover-existing-evidence")
+        action("inspect-evidence-finding")
+    add("inspection-current-candidate-unproven", "$.candidate_applicability")
+    action("assess-current-candidate")
+    result = result_envelope("inspect-run", status, inspection=inspection)
+    encoded = json.dumps(result, ensure_ascii=False, sort_keys=True)
+    if len(encoded.encode("utf-8")) + 1 > INSPECT_RESULT_LIMIT:
+        raise RuntimeError("bounded inspection result invariant failed")
+    # Never route this read-only result through generic output-receipt persistence.
+    if output_format == "json":
+        print(encoded)
+    else:
+        print("Inspection " + status)
+        print(json.dumps(inspection, ensure_ascii=False, indent=2, sort_keys=True))
+    return code
 
 
 class VerifyProgress:
@@ -9237,7 +9684,7 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
         "supported_installed_manifest_schemas": [1],
         "supported_installed_agent_protocols": [0, 1, 2, 3],
         "minimum_installed_kit_version": "0.2.0",
-        "maximum_installed_kit_version_exclusive": "0.11.0",
+        "maximum_installed_kit_version_exclusive": "0.12.0",
         "target_agent_install_schema": AGENT_INSTALL_SCHEMA,
         "target_agent_install_protocol": AGENT_INSTALL_PROTOCOL,
         "target_cli_result_schema": AGENT_RESULT_SCHEMA,
@@ -9450,6 +9897,9 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
         "network_attestation": "not-provided",
     }:
         errors.append("agent install verify contract is unsupported")
+
+    if cli.get("inspect_run") != INSPECT_RUN_CONTRACT:
+        errors.append("agent install inspect-run contract is unsupported")
 
     onboarding = contract.get("onboarding")
     if not isinstance(onboarding, dict):
@@ -11220,6 +11670,18 @@ PUBLICATION_PROFILES = {
         "issue_policy": {"mode": "after-public-verification", "issues": [14, 15, 16, 17, 18], "allowed_operations": ["create-exact-evidence-comment", "close-issue"]},
         "kinds": {"prepublication-qa": "vibe-kit-v0.11.0-prepublication-qa", "configured-checks": "vibe-kit-v0.11.0-configured-checks", "python-3.9": "vibe-kit-v0.11.0-python-3.9", "clean-build": "vibe-kit-v0.11.0-clean-build", "release-gate-evidence": "vibe-kit-v0.11.0-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.11.0-postpublication-acceptance"},
     },
+    7: {
+        "schema": 7, "version": "0.12.0", "tag": "v0.12.0", "title": "Vibe Kit v0.12.0",
+        "profile": "vibe-kit-v0.12.0-prerelease", "body_path": "docs/releases/0.12.0.md",
+        "direct": "vibe-kit-0.12.0.zip", "plugin": "vibe-kit-plugin-0.12.0.zip", "distribution": "vibe-kit-distribution-0.12.0.zip",
+        "smokes": ('public-direct-init-doctor', 'public-plugin-bundled-plan-init-doctor', 'public-upgrade-v0.3-to-v0.12.0', 'public-upgrade-v0.5-to-v0.12.0', 'public-upgrade-v0.6-to-v0.12.0', 'public-upgrade-v0.7-to-v0.12.0', 'public-upgrade-v0.8-to-v0.12.0', 'public-upgrade-v0.9-to-v0.12.0', 'public-upgrade-v0.10.0-to-v0.12.0', 'public-upgrade-v0.10.1-to-v0.12.0', 'public-upgrade-v0.11.0-to-v0.12.0', 'public-repeat-upgrade-v0.12.0', 'public-onboarding-exact-integer-entrypoints', 'public-focused-entry-evidence-python-node', 'public-inspect-run-evidence-separation', 'public-inspect-run-interruption-readonly', 'public-inspect-run-wrong-run-isolation'),
+        "states": {"AC-1": "passed", "AC-2": "passed", "AC-3": "passed", "AC-4": "passed", "AC-5": "passed", "AC-6": "passed", "AC-7": "passed", "AC-8": "passed", "AC-9": "not-runnable-before-publication", "AC-10": "not-runnable-before-publication", "AC-11": "not-runnable-before-publication", "AC-12": "not-runnable-before-publication"},
+        "requirements": {"AC-1": "none", "AC-2": "none", "AC-3": "none", "AC-4": "none", "AC-5": "none", "AC-6": "none", "AC-7": "none", "AC-8": "none", "AC-9": "live-read-back", "AC-10": "public-smoke", "AC-11": "issue-closeout", "AC-12": "project-upgrade"},
+        "post_criteria": ["AC-1", "AC-2", "AC-3", "AC-4", "AC-5", "AC-6", "AC-7", "AC-8", "AC-9", "AC-10"],
+        "authorization_fields": ("authorization_source_ref", "bound_at"),
+        "issue_policy": {"mode": "after-public-verification", "issues": [20, 22, 23], "allowed_operations": ["create-exact-evidence-comment", "close-issue"]},
+        "kinds": {"prepublication-qa": "vibe-kit-v0.12.0-prepublication-qa", "configured-checks": "vibe-kit-v0.12.0-configured-checks", "python-3.9": "vibe-kit-v0.12.0-python-3.9", "clean-build": "vibe-kit-v0.12.0-clean-build", "release-gate-evidence": "vibe-kit-v0.12.0-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.12.0-postpublication-acceptance"},
+    },
 }
 
 REMOTE_WRITE_STATES = ("none", "confirmed-partial", "confirmed-complete", "uncertain")
@@ -11635,12 +12097,12 @@ def validate_profile_closeout_authorization(
         "allowed_operations", "closeout_intent_sha256",
         "destructive_operations_allowed",
     )
-    if schema in (2, 3, 4):
+    if schema in (2, 3, 4, 5):
         fields += ("authorization_source_ref", "bound_at")
     if not exact_keys(value, fields) or not isinstance(value, dict):
         return ["closeout authorization fields are unknown or incomplete"]
     errors: List[str] = []
-    if schema in (2, 3, 4) and (not isinstance(value.get("authorization_source_ref"), str) or not value.get("authorization_source_ref") or contains_secret(value["authorization_source_ref"]) or not is_iso8601(value.get("bound_at"))):
+    if schema in (2, 3, 4, 5) and (not isinstance(value.get("authorization_source_ref"), str) or not value.get("authorization_source_ref") or contains_secret(value["authorization_source_ref"]) or not is_iso8601(value.get("bound_at"))):
         errors.append("closeout authorization source reference or binding time is invalid")
     if (
         not isinstance(value.get("closeout_authorization_id"), str)
@@ -11835,6 +12297,75 @@ def validate_v110_closeout_receipt(value: object, intent: Dict[str, object], aut
         if value.get("overall_state") == "confirmed-complete" and (not valid_positive_int(comment_id) or item.get("observed_post_state") != "closed" or item.get("read_back") is not True or item.get("error") is not None or item.get("comment_write_state") not in ("created", "read-matched", "confirmed-after-uncertain") or item.get("close_write_state") not in ("created", "read-matched", "confirmed-after-uncertain")):
             errors.append("complete closeout requires exact comments and closed issue read-back")
     return errors
+
+V120_CLOSEOUT_ISSUES = [20, 22, 23]
+
+
+def validate_v120_closeout_parent(parent: Dict[str, object], publication: Dict[str, object], authorization: Dict[str, object], acceptance: Dict[str, object], validation: Dict[str, object]) -> List[str]:
+    profile = PUBLICATION_PROFILES[7]
+    errors = validate_profile_intent(parent, profile=profile)
+    if (validation.get("schema_version") != AGENT_RESULT_SCHEMA or type(validation.get("schema_version")) is not int
+            or validation.get("version") != "0.12.0" or validation.get("remote_write_state") != "confirmed-complete"
+            or validation.get("verification_state") != "passed" or validation.get("errors") != []
+            or validation.get("network_used") is not False or validation.get("host_evidence_authenticated") is not False):
+        errors.append("closeout requires the matching completed schema-2 publication validation result")
+    errors.extend(validate_profile_receipt(publication, parent, profile=profile))
+    errors.extend(validate_profile_authorization(authorization, parent, profile=profile))
+    errors.extend(validate_profile_postpublication_acceptance(acceptance, parent, authorization, str(acceptance.get("source_tree_oid", "")), profile=profile))
+    if (publication.get("remote_write_state") != "confirmed-complete" or publication.get("verification_state") != "passed" or publication.get("error") is not None or acceptance.get("status") != "passed" or not valid_oid(acceptance.get("source_tree_oid"))):
+        errors.append("closeout requires completed public verification and passing acceptance")
+    if (validation.get("command") != "validate-publication" or validation.get("status") != "valid" or validation.get("profile") != profile["profile"] or validation.get("intent_sha256") != canonical_json_sha256(parent) or validation.get("authorization_id") != authorization.get("authorization_id") or validation.get("host_operation_id") != authorization.get("host_operation_id") or acceptance.get("validate_publication_result_sha256") != canonical_json_sha256(validation)):
+        errors.append("closeout validation receipt does not bind the accepted publication")
+    if (publication.get("authorization_id") != authorization.get("authorization_id") or publication.get("host_operation_id") != authorization.get("host_operation_id")):
+        errors.append("closeout parent authorization mismatch")
+    return errors
+
+
+def build_v120_closeout_intent(request: Dict[str, object], parent: Dict[str, object], publication: Dict[str, object], authorization: Dict[str, object], acceptance: Dict[str, object], validation: Dict[str, object]) -> Tuple[Dict[str, object], Dict[str, str]]:
+    errors = validate_v120_closeout_parent(parent, publication, authorization, acceptance, validation)
+    if request.get("publication_receipt_sha256") != canonical_json_sha256(publication) or request.get("verification_receipt_sha256") != canonical_json_sha256(acceptance):
+        errors.append("closeout parent receipt digest mismatch")
+    if errors:
+        raise VibeError("; ".join(errors))
+    return build_profile_closeout_intent(request, version="0.12.0", schema=5, issue_numbers=V120_CLOSEOUT_ISSUES, parent_digest=canonical_json_sha256(parent))
+
+
+def validate_v120_closeout_receipt(value: object, intent: Dict[str, object], authorization: Dict[str, object]) -> List[str]:
+    errors = validate_profile_closeout_authorization(authorization, intent, schema=5)
+    if (type(intent.get("schema_version")) is not int or intent.get("schema_version") != 5
+            or not valid_sha256(intent.get("parent_publication_intent_sha256"))
+            or intent.get("closeout_id") != profile_closeout_id(str(intent.get("parent_publication_intent_sha256", "")), version="0.12.0", schema=5, issues=V120_CLOSEOUT_ISSUES)
+            or not isinstance(intent.get("issues"), list)
+            or [item.get("issue_number") for item in intent["issues"] if isinstance(item, dict)] != V120_CLOSEOUT_ISSUES):
+        errors.append("closeout intent must be the exact schema-5 v0.12.0 profile")
+    if not isinstance(value, dict) or type(value.get("schema_version")) is not int:
+        errors.append("closeout schema must be an integer")
+    fields = ("schema_version", "kind", "closeout_id", "closeout_intent_sha256", "closeout_authorization_id", "overall_state", "items")
+    if not exact_keys(value, fields):
+        return errors + ["closeout receipt fields are unknown or incomplete"]
+    if (value.get("schema_version") != 5 or value.get("kind") != "vibe-kit-issue-closeout-receipt" or value.get("closeout_id") != intent.get("closeout_id") or value.get("closeout_intent_sha256") != canonical_json_sha256(intent) or value.get("closeout_authorization_id") != authorization.get("closeout_authorization_id") or value.get("overall_state") not in ("not-run", "confirmed-partial", "confirmed-complete", "uncertain", "conflict")):
+        errors.append("closeout receipt identity or state is invalid")
+    items = value.get("items")
+    if (not isinstance(items, list) or len(items) != len(V120_CLOSEOUT_ISSUES)
+            or any(not isinstance(item, dict) for item in items)
+            or [item.get("issue_number") for item in items] != V120_CLOSEOUT_ISSUES):
+        return errors + ["closeout receipt requires exactly the ordered #20/#22/#23 items"]
+    for item, expected in zip(items, intent.get("issues", [])):
+        if not exact_keys(item, ("issue_number", "expected_initial_state", "comment_body_sha256", "comment_id", "comment_url", "comment_write_state", "close_write_state", "observed_post_state", "read_back", "error")):
+            errors.append("closeout receipt item fields are invalid")
+            continue
+        number = item["issue_number"]
+        if type(number) is not int:
+            errors.append("closeout issue number must be an integer")
+        comment_id = item.get("comment_id")
+        if (item.get("expected_initial_state") != expected.get("observed_state") or item.get("comment_body_sha256") != expected.get("comment_body_sha256") or item.get("observed_post_state") not in (None, "open", "closed") or not isinstance(item.get("read_back"), bool) or item.get("comment_write_state") not in HISTORICAL_CLOSEOUT_OUTCOMES or item.get("close_write_state") not in HISTORICAL_CLOSEOUT_OUTCOMES or (item.get("error") is not None and not valid_publication_error(item["error"]))):
+            errors.append("closeout receipt item identity or state is invalid")
+        if (comment_id is None and item.get("comment_url") is not None) or (comment_id is not None and (not valid_positive_int(comment_id) or item.get("comment_url") != f"https://github.com/mintgao/vibe-kit/issues/{number}#issuecomment-{comment_id}")):
+            errors.append("closeout comment identity is invalid")
+        if value.get("overall_state") == "confirmed-complete" and (not valid_positive_int(comment_id) or item.get("observed_post_state") != "closed" or item.get("read_back") is not True or item.get("error") is not None or item.get("comment_write_state") not in ("created", "read-matched", "confirmed-after-uncertain") or item.get("close_write_state") not in ("created", "read-matched", "confirmed-after-uncertain")):
+            errors.append("complete closeout requires exact comments and closed issue read-back")
+    return errors
+
 
 
 def publication_repository() -> Dict[str, str]:
@@ -12132,7 +12663,7 @@ def validate_profile_authorization(value: object, intent: Dict[str, object], *, 
     errors: List[str] = []
     if any((not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
         errors.append('publication authorization identity is invalid')
-    if profile['schema'] in (3, 4, 5, 6) and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
+    if profile['schema'] in (3, 4, 5, 6, 7) and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
         errors.append('authorization source reference or binding time is invalid')
     expected = {'repository': 'mintgao/vibe-kit', 'version': profile['version'], 'release_kind': 'prerelease', 'allowed_operations': list(V080_PUBLICATION_ALLOWED_OPERATIONS), 'publication_intent_sha256': canonical_json_sha256(intent)}
     if any((value.get(key) != expected[key] for key in expected)):
@@ -12242,7 +12773,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
         return ['schema-2 publication intent fields are unknown or incomplete']
     intent = value
     errors: List[str] = []
-    if profile["schema"] == 6 and type(value.get("schema_version")) is not int:
+    if profile["schema"] in (6, 7) and type(value.get("schema_version")) is not int:
         errors.append("publication schema must be an integer")
     if intent.get('schema_version') != profile['schema'] or intent.get('kind') != 'vibe-kit-publication' or intent.get('profile') != profile['profile'] or (intent.get('repository') != publication_repository()) or (intent.get('version') != profile['version']) or (not valid_oid(intent.get('source_commit'))):
         errors.append('schema-2 publication profile identity is invalid')
@@ -12268,7 +12799,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
                 errors.append('schema-2 publication asset identity is invalid')
         if intent.get('asset_set_sha256') != canonical_json_sha256(assets):
             errors.append('schema-2 publication asset-set digest is invalid')
-    if profile['schema'] in (3, 4, 5, 6) and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
+    if profile['schema'] in (3, 4, 5, 6, 7) and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
         errors.append('publication requires each exact asset name once')
     gates = intent.get('local_gates')
     if not exact_keys(gates, ('release_gate_evidence_sha256',)) or not valid_sha256(gates.get('release_gate_evidence_sha256')):
@@ -12288,7 +12819,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
         if not exact_keys(operation, fields):
             errors.append('schema-2 publication operation fields are invalid')
             continue
-        if profile['schema'] in (3, 4, 5, 6):
+        if profile['schema'] in (3, 4, 5, 6, 7):
             exact_keys_by_operation = (
                 "mintgao/vibe-kit:main", f"mintgao/vibe-kit:tag:{profile['tag']}",
                 f"mintgao/vibe-kit:release:{profile['tag']}", f"mintgao/vibe-kit:release:{profile['tag']}:assets",
@@ -12338,7 +12869,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
 def validate_publication_intent(value: object) -> List[str]:
     if isinstance(value, dict) and value.get("schema_version") == 1:
         return validate_publication_intent_v1(value)
-    if isinstance(value, dict) and value.get("schema_version") in (2, 3, 4, 5, 6):
+    if isinstance(value, dict) and value.get("schema_version") in (2, 3, 4, 5, 6, 7):
         return validate_profile_intent(value, profile=PUBLICATION_PROFILES[value["schema_version"]])
     return ["publication intent schema/profile is unsupported"]
 
@@ -12364,7 +12895,7 @@ def publication_plan(
         request["asset_set_sha256"] = canonical_json_sha256(assets)
         errors = validate_publication_intent(request)
         schema = request.get("schema_version")
-        expected_version = "0.7.0" if schema == 1 else PUBLICATION_PROFILES.get(schema, {}).get("version")
+        expected_version = "0.7.0" if schema == 1 else (PUBLICATION_PROFILES[schema]["version"] if schema in (2, 3, 4, 5, 6, 7) else None)
         if manifest.get("kit_version") != expected_version or manifest.get("status") != "prerelease":
             errors.append(
                 f"publication candidate must be the exact {expected_version} prerelease"
@@ -12390,7 +12921,7 @@ def publication_plan(
             candidate_status = validate_release(release_dir, "json")
         if candidate_status != 0:
             errors.append("publication candidate does not pass validate-release")
-        if schema in (2, 3, 4, 5, 6):
+        if schema in (2, 3, 4, 5, 6, 7):
             if comparison_candidate is None:
                 errors.append("schema-2 publication planning requires --comparison-candidate")
             if release_gate_evidence is None:
@@ -12782,7 +13313,7 @@ def validate_profile_receipt(value: object, intent: Dict[str, object], *, profil
         return ['schema-2 publication receipt fields are unknown or incomplete']
     receipt = value
     errors: List[str] = []
-    if profile["schema"] == 6 and type(value.get("schema_version")) is not int:
+    if profile["schema"] in (6, 7) and type(value.get("schema_version")) is not int:
         errors.append("publication receipt schema must be an integer")
     if receipt.get('schema_version') != profile['schema'] or receipt.get('kind') != 'vibe-kit-publication-receipt' or receipt.get('profile') != profile['profile'] or (receipt.get('version') != profile['version']) or (receipt.get('repository') != 'mintgao/vibe-kit') or (receipt.get('intent_sha256') != canonical_json_sha256(intent)) or any((not isinstance(receipt.get(key), str) or not receipt.get(key) or len(receipt[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
         errors.append('schema-2 publication receipt identity is invalid')
@@ -12890,7 +13421,7 @@ def validate_publication_receipt_shape(
 ) -> List[str]:
     if isinstance(receipt, dict) and receipt.get("schema_version") == 1:
         return validate_publication_receipt_shape_v1(receipt)
-    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3, 4, 5, 6) and isinstance(intent, dict):
+    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3, 4, 5, 6, 7) and isinstance(intent, dict):
         return validate_profile_receipt(receipt, intent, profile=PUBLICATION_PROFILES[receipt["schema_version"]])
     return ["publication receipt schema/profile is unsupported"]
 
@@ -13122,7 +13653,7 @@ def validate_publication(
         if authorization_path is not None:
             raise VibeError("historical schema-1 validation does not accept --authorization")
         return validate_publication_v1(intent_path, receipt_path, release_dir, output_format)
-    if schema in (2, 3, 4, 5, 6):
+    if schema in (2, 3, 4, 5, 6, 7):
         return validate_publication_profile(
             intent_path, receipt_path, release_dir, authorization_path, output_format, profile=PUBLICATION_PROFILES[schema]
         )
@@ -14497,8 +15028,10 @@ def issue_closeout_command(args: argparse.Namespace) -> int:
         build_intent, validate_receipt = build_v100_closeout_intent, validate_v100_closeout_receipt
     elif parent_schema == 6:
         build_intent, validate_receipt = build_v110_closeout_intent, validate_v110_closeout_receipt
+    elif parent_schema == 7:
+        build_intent, validate_receipt = build_v120_closeout_intent, validate_v120_closeout_receipt
     else:
-        raise VibeError("issue closeout requires a schema-3 (v0.9.0), schema-4 (v0.10.0) or schema-6 (v0.11.0) parent publication intent")
+        raise VibeError("issue closeout requires a schema-3 (v0.9.0), schema-4 (v0.10.0), schema-6 (v0.11.0) or schema-7 (v0.12.0) parent publication intent")
     intent, bodies = build_intent(*(values[key] for key in required))
     errors = []
     if "closeout_receipt" in values:
@@ -14556,6 +15089,12 @@ def build_parser() -> argparse.ArgumentParser:
     agents_parser.add_argument("--word-policy", choices=("unicode-whitespace-v1",))
     agents_parser.add_argument("--max-words", type=int)
     add_format_argument(agents_parser)
+
+    inspect_parser = subparsers.add_parser("inspect-run", description="Inspect explicit historical verification evidence without running checks.")
+    inspect_parser.add_argument("target")
+    inspect_parser.add_argument("--run-id", required=True)
+    inspect_parser.add_argument("--final-receipt", type=Path, help="Read this explicit final receipt; never write it.")
+    add_format_argument(inspect_parser)
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("target", nargs="?", default=".")
@@ -14779,6 +15318,8 @@ def dispatch_main(argv: Optional[Sequence[str]] = None) -> int:
             )
         if args.command == "validate-publication":
             return publication_validation_command(args)
+        if args.command == "inspect-run":
+            return inspect_run(Path(args.target), args.run_id, args.final_receipt, args.output_format)
         if args.command == "doctor":
             return doctor(Path(args.target), args.output_format)
         if args.command == "validate-takeover":

@@ -103,7 +103,7 @@ The release manifest also mirrors the compiled predecessor-migration registry
 digest, authority and only supported mode. Validation requires exact equality with
 the Agent-install/core mirrors and the packaged compiled CLI authority.
 
-The Plugin exposes only `vibe-bootstrap` and `vibe-maintain`; project runtime Skills appear only after installation. Its wrapper verifies the bundled version and payload-tree identity before target-CLI execution, but it provides no reload/task-creation API. The installed repository remains the runtime source of truth. The source tree is the unpublished v0.11.0 candidate with core/Codex protocol 7 and Hermes adapter protocol 1. v0.10.1 is the latest published non-draft GitHub Pre-release; its live public completion is recorded in docs/work-items/20260922-v0-10-1-publication/postpublication.md under the exact publication authorization. Both homepages identify v0.10.1 as the selected Pre-release; the v0.10.0 release tag remains bound to its tested source commit. See ADRs 0002, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011 and 0012.
+The Plugin exposes only `vibe-bootstrap` and `vibe-maintain`; project runtime Skills appear only after installation. Its wrapper verifies the bundled version and payload-tree identity before target-CLI execution, but it provides no reload/task-creation API. The installed repository remains the runtime source of truth. The published baseline is v0.11.0 Pre-release with core/Codex protocol 7 and Hermes adapter protocol 1. v0.11.0 is the latest published non-draft GitHub Pre-release; its live public completion is recorded in docs/work-items/20261010-feedback-closure/postpublication.md under the exact publication authorization. Both homepages identify v0.11.0 as the selected Pre-release; the v0.10.0 release tag remains bound to its tested source commit. See ADRs 0002, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011 and 0012.
 
 ADR0014 adds exact publication schema 3, separate #6/#7 closeout schema 2, bounded readiness validation and authenticated whole-file AGENTS policy integration. ADR0016–0019 widen the readiness grammar, close the verification contract, publish takeover admission and add the per-host registry with the schema-4 Agent-install contract. ADR0020 advances the version boundary to 0.10.0, adds exact publication schema 4 with a separate schema-3 #8–#13 closeout, and moves the maintenance-bridge bound and the v0.5.0 predecessor-migration target. ADR0021 advances the version boundary to 0.10.1, adds exact publication schema 5 with no issue closeout, publishes the Hermes `verified` conformance label, and moves the maintenance-bridge bound and the v0.5.0 predecessor-migration target with it. Historical publication wrappers remain fixed to their compiled profiles.
 
@@ -117,4 +117,30 @@ for applicable multi-stage M/L work. Publication schema 6 binds v0.11.0 and
 separate closeout schema 4 binds ordered [14,15,16,17,18]; publication acceptance
 excludes future closeout. Current version/Plugin/bridge/migration source mirrors
 advance together; source checkout installation state is not rewritten to
-manufacture health. Final QA/publication/closeout evidence remains prospective.
+manufacture health. Final QA/publication/closeout evidence is recorded in docs/work-items/20261010-feedback-closure/verification.md, postpublication.md and closeout.md.
+
+
+ADR0023 advances the unpublished source candidate to 0.12.0 without changing
+existing execution/verify schemas or historical publication profiles. The new
+inspect-run result has its own nested inspection schema 1 under result schema 2.
+A component-wise no-follow pinned root feeds the shared snapshot helper and
+bounded private receipt/log readers. Complete closed CLI receipt validation,
+receipt-first single artifact selection and separate historical receipt/run
+verdicts avoid treating metadata validity as acceptance. No config, probe, Git,
+subprocess, process control or write is on that consumer's call graph. Limits are
+1 MiB per receipt, 64 MiB per streamed log, four references and 32 KiB result.
+Current applicability remains unproven and copied consistent evidence cannot
+attest project origin. Current migration/bridge/Plugin/activation identities move
+together, while root installed-state bytes and historical profiles stay fixed.
+
+
+ADR0024 adds the exclusive v0.12.0 publication schema 7 / closeout schema 5;
+existing publication 1–6 and closeout 1–4 remain unchanged. Normal PR review
+precedes merge; the actual merged source receives a distinct release gate before
+six-operation publication. The closed profile declares five assets and seventeen
+ordered public smokes. Publication acceptance is AC-1–AC-10; ordered [20,22,23]
+closeout and the official project upgrade/activation boundary are later stages.
+Authorization source references and binding times reuse existing authorized scope.
+See [the accepted decision](../decisions/0024-v0-12-publication-and-separate-closeout.md)
+and [the current work item](../work-items/20261028-v0-12-publication/brief.md).
+The profile's implementation is not evidence of remote publication or acceptance.

@@ -149,7 +149,85 @@ same authorized intent only; no divergence, force, replacement or deletion.
 Record public acceptance in `postpublication.md` and issue evidence/comment/
 closed-state and bound digests separately in `closeout.md` within work item
 `20261010-feedback-closure`. These are audit summaries, not new receipt fields.
-Review both homepages before final QA and retain 0.10.1 as latest published until
-observed live 0.11.0 completion. No offline profile definition claims publication
+For the historical v0.11.0 publication, both homepages retained 0.10.1 as
+latest published until observed live 0.11.0 completion. No offline profile definition claims publication
 or issue closure. Private logs and host goal/custody payloads never enter public
 receipts, comments or summaries.
+
+
+## v0.12.0 exact profile, merged-source gate and separate closeout
+
+[ADR0024 — versioned source decision](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/decisions/0024-v0-12-publication-and-separate-closeout.md)
+governs exclusive schema-7 `vibe-kit-v0.12.0-prerelease`. It has the six existing
+ordered publication operations and exactly five UTF-8-name-sorted assets:
+`SHA256SUMS`, `release-manifest.json`, `vibe-kit-0.12.0.zip`,
+`vibe-kit-distribution-0.12.0.zip`, `vibe-kit-plugin-0.12.0.zip`. Publication
+receipt issue_closeout is null. Historical publication 1–6 and closeout 1–4
+retain their exact semantics; schema 6 is exclusively v0.11.0.
+
+Project only accepted sanitized source onto public main; do not copy unrelated
+local history, installation state or private evidence. Review both homepages
+before final source QA. Until observed v0.12.0 completion, retain v0.11.0 as
+latest published and label 0.12.0 a candidate. Record changed facts and
+unchanged-section reasons.
+Create a normal draft PR, obtain independent exact-head review and satisfy actual
+checks/protections before marking ready and merging with expected head. Never
+bypass protections or push source directly to main. H is the reviewed PR head;
+M is the server-produced merged commit/tree; E is a later publication-fact commit.
+Earlier receipts keep their actual source identities even when trees match.
+
+Freeze clean M and notes. Independent QA runs one complete default verification
+of unchanged M as a distinct postmerge gate, with its reason recorded. Require
+actual CPython 3.9, all configured checks passing, focused feature/publication
+scenarios, two builds from distinct clean M checkouts/output locations, identical
+five assets and target validate-release for both. One actual canonical
+`./bin/vibe verify . --format json` run may support truthful QA/configured/Python
+views; do not repeat it to fill another receipt. Keep gate evidence outside the
+source checkout. Final managed edits invalidate the affected identities/gates.
+
+Prepublication mapping is exactly AC-1–AC-8 passed, AC-9–AC-12
+not-runnable-before-publication. Requirements are none for AC-1–AC-8, then
+live-read-back, public-smoke, issue-closeout and project-upgrade. Only this profile
+uses project-upgrade. After freezing the exact remote snapshot, construct the
+intent and bind existing authorization through authorization_source_ref and
+bound_at. An already-target main is read-matched without a write; any main drift
+blocks. Reconcile the same natural keys with read-back before retry and at most
+two writes; denial, divergence and still-unknown state get no retry.
+
+Freshly download/hash all five public assets, validate nested distribution and
+downloaded-target validate-release, then execute all seventeen ordered smokes
+from ADR0024. These include every supported predecessor through v0.11.0, two
+same-version upgrades, exact onboarding entry points, actual focused Python/Node
+entry wiring, and the three inspection separation/interruption/wrong-run cases.
+Skipped Node or static inspection cannot pass that execution requirement.
+Run final validate-publication on CPython 3.9 with read-only receipt input and an
+optional distinct create-only result. Independent postpublication acceptance
+must contain exactly AC-1–AC-10 passed. AC-11/12 never gate publication or its
+closeout parent. A profile definition alone proves no publication.
+
+Only after that acceptance, use the separate schema-5 `issue-closeout --packet`
+path for ordered [20,22,23] and six comment/close operations. Its parent is exact
+schema 7. Bind separately authorized existing scope to the exact closeout intent;
+authorization_source_ref/bound_at identify the authorization and its binding time. Markers are
+exactly `<!-- vibe-kit:v0.12.0:issue-<number>:<closeout-id> -->`.
+criterion_evidence_sha256 binds a separate sanitized semantic record:
+
+- #20: AC-1 and public-onboarding-exact-integer-entrypoints.
+- #22: AC-2 and public-focused-entry-evidence-python-node, the shipped reference
+  and preserved independent QA ownership.
+- #23: AC-3 and all three public-inspect-run smokes, with origin, applicability
+  and interruption limitations.
+
+The host checks the actual mapped evidence; a digest alone does not prove it.
+Read back each exact comment before close, then closed state. A completed pair
+proves only that issue; AC-11 passes after all three read-backs. Do not operate on
+#21/#26 (assessment only) or #24/#25 (deferred). Keep public bounded summaries in
+the current work item; raw logs, paths and host custody remain private.
+
+After confirmed publication, update and read back both homepages/context in E
+without moving the tag or rewriting notes/assets. The separately authorized
+project upgrade uses real downloaded validated target bytes and official
+plan/upgrade/target doctor, preserving unknown-path ownership and local work.
+Never hand-edit manifest/version to force health. Upgraded health alone requires
+the installed activation boundary; absent positive conforming host evidence,
+provide exactly the manual action: create a new task in the same project.

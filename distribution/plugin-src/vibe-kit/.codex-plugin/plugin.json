@@ -1,7 +1,7 @@
 {
   "name": "vibe-kit",
-  "version": "0.11.0",
-  "payload_tree_sha256": "43bfcd902e2459ea07085c8b73d00b03808dd96da9d4fa80f027ef0de1da74f3",
+  "version": "0.12.0",
+  "payload_tree_sha256": "d8ce4dc0843902b869d52fff4c9c8d7ded6c16f3bb9f4f292cb74a4eaa1bc598",
   "description": "Install and maintain a repository-pinned Vibe Kit workflow from a bundled offline payload.",
   "author": {
     "name": "mintgao",
