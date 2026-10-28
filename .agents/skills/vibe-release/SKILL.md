@@ -157,7 +157,7 @@ receipts, comments or summaries.
 
 ## v0.12.0 exact profile, merged-source gate and separate closeout
 
-[ADR0024](../../../docs/decisions/0024-v0-12-publication-and-separate-closeout.md)
+[ADR0024 — versioned source decision](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/decisions/0024-v0-12-publication-and-separate-closeout.md)
 governs exclusive schema-7 `vibe-kit-v0.12.0-prerelease`. It has the six existing
 ordered publication operations and exactly five UTF-8-name-sorted assets:
 `SHA256SUMS`, `release-manifest.json`, `vibe-kit-0.12.0.zip`,

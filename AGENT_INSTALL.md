@@ -318,7 +318,7 @@ candidate descendants and unsafe parents. Remote writes require read-back
 before retry, with at most two writes per natural key. Denial, divergence or
 still-unknown state stops the affected operation. Delete, replace, force and
 stable/draft transitions require separate authorization. See
-[ADR0024](docs/decisions/0024-v0-12-publication-and-separate-closeout.md) for the
+[ADR0024 — versioned source decision](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/decisions/0024-v0-12-publication-and-separate-closeout.md) for the
 closed identities, ordered smokes, closeout mapping and recovery contract.
 
 ## Takeover object contract

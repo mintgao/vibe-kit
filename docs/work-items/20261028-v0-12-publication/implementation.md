@@ -120,3 +120,23 @@ distinct postmerge release gate/two builds. Live protections/checks, public
 seventeen-smoke acceptance, separate closeout, E and official project upgrade
 remain orchestrator-owned later stages. Current source implementation does not
 claim publication, closure, upgraded development-project health or readiness.
+
+
+## Managed decision-reference correction after H1 review
+
+Exact-head H1 review found two managed links to ADR0024 whose relative targets
+are absent from the released payload. AGENT_INSTALL.md and the release Skill now
+qualify the canonical v0.12.0 public source URL as a versioned source decision.
+The packaging allowlist, runtime, profiles, tests and accepted contract are unchanged.
+This managed-document correction defines a new candidate; H1's independent QA
+and package evidence retain H1's identity and are not relabelled as H2 evidence.
+
+The two explicit source-reference checks passed.
+`python3 -m unittest tests.test_release_identity tests.test_v010_publication.ManagedGuideDriftTests -v`
+passed all 10 focused identity/guide tests. Existing activation-v2 normalization
+and production payload calculation regenerated the Agent-install and Plugin
+mirrors. Activation is `4966b6962be25b0be8bdb1d3d51a3fff7c2ed32543ceb50a97dbb5b406a39924`;
+payload is `afb5d0fc3dbed7c1af16c428b19dc93f8b9eb26a862005d4f85be922aefc986c`.
+These supersede the earlier candidate identities above. Original feature and
+installation-state bytes remain unchanged. Complete independent QA for this new
+candidate and public completion remain pending; no remote operation occurred.
