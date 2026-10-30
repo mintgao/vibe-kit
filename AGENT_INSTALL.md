@@ -1,7 +1,7 @@
 # Agent installation and takeover contract
 
 This document is the Agent-host-facing adoption and maintenance entry point for
-Vibe Kit 0.12.0. Publication status is established by release evidence. The machine-readable
+Vibe Kit 0.13.0. Publication status is established by release evidence. The machine-readable
 source of truth is `agent-install.json`. Keep
 CLI commands, JSON receipts, hashes and archive details internal during a healthy
 flow; report them only when they establish evidence or explain a blocker.
@@ -37,13 +37,15 @@ Before project writes, compute the versioned payload-tree SHA-256, validate the
 channel evidence in `agent-install.json`, and read its maintenance bridge schema
 2. The target payload's `bin/vibe`, not an older installed CLI, owns
 `plan upgrade`, `upgrade`, `recover-upgrade` and the first target-version doctor.
-Bridge schema 2 supports manifest schema 1 installations from 0.2.x through
-0.7.x and the already defined predecessor Agent protocols 0 through 3. It treats
+Bridge schema 2 supports manifest schema 1 installations from 0.2.0 to below
+0.13.0 and predecessor Agent protocols 0 through 4. The target uses Agent-install
+schema 4/protocol 5. Same-version operations use the current contract path rather
+than the strict predecessor upper bound. It treats
 a missing old `agent-install.json` as installed Agent protocol 0.
 
-If the acquisition Agent cannot interpret Agent-install schema 3/protocol 3, the
+If the acquisition Agent cannot interpret Agent-install schema 4/protocol 5, the
 bridge is unknown, the predecessor is outside the declared range, or source
-identity fails, stop before apply. Never coerce protocol 3 to an older protocol.
+identity fails, stop before apply. Never coerce protocol 5 to an older protocol.
 
 The bridge contains one closed compatibility migration for the exact official,
 healthy v0.5.0 source-checkout state where `AGENT_INSTALL.md` and
@@ -156,7 +158,7 @@ Without a live receipt, stop the source task after upgrade/doctor with
 `overall_status=degraded`, `reason_code=manual-new-task-required`, and exactly one
 action: create a new task in the same project. Say:
 
-> Vibe Kit 文件已升级到 0.12.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个任务（Codex、Hermes 或任何能新建任务的宿主均可）。
+> Vibe Kit 文件已升级到 0.13.0，安装检查通过；当前宿主无法在本任务加载新版规则，因此尚未激活，不能宣告项目已就绪。下一步：在此项目中新建一个任务（Codex、Hermes 或任何能新建任务的宿主均可）。
 
 Use a host-prefilled continuation when available. Otherwise include one copyable
 sentence containing the active objective. Do not require a CLI command, Skill name
@@ -285,6 +287,43 @@ installation state.
 
 ## Publication boundary
 
+### Current v0.13.0 profile
+
+The repository release Skill presents the closed v0.13.0 schema-8 Pre-release
+plan under ADR0026.
+
+Publication intent/receipt schema 8 selects only `vibe-kit-v0.13.0-prerelease`:
+repository `mintgao/vibe-kit`, version `0.13.0`, annotated tag `v0.13.0`, title
+`Vibe Kit v0.13.0` and body `docs/releases/0.13.0.md`. Exactly five sorted assets
+are `SHA256SUMS`, `release-manifest.json`, `vibe-kit-0.13.0.zip`,
+`vibe-kit-distribution-0.13.0.zip` and `vibe-kit-plugin-0.13.0.zip`. Schema 8 has
+six ordered publication operations and twenty public smokes. Its issue policy
+is `none`, publication receipt issue_closeout is null, and it has no closeout or
+project-upgrade requirement. Historical publication 1–7 and closeout 1–5 remain
+fixed; schema 7 and closeout 5 retain their exclusive v0.12.0 meaning.
+
+Final-target N01–N36, source privacy review and independent H QA precede public
+push. H is the exact reviewed PR head; M is the server-produced merge; E records
+later observed publication facts. Require actual current PR approval and checks,
+explicit human H-to-M applicability review, independent complete M verification
+on actual CPython 3.9, and two distinct clean byte-identical M builds. Earlier
+receipts keep their true identities; changed relevant target bytes require
+fresh affected acceptance and actual activation. No profile authenticates host
+execution, user consent or current applicability.
+
+Prepublication AC-1–AC-8 pass only after their actual gates; AC-9/10 remain
+not-runnable-before-publication, requiring live-read-back and public-smoke.
+Fresh public downloads, nested validation, downloaded-target validate-release,
+all twenty smokes and later independent AC-1–AC-10 acceptance are required for
+completion. Reuse exact intent authorization with authorization_source_ref and
+bound_at. Read back before retry; denial, divergence or still-unknown state stops
+that operation. Main already at M is read-matched with zero writes. Optional
+result persistence is distinct and create-only. The repository's ADR0026 and
+`docs/work-items/20261029-v0-13-publication/feature-contract.md` define the exact
+smoke order and closed identities. This candidate definition proves no release.
+
+### Historical v0.12.0 profile
+
 The repository release Skill preserves the exact v0.7.0 schema-1 publication and
 closeout path, presents the closed v0.12.0 schema-7 Pre-release plan, and keeps the
 separate schema-5 closeout over ordered issues [20,22,23] bound to that validated
@@ -346,10 +385,10 @@ Every host task that takes over, reloads, or admits an installation reports exac
 - `goal_continuation`: `not-applicable`, `paused`, `ready-to-resume`, `resumed`, `blocked`.
 - `goal_custody`: `none`, `source-owned`, `automatic-transfer-pending`, `automatic-successor-owned`, `manual-transfer-required`, `manual-transfer-pending`, `manual-successor-owned`.
 - `goal_kinds`: `maintenance-only`, `unfinished`.
-- `next_action_codes`: `select-trusted-source`, `use-conformant-maintenance-entry`, `choose-supported-target`, `review-conflict-candidates`, `inspect-and-recover-installation`, `approve-required-host-permission`, `rerun-upgrade-plan`, `recover-upgrade`, `inspect-upgrade-transaction`, `use-supported-upgrade-filesystem`, `inspect-existing-handoff`, `create-new-project-task`, `resolve-project-context`, `inspect-adaptation-changes`, `fix-configured-check`, `resolve-target-rule-blocker`, `answer-material-decision`, `report-internal-failure`.
+- `next_action_codes`: `select-trusted-source`, `use-conformant-maintenance-entry`, `choose-supported-target`, `review-conflict-candidates`, `inspect-and-recover-installation`, `approve-required-host-permission`, `rerun-upgrade-plan`, `recover-upgrade`, `inspect-upgrade-transaction`, `use-supported-upgrade-filesystem`, `inspect-existing-handoff`, `create-new-project-task`, `resolve-project-context`, `inspect-adaptation-changes`, `fix-configured-check`, `resolve-target-rule-blocker`, `answer-material-decision`, `report-internal-failure`, `review-maintenance-adaptation`.
 - `overall_statuses`: `in-progress`, `ready`, `degraded`, `blocked`.
 - `re_evaluated_outcomes`: `routable`, `blocked-by-target-rules`, `maintenance-only`.
-- `reason_codes`: `source-untrusted`, `source-digest-mismatch`, `unsupported-source-channel`, `unsupported-predecessor`, `unknown-contract`, `maintenance-bridge-unsupported`, `plan-blocked`, `managed-conflict`, `apply-failed-no-write`, `conflict-evidence-written`, `unknown-partial`, `apply-failed-rolled-back`, `upgrade-recovery-required`, `upgrade-recovery-blocked`, `upgrade-leaf-atomicity-unsupported`, `upgrade-leaf-race-preserved`, `doctor-broken`, `diagnostic-blocking`, `activation-receipt-unavailable`, `activation-receipt-invalid`, `automatic-handoff-unavailable`, `handoff-ambiguous`, `handoff-failed`, `manual-new-task-required`, `onboarding-invalid`, `onboarding-contradicted`, `adaptation-write-incomplete`, `verification-failed`, `verification-skipped`, `verification-error`, `target-rule-blocker`, `material-user-decision`, `host-permission-required`, `internal-error`.
+- `reason_codes`: `source-untrusted`, `source-digest-mismatch`, `unsupported-source-channel`, `unsupported-predecessor`, `unknown-contract`, `maintenance-bridge-unsupported`, `plan-blocked`, `managed-conflict`, `apply-failed-no-write`, `conflict-evidence-written`, `unknown-partial`, `apply-failed-rolled-back`, `upgrade-recovery-required`, `upgrade-recovery-blocked`, `upgrade-leaf-atomicity-unsupported`, `upgrade-leaf-race-preserved`, `doctor-broken`, `diagnostic-blocking`, `activation-receipt-unavailable`, `activation-receipt-invalid`, `automatic-handoff-unavailable`, `handoff-ambiguous`, `handoff-failed`, `manual-new-task-required`, `onboarding-invalid`, `onboarding-contradicted`, `adaptation-write-incomplete`, `verification-failed`, `verification-skipped`, `verification-error`, `target-rule-blocker`, `material-user-decision`, `host-permission-required`, `internal-error`, `maintenance-required`.
 - `receipt_kinds`: `host-reload`, `host-successor-start`, `manual-task-start`, `existing-install-admission`.
 - `source_types`: `github-release`, `plugin-bundled`, `offline-bundle`, `local-payload`.
 - `stage_states`: `not-started`, `satisfied`, `blocked`, `not-applicable`.
@@ -433,6 +472,35 @@ envelope and declaration remain unchanged. See
 [the consumption contract](https://github.com/mintgao/vibe-kit/blob/v0.12.0/docs/verification-observability.md) for exact fields,
 findings, limits, independent receipt/run verdicts and explicit-copy semantics.
 Current-candidate applicability is always `unproven`, project origin
-`not-attested`, and liveness `not-assessed`. The separate schema-7 publication
-profile does not turn inspection into current-candidate acceptance; schema 6
+`not-attested`, and liveness `not-assessed`. The separate schema-8 publication
+profile does not turn inspection into current-candidate acceptance; schema 7
+remains exclusively v0.12.0 and schema 6
 remains exclusively v0.11.0.
+
+
+## Protocol-5 controlled upgrade maintenance
+
+The managed [upgrade-maintenance guide](.vibe/core/upgrade-maintenance.md) defines
+the optional payload-only identity check, fixed host evidence view, controlled
+repair gates and maintenance-only readback/undo boundary. The closed schema-1
+command declaration is `cli.check_upgrade_compatibility`; source authentication
+is host-owned and a checked identity is neither compatibility proof nor apply
+permission. Plugin preflight calls the previously authenticated bundled payload
+directly, never the old wrapper.
+
+Before final default QA, only actual target activation, known installation with
+no active transaction, existing maintenance authority, applicable readiness,
+independent technical review, orchestrator gate and one RD writer allow bounded
+repair. Original business stays paused; guards, historical assertions, checks,
+order, budgets and exact owned before/after evidence are preserved. Onboarding
+refreshes facts and never exempts repairs from this gate.
+
+Known pre-default maintenance uses protocol-5 `maintenance-required` at blocked
+`verified`, action `review-maintenance-adaptation`. Prior applicable stages are
+satisfied, later stages not-started and no verify receipt is invented. Protocol4
+cannot interpret the new vocabulary and must fail closed. Real QA failure keeps
+its actual reason and original receipt. One independent final candidate-bound
+complete default run plus current target doctor may satisfy repair and takeover
+together. Read back unknown results before continuation; denied stops the action.
+Existing recover-upgrade remains installation-only, not downgrade or arbitrary
+project undo. Only complete takeover permits original-business re-evaluation.

@@ -77,7 +77,7 @@ QA-mutated target.
 
 - 186 current project/application files were overlaid and committed as clean
   baseline `28decf15d889506204f777f5823d8b3cb4f9f65a` at
-  `/private/tmp/qa-current-project.nhjn_4jt/project`.
+  a private QA current-project fixture (path omitted).
 - Old doctor exited 0/healthy `0.5.0`.
 - Plan exited 0/`safe`, was byte/Git read-only, had the same `11 no-op / 17
   update` counts and exact paired migration evidence.
@@ -155,7 +155,7 @@ secret sentinels. The synthetic original goal was absent from all repository
 files and validator output.
 
 There is also positive live evidence for the documented manual boundary from
-Codex task `01a0472f-80c1-7cf2-a724-81334993a255`, a distinct task in the same
+Codex task `[host task identifier omitted]`, a distinct task in the same
 saved project:
 
 1. The source task explicitly delegated one manual-new-task continuation and
@@ -185,7 +185,7 @@ It is not a live `host-reload` receipt and not automatic successor creation.
 | `python3 -m unittest discover -s tests -v` | Pass, 45/45 in 67.392 s. |
 | `./bin/vibe verify --format json` | Exit 0/`passed`; required test passed 45/45 in 78.523 s; failed 0, skipped 0, lint/typecheck/build unconfigured. |
 | `./bin/vibe doctor --format json` | Exit 0/healthy 0.6.0; manifest `b0389a9b...`, activation match `35f16a0c...`, zero diagnostics, network false. |
-| `./bin/vibe package --output /private/tmp/qa-release-a.vSX6ZR --status release-candidate-unpublished` and independent `...qa-release-b.cmDUF8` | Both pass; 35 payload files; payload `7c152ac7...`; distribution bundle `910f3684...`; network not used. |
+| `./bin/vibe package --output <private-build-output-a> --status release-candidate-unpublished` and an independent build B (private output locations omitted) | Both pass; 35 payload files; payload `7c152ac7...`; distribution bundle `910f3684...`; network not used. |
 | `./bin/vibe validate-release <each> --format json` | Both exit 0/valid; schema/protocol 2/2 and activation `35f16a0c...`. |
 | Directory/ZIP reproducibility | `diff -qr` empty. Direct ZIP `9c63677c...`, distribution ZIP `910f3684...`, Plugin ZIP `1116c717...` identical across builds. Direct/Plugin/marketplace payload maps are 35/35/35 and byte-identical. |
 | `git diff --check`; unmerged-path check; repository JSON parse | Pass; no whitespace errors, no unmerged paths, 29 JSON files parse. |

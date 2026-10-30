@@ -124,7 +124,7 @@ activation. The orchestrator owns the clean candidate freeze.
 ## Observed initial focused development checks
 
 Private command records and captured outputs remain outside the checkout at
-`/private/tmp/vibe-rd-feedback-closure-20261013-5pai4osx`. Exact argv, interpreter,
+a private RD command-evidence directory (path omitted). Exact argv, interpreter,
 exit code, elapsed time and output hashes are in the command JSON records. This
 report contains summaries and hashes, no raw output or host goal/custody payload.
 The documentation-only recovery reread records and identities without rerunning
@@ -186,7 +186,7 @@ The first independent implementation review required changes against the stable
 39-file snapshot `95b02ed710de4b7440e797a6cc0b1d50f7a9f1af74d7fe85af70029d11f5783e`.
 Its retained report is `implementation-review-1.md`, SHA-256
 `6badda2920ea545eb7de46dc895d73e3ef9fd30283ce5132336f1237637191e9`, under
-`/tmp/vibe-kit-v011-release-20261012-5hj8d9g7`. The independent boundary addendum
+a private implementation-review evidence directory (path omitted). The independent boundary addendum
 `implementation-review-boundary-addendum-1.md`, SHA-256
 `473fa9f71e2b2275de3c2f3aa723b9e2a5e9c7dad998bdb5050c9b29350bc5ff`,
 confirms all four repairs fit Accepted ADR0022. The final-delivery edit waited
@@ -210,7 +210,7 @@ process. These limitations are synchronized in both homepages, candidate notes,
 quality gates, Agent-install guide and observability documentation.
 
 Repair command records/captured test output are private and outside the checkout
-at `/private/tmp/vibe-rd-review-repair-20261013-25kw2juc`. Exact argv and tested
+at a private RD repair-evidence directory (path omitted). Exact argv and tested
 source/test hashes are in the command records; no raw output is copied here.
 
 | Repair record | Observed result and scope |
@@ -281,7 +281,7 @@ receipts and available metadata bind it as incomplete. Foreign sentinel bytes,
 disabled-progress boundaries and absence of automatic result bodies are preserved.
 
 Private evidence is in
-`/private/tmp/vibe-rd-terminal-transition-20261013-mgqd37d4`:
+a private RD terminal-transition evidence directory (path omitted):
 
 | Record | Observed evidence |
 |---|---|

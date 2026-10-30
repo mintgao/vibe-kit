@@ -25,3 +25,11 @@ When onboarding follows a Vibe Kit upgrade, begin only in the task with positive
 6. Only after the evidence-backed context and verified commands are updated, write `.vibe/onboarding.json` with `schema_version: 1`, `status: "complete"`, an `updated_at` date, and a concise list of evidence paths. Never mark readiness complete while material contradictions or required repository inspection remain unresolved.
 7. Run the installed target doctor and default `./bin/vibe verify . --format json`. Treat every configured failed/skipped check and every unknown or blocking diagnostic as a blocker; an all-unconfigured matrix may pass but must be described accurately.
 8. Re-evaluate the preserved original request under the active rules, then resume it through the appropriate Vibe workflow. Do not ask the user to repeat it or to invoke another Skill. For maintenance-only work, record re-evaluation as not applicable and do not invent application work.
+
+Facts-only onboarding does not exempt compatibility repairs from the activated
+target, known installation/no active transaction, authorization, readiness,
+independent review and single-writer maintenance gate in
+[upgrade-maintenance](../../../.vibe/core/upgrade-maintenance.md). A known
+pre-default blocker may enter that branch before final QA; do not manufacture
+verification-failed. The unchanged final candidate's independent complete run
+may satisfy both adaptation/takeover and maintenance; cite the same receipt.

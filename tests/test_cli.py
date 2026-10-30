@@ -46,10 +46,16 @@ def run_cli(
 
 
 def copy_source(destination: Path) -> Path:
+    base_ignore = shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "manifest.json")
+    def ignore_source_runtime(directory, names):
+        ignored = set(base_ignore(directory, names))
+        if Path(directory) == ROOT / ".vibe":
+            ignored.add("local")
+        return ignored
     shutil.copytree(
         ROOT,
         destination,
-        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "manifest.json"),
+        ignore=ignore_source_runtime,
     )
     return destination / "bin/vibe"
 
@@ -1285,14 +1291,14 @@ class VibeCliTests(unittest.TestCase):
             self.assertEqual(validated_json.returncode, 0, validated_json.stderr)
             validation_receipt = json.loads(validated_json.stdout)
             self.assertEqual(validation_receipt["status"], "valid")
-            self.assertEqual(validation_receipt["agent_install_protocol"], 4)
+            self.assertEqual(validation_receipt["agent_install_protocol"], 5)
             release_metadata = json.loads((first / "release-manifest.json").read_text())
             self.assertEqual(release_metadata["status"], "release-candidate-unpublished")
             self.assertEqual(release_metadata["kit_version"], KIT_VERSION)
             self.assertEqual(release_metadata["core_protocol"], 7)
             self.assertEqual(release_metadata["feedback_protocol"], 2)
             self.assertEqual(release_metadata["agent_install_schema"], 4)
-            self.assertEqual(release_metadata["agent_install_protocol"], 4)
+            self.assertEqual(release_metadata["agent_install_protocol"], 5)
             self.assertEqual(release_metadata["takeover_schema"], 2)
             self.assertEqual(release_metadata["maintenance_bridge_schema"], 2)
             self.assertEqual(
@@ -1325,12 +1331,12 @@ class VibeCliTests(unittest.TestCase):
             )
             install_contract = json.loads((release_root / "agent-install.json").read_text())
             self.assertEqual(install_contract["schema_version"], 4)
-            self.assertEqual(install_contract["protocol_version"], 4)
+            self.assertEqual(install_contract["protocol_version"], 5)
             self.assertEqual(install_contract["kit_version"], KIT_VERSION)
             self.assertEqual(install_contract["adapter"]["protocol"], 7)
             self.assertEqual(
                 install_contract["maintenance_bridge"]["supported_installed_agent_protocols"],
-                [0, 1, 2, 3],
+                [0, 1, 2, 3, 4],
             )
             self.assertEqual(
                 install_contract["maintenance_bridge"]["maximum_installed_kit_version_exclusive"],
@@ -4282,8 +4288,20 @@ class VibeCliTests(unittest.TestCase):
             with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
                 bundle.extractall(path)
 
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, contextlib.ExitStack() as source_scope:
             base = Path(temporary)
+            fixture_source = base / "directory-unit-source"
+            copy_source(fixture_source)
+            reference_root = Path(".agents/skills/vibe-implementation-flow/references")
+            reference_file = reference_root / "affected-entry-evidence.md"
+            fixture_references = fixture_source / reference_root
+            shutil.rmtree(fixture_references)
+            fixture_references.mkdir(mode=0o755)
+            shutil.copy2(ROOT / reference_file, fixture_source / reference_file)
+            self.assertEqual(sorted(path.relative_to(fixture_source).as_posix() for path in fixture_references.rglob("*")), [reference_file.as_posix()])
+            self.assertEqual((fixture_source / "bin/vibe").read_bytes(), CLI.read_bytes())
+            source_scope.enter_context(mock.patch.object(module, "source_root", return_value=fixture_source))
+            # Continue the entire existing body without weakening any assertion.
             committed = base / "directory-unit-committed"
             official_v060_project(committed)
             original_remove = module.remove_transaction_control

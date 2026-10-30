@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.12.0 — intended Pre-release
+## 0.13.0 — unpublished Pre-release candidate
+
+- Ship runnable Python/Node extension-contract templates using the production receipt validator, real default dispatchers and separate semantic/integrity controls.
+- Add optional read-only `check-upgrade-compatibility` for project-owned payload identity allowlists; identity comparison does not establish API compatibility or authenticate source origin.
+- Add controlled protocol-5 upgrade-maintenance guidance, bounded evidence views and per-operation readback/recovery; retain real activation, review and independent QA gates.
+- Add exclusive publication intent/receipt schema 8 for 0.13.0: five assets, six operations, twenty public smokes and no issue operations. Historical publication 1–7 and closeout 1–5 remain fixed.
+- Keep Python 3.9+, the standard-library-only CLI and existing result/verification/transaction schemas. Node is required to execute the Node examples, not to run the Kit CLI.
+- This candidate still requires final-target acceptance, source/release QA, governed PR review and public verification before any completion claim.
+
+## 0.12.0 — published Pre-release
 
 - Require exact integer onboarding schema 1 while preserving valid state and bytes.
 - Add applicable real-entry focused evidence guidance with Python/Node scenarios.

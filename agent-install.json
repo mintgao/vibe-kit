@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "protocol_version": 4,
-  "kit_version": "0.12.0",
+  "protocol_version": 5,
+  "kit_version": "0.13.0",
   "adapter": {
     "name": "codex",
     "protocol": 7
@@ -73,16 +73,17 @@
       0,
       1,
       2,
-      3
+      3,
+      4
     ],
     "minimum_installed_kit_version": "0.2.0",
-    "maximum_installed_kit_version_exclusive": "0.12.0",
+    "maximum_installed_kit_version_exclusive": "0.13.0",
     "target_agent_install_schema": 4,
-    "target_agent_install_protocol": 4,
+    "target_agent_install_protocol": 5,
     "target_cli_result_schema": 2,
     "predecessor_migrations": {
       "schema_version": 2,
-      "registry_sha256": "2bd4f69282952136004fbe5a66a7efe785ae407d55f36ed3b6b9f08bedb669d0",
+      "registry_sha256": "3251575ce4b07f405ef74ba57b3276e65c3dc7595d672db4044be34a008b8b80",
       "authority": "target-cli-compiled",
       "modes": [
         "create-pending-onboarding-if-absent",
@@ -179,6 +180,25 @@
       ".agents/skills/vibe-feedback-flow/agents/openai.yaml",
       ".agents/skills/vibe-implementation-flow/SKILL.md",
       ".agents/skills/vibe-implementation-flow/references/affected-entry-evidence.md",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/README.md",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/bridge.py",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/node/adapter.cjs",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/node/direct.cjs",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/node/historical-helper.cjs",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/node/historical.cjs",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/node/loader.cjs",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/node/new-helper.cjs",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/node/package.json",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/node/test.cjs",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/python/adapter.py",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/python/historical_helper.py",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/python/loader_probe.py",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/python/new_helper.py",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/python/tests/test_contract.py",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/python/tests/test_direct.py",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/python/tests/test_historical.py",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/receipt.json",
+      ".agents/skills/vibe-implementation-flow/references/extension-testing/setup_doctor.py",
       ".agents/skills/vibe-project-onboarding/SKILL.md",
       ".agents/skills/vibe-release/SKILL.md",
       ".agents/skills/vibe-verification-flow/SKILL.md",
@@ -195,6 +215,7 @@
       ".vibe/core/technical-decision-readiness.md",
       ".vibe/core/templates/work-item-brief.md",
       ".vibe/core/templates/work-item-verification.md",
+      ".vibe/core/upgrade-maintenance.md",
       ".vibe/core/version",
       "AGENTS.md#managed-block",
       "AGENT_INSTALL.md",
@@ -206,7 +227,7 @@
       "hermes"
     ],
     "activation_set_algorithm": "sha256-canonical-json-fingerprint-and-normalized-path-hashes-v2",
-    "activation_set_sha256": "f2bccba7ec741eb9fad904576f5515df556f8593564a67e299e5bfc1a936d6f3",
+    "activation_set_sha256": "ed857f8a178862032f2291a6c5bf0ff81b7847d904df081b9403a2f443550618",
     "runtime_discovery_roots": [
       "AGENT_INSTALL.md",
       "agent-install.json",
@@ -292,7 +313,8 @@
       "target-rule-blocker",
       "material-user-decision",
       "host-permission-required",
-      "internal-error"
+      "internal-error",
+      "maintenance-required"
     ],
     "next_action_codes": [
       "select-trusted-source",
@@ -312,7 +334,8 @@
       "fix-configured-check",
       "resolve-target-rule-blocker",
       "answer-material-decision",
-      "report-internal-failure"
+      "report-internal-failure",
+      "review-maintenance-adaptation"
     ],
     "goal_kinds": [
       "maintenance-only",
@@ -599,7 +622,8 @@
           "target-rule-blocker",
           "material-user-decision",
           "host-permission-required",
-          "internal-error"
+          "internal-error",
+          "maintenance-required"
         ],
         "next_action_codes": [
           "select-trusted-source",
@@ -619,7 +643,8 @@
           "fix-configured-check",
           "resolve-target-rule-blocker",
           "answer-material-decision",
-          "report-internal-failure"
+          "report-internal-failure",
+          "review-maintenance-adaptation"
         ]
       },
       "source_rules": {
@@ -748,7 +773,8 @@
         "apply-failed-no-write": "report-internal-failure",
         "activation-receipt-invalid": "report-internal-failure",
         "handoff-failed": "report-internal-failure",
-        "internal-error": "report-internal-failure"
+        "internal-error": "report-internal-failure",
+        "maintenance-required": "review-maintenance-adaptation"
       },
       "reason_stage_map": {
         "source-untrusted": "source-resolved",
@@ -784,7 +810,8 @@
         "verification-error": "verified",
         "target-rule-blocker": "re-evaluated",
         "material-user-decision": "re-evaluated",
-        "internal-error": "ready"
+        "internal-error": "ready",
+        "maintenance-required": "verified"
       },
       "evidence_rules": {
         "source-resolved": [
@@ -937,7 +964,7 @@
         "successor-custody-terminal"
       ]
     },
-    "contract_registry_sha256": "6697a332b7f7200c1fdf04828b97878e6c1c99e39910e283c5ade87f6219821f",
+    "contract_registry_sha256": "2cf79f7901cc61b4d72f2f1bdc035f259d894f872633930520f4b6280bc4a887",
     "unknown_or_inconsistent_state": "fail-closed"
   },
   "cli": {
@@ -1002,6 +1029,13 @@
       "inspect-run": [
         "inspected",
         "invalid",
+        "error"
+      ],
+      "check-upgrade-compatibility": [
+        "checked",
+        "not-configured",
+        "invalid",
+        "blocked",
         "error"
       ]
     },
@@ -1101,6 +1135,93 @@
       ],
       "authority": "historical-evidence-only",
       "side_effects": "none"
+    },
+    "check_upgrade_compatibility": {
+      "schema_version": 1,
+      "result_schema_version": 2,
+      "compatibility_schema_version": 1,
+      "declaration_schema_version": 1,
+      "declaration_path": ".vibe/upgrade-compatibility.json",
+      "scope": "payload-identity-only",
+      "authority": "static-comparison",
+      "source_authentication": "not-attested",
+      "side_effects": "none",
+      "statuses": [
+        "checked",
+        "not-configured",
+        "invalid",
+        "blocked",
+        "error"
+      ],
+      "result_fields": [
+        "schema_version",
+        "command",
+        "status",
+        "compatibility",
+        "write_state",
+        "writes_performed"
+      ],
+      "compatibility_fields": [
+        "schema_version",
+        "scope",
+        "authority",
+        "source_authentication",
+        "project_binding",
+        "source",
+        "rules",
+        "findings",
+        "next_action"
+      ],
+      "rule_kinds": [
+        "payload-tree-allowlist",
+        "composite-candidate",
+        "merged-file",
+        "command"
+      ],
+      "owners": [
+        "project-maintainer",
+        "vibe-tech-lead",
+        "vibe-rd"
+      ],
+      "finding_codes": [
+        "invalid-arguments",
+        "invalid-declaration",
+        "duplicate-rule-id",
+        "unsupported-schema",
+        "invalid-source-type",
+        "invalid-source-ref",
+        "invalid-artifact-sha256",
+        "invalid-expected-payload-sha256",
+        "invalid-source-version",
+        "source-version-mismatch",
+        "missing-source-evidence",
+        "source-digest-mismatch",
+        "unsafe-path",
+        "input-unavailable",
+        "read-permission-denied",
+        "resource-limit",
+        "input-changed",
+        "unsupported-safety-primitive",
+        "execution-interrupted",
+        "internal-error"
+      ],
+      "limits": {
+        "declaration": 65536,
+        "json_depth": 8,
+        "version": 64,
+        "file": 8388608,
+        "total": 67108864,
+        "files": 4096,
+        "directories": 1024,
+        "entries": 16384,
+        "depth": 32,
+        "component": 255,
+        "path": 4096,
+        "paths": 4194304,
+        "ancestors": 64,
+        "buffer": 65536,
+        "result": 32768
+      }
     }
   },
   "onboarding": {
@@ -1152,8 +1273,8 @@
     "ordinary_upgrade_auto_recovers": false
   },
   "publication": {
-    "intent_schema": 7,
-    "receipt_schema": 7,
+    "intent_schema": 8,
+    "receipt_schema": 8,
     "issue_closeout_intent_schema": 5,
     "commands": [
       "publication-plan",

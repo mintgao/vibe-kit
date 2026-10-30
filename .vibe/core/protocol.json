@@ -3,11 +3,11 @@
   "manifest_schema": 1,
   "core_protocol": 7,
   "feedback_protocol": 2,
-  "agent_install_protocol": 4,
-  "takeover_contract_registry_sha256": "6697a332b7f7200c1fdf04828b97878e6c1c99e39910e283c5ade87f6219821f",
+  "agent_install_protocol": 5,
+  "takeover_contract_registry_sha256": "2cf79f7901cc61b4d72f2f1bdc035f259d894f872633930520f4b6280bc4a887",
   "predecessor_migrations": {
     "schema_version": 2,
-    "registry_sha256": "2bd4f69282952136004fbe5a66a7efe785ae407d55f36ed3b6b9f08bedb669d0",
+    "registry_sha256": "3251575ce4b07f405ef74ba57b3276e65c3dc7595d672db4044be34a008b8b80",
     "authority": "target-cli-compiled",
     "modes": [
       "create-pending-onboarding-if-absent",
@@ -44,7 +44,7 @@
   "release_manifest_schema": 2,
   "transaction_journal_schema": 1,
   "transaction_commit_schema": 1,
-  "publication_intent_schema": 7,
-  "publication_receipt_schema": 7,
+  "publication_intent_schema": 8,
+  "publication_receipt_schema": 8,
   "issue_closeout_intent_schema": 5
 }

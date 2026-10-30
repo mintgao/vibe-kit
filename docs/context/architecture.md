@@ -103,7 +103,7 @@ The release manifest also mirrors the compiled predecessor-migration registry
 digest, authority and only supported mode. Validation requires exact equality with
 the Agent-install/core mirrors and the packaged compiled CLI authority.
 
-The Plugin exposes only `vibe-bootstrap` and `vibe-maintain`; project runtime Skills appear only after installation. Its wrapper verifies the bundled version and payload-tree identity before target-CLI execution, but it provides no reload/task-creation API. The installed repository remains the runtime source of truth. The published baseline is v0.11.0 Pre-release with core/Codex protocol 7 and Hermes adapter protocol 1. v0.11.0 is the latest published non-draft GitHub Pre-release; its live public completion is recorded in docs/work-items/20261010-feedback-closure/postpublication.md under the exact publication authorization. Both homepages identify v0.11.0 as the selected Pre-release; the v0.10.0 release tag remains bound to its tested source commit. See ADRs 0002, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011 and 0012.
+The Plugin exposes only `vibe-bootstrap` and `vibe-maintain`; project runtime Skills appear only after installation. Its wrapper verifies the bundled version and payload-tree identity before target-CLI execution, but it provides no reload/task-creation API. The installed repository remains the runtime source of truth. The observed published baseline is v0.12.0 Pre-release with core/Codex protocol 7 and Hermes adapter protocol 1; the [official Release](https://github.com/mintgao/vibe-kit/releases/tag/v0.12.0) is distinct from the unpublished 0.13.0 source candidate. Historical v0.11.0 live completion remains recorded in docs/work-items/20261010-feedback-closure/postpublication.md. Both homepages select v0.12.0 for public installation; the v0.10.0 release tag remains bound to its tested source commit. See ADRs 0002, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011 and 0012.
 
 ADR0014 adds exact publication schema 3, separate #6/#7 closeout schema 2, bounded readiness validation and authenticated whole-file AGENTS policy integration. ADR0016–0019 widen the readiness grammar, close the verification contract, publish takeover admission and add the per-host registry with the schema-4 Agent-install contract. ADR0020 advances the version boundary to 0.10.0, adds exact publication schema 4 with a separate schema-3 #8–#13 closeout, and moves the maintenance-bridge bound and the v0.5.0 predecessor-migration target. ADR0021 advances the version boundary to 0.10.1, adds exact publication schema 5 with no issue closeout, publishes the Hermes `verified` conformance label, and moves the maintenance-bridge bound and the v0.5.0 predecessor-migration target with it. Historical publication wrappers remain fixed to their compiled profiles.
 
@@ -120,7 +120,7 @@ advance together; source checkout installation state is not rewritten to
 manufacture health. Final QA/publication/closeout evidence is recorded in docs/work-items/20261010-feedback-closure/verification.md, postpublication.md and closeout.md.
 
 
-ADR0023 advances the unpublished source candidate to 0.12.0 without changing
+ADR0023 advanced the 0.12.0 source boundary without changing
 existing execution/verify schemas or historical publication profiles. The new
 inspect-run result has its own nested inspection schema 1 under result schema 2.
 A component-wise no-follow pinned root feeds the shared snapshot helper and
@@ -142,5 +142,53 @@ ordered public smokes. Publication acceptance is AC-1–AC-10; ordered [20,22,23
 closeout and the official project upgrade/activation boundary are later stages.
 Authorization source references and binding times reuse existing authorized scope.
 See [the accepted decision](../decisions/0024-v0-12-publication-and-separate-closeout.md)
-and [the current work item](../work-items/20261028-v0-12-publication/brief.md).
+and [the historical 0.12 work item](../work-items/20261028-v0-12-publication/brief.md).
 The profile's implementation is not evidence of remote publication or acceptance.
+
+
+## 0.13 candidate boundaries
+
+[ADR0025](../decisions/0025-upgrade-compatibility-and-maintenance-continuation.md)
+advances current kit/Plugin to 0.13.0 and Agent-install schema/protocol to 4/5.
+Core/Codex remain 7/7, Hermes 1, takeover 2, result 2 and inspection 1. The
+maintenance bridge and predecessor registry remain schema 2, with protocol 4
+included in the strict pre-0.13 predecessor range; same-version operations keep
+the current contract path. Installed source-checkout state is preserved.
+
+The managed extension-testing reference ships one production-validator bridge,
+Python discovery and Node package-script dispatchers, plus separate receipt,
+origin/argument, semantic, integrity and doctor-lifecycle controls. The Node
+runtime is needed for those examples, not for the Python CLI.
+
+`check-upgrade-compatibility` uses its own bounded read-only entrypoint and fixed
+closed result. Component-wise no-follow pinned descriptors, identity rechecks,
+finite enumeration/read/output limits and fixed findings preserve the accepted
+input boundary. The optional project-owned declaration is not installed or
+rewritten. Only payload-tree allowlists execute as static comparisons; reserved
+rule kinds remain unsupported. No hooks, subprocess, network, config mutation,
+apply or recovery belong to that reader. Source authentication is not-attested.
+The authenticated Plugin preflight calls its bundled CLI directly, rather than
+adding this command to the old wrapper's dispatch surface.
+
+The managed upgrade-maintenance guide and workflow/Plugin skills retain the
+separation between inspection and maintenance writes. Known pre-QA blockers use
+maintenance-required; an executed failed QA uses verification-failed. Existing
+transaction readers and recovery provide original evidence: committed target
+cleanup is not downgrade; unknown or divergent state cannot authorize overwrite.
+Genuine same-root final-target activation, technical review, one writer and
+independent final default QA remain host-owned evidence requirements. Static
+contracts and controlled fixtures do not prove those facts.
+
+[ADR0026](../decisions/0026-v0-13-publication.md) adds only exact schema-8
+publication: current publication mirrors are 8/8/5, five assets and six operations
+use the existing closed validators/ledgers, twenty smokes cover the new executable
+entries and the real 0.12 predecessor, and issue policy is none. Historical
+publication 1–7 and closeout 1–5 remain fixed, with closeout 5 bound only to the
+schema-7 0.12 parent. H is the reviewed public PR head, M the actual merge and E
+later observed facts. Real source and final-target acceptance precede push;
+actual CPython 3.9 M QA, explicit human applicability review and two clean M builds
+precede publication. Receipts retain their original identity; metadata equality
+neither relabels evidence nor authenticates a host. The exact
+[publication contract](../work-items/20261029-v0-13-publication/feature-contract.md)
+retains every N01–N36 prerequisite and adds no network authority or generic
+reconciliation engine. 0.13 remains a candidate until verified public completion.

@@ -43,7 +43,7 @@ Provide a project-pinned development system that lets coding Agents carry truste
 
 ## Non-goals and boundaries
 
-- Vibe Kit v0.11.0 is the latest published non-draft GitHub Pre-release. Its public acceptance is recorded in `docs/work-items/20261010-feedback-closure/postpublication.md`; the earlier v0.10.1
+- Vibe Kit v0.12.0 is the latest observed published non-draft GitHub Pre-release: [official Release](https://github.com/mintgao/vibe-kit/releases/tag/v0.12.0). The current 0.13.0 source is an unpublished candidate. Historical v0.11.0 public acceptance is recorded in `docs/work-items/20261010-feedback-closure/postpublication.md`; the earlier v0.10.1
   public completion and live verification are recorded in
   `docs/work-items/20260922-v0-10-1-publication/postpublication.md`. The historical
   v0.10.0 publication, public verification and issue #8–#13 closeout are recorded in
@@ -81,18 +81,35 @@ optional storage failure preserves observed checks, and interruption remains
 incomplete with descendant cancellation unproven.
 
 
-The current source candidate is 0.12.0, unpublished. ADR0023 adds exact onboarding
-schema-version validation, applicable real-entry focused evidence and the bounded
-read-only inspect-run consumer. It reports historical evidence only, with
-unproven candidate applicability and unattested origin. Producer defaults and
-historical publication profiles remain fixed; #21/#26 are assessment-only and
-#24/#25 deferred. The preserved root installation state is not rewritten to claim
-0.12 activation. Independent acceptance belongs to the new work item.
+The published 0.12.0 source added exact onboarding schema-version validation,
+applicable real-entry focused evidence and bounded read-only `inspect-run` under
+ADR0023. Inspection reports historical evidence with unproven current-candidate
+applicability, unattested origin and liveness not assessed. ADR0024 retains its
+exclusive schema-7 publication and schema-5 [20,22,23] closeout contract; release,
+public acceptance, issue closure and project upgrade are separate evidence
+obligations. The current observation of the official Release does not infer
+completion of those later stages.
 
+The current source candidate is 0.13.0, unpublished. [ADR0025](../decisions/0025-upgrade-compatibility-and-maintenance-continuation.md)
+governs four accepted modules: runnable Python/Node extension-contract templates;
+optional read-only payload identity comparison; controlled protocol-5 maintenance;
+and bounded evidence/readback/recovery guidance. The identity check does not prove
+API compatibility or authenticate origin. Missing or disabled project declarations
+add no upgrade requirement. Node is needed for the Node examples, while the Kit
+CLI remains Python 3.9+ and standard-library-only.
 
-The 0.12.0 candidate now also declares its exact Pre-release publication and
-separate #20/#22/#23 closeout profiles under ADR0024. Source review, merged-source
-release QA, public acceptance, issue closure and project upgrade retain distinct
-outcomes. Latest-published links remain v0.11.0 until observed public completion;
-no offline profile definition supplies that completion evidence. The governing
-scope is [the public 0.12.0 brief](../work-items/20261028-v0-12-publication/brief.md).
+Maintenance before the first QA and a real failed check remain distinct. Actual
+target activation, accepted technical readiness, one maintenance writer,
+preserved guards and independent final QA are required before resuming business
+work. Guidance and controlled fixtures do not establish live Agent compliance or
+measured savings. The root installation state is preserved rather than rewritten
+to claim activation.
+
+[ADR0026](../decisions/0026-v0-13-publication.md) adds exclusive publication schema 8:
+five assets, six operations, twenty ordered public smokes and issue policy none.
+Historical publication 1–7 and closeout 1–5 retain their exact semantics. All
+[N01–N36](../work-items/20261029-v0-13-local-delivery/acceptance-matrix.md), actual
+final-target host acceptance, privacy review, independent source and merged-source
+QA, normal PR approval and public verification remain required. Source
+implementation supplies no publication or acceptance claim. The current scope is
+[the 0.13 publication brief](../work-items/20261029-v0-13-publication/brief.md).

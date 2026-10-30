@@ -44,7 +44,7 @@ RELEASE_MANIFEST_SCHEMA = 2
 RELEASE_STATUSES = ("release-candidate-unpublished", "prerelease", "stable")
 AGENT_RESULT_SCHEMA = 2
 AGENT_INSTALL_SCHEMA = 4
-AGENT_INSTALL_PROTOCOL = 4
+AGENT_INSTALL_PROTOCOL = 5
 SOURCE_TYPES = ("local-payload", "github-release", "plugin-bundled", "offline-bundle")
 ONBOARDING_STATUSES = ("pending", "complete", "refresh-needed")
 DERIVED_ONBOARDING_STATUSES = ("review-required", "invalid")
@@ -70,6 +70,7 @@ AGENT_COMMAND_STATUSES = {
     "validate-release": ("valid", "invalid", "error"),
     "publication-plan": ("safe", "blocked", "error"),
     "validate-publication": ("valid", "invalid", "error"),
+    "check-upgrade-compatibility": ("checked", "not-configured", "invalid", "blocked", "error"),
 }
 CORE_PROTOCOL = 7
 CODEX_ADAPTER_PROTOCOL = 7
@@ -79,8 +80,8 @@ MAINTENANCE_BRIDGE_SCHEMA_VERSION = 2
 COMPATIBILITY_MIGRATION_REGISTRY_SCHEMA = 2
 TRANSACTION_JOURNAL_SCHEMA = 1
 TRANSACTION_COMMIT_SCHEMA = 1
-PUBLICATION_INTENT_SCHEMA = 7
-PUBLICATION_RECEIPT_SCHEMA = 7
+PUBLICATION_INTENT_SCHEMA = 8
+PUBLICATION_RECEIPT_SCHEMA = 8
 HISTORICAL_PUBLICATION_INTENT_SCHEMA = 1
 HISTORICAL_PUBLICATION_RECEIPT_SCHEMA = 1
 ISSUE_CLOSEOUT_INTENT_SCHEMA = 5
@@ -269,7 +270,7 @@ PREDECESSOR_MIGRATION_REGISTRY = {
                 "manifest_schema": 1,
             },
             "target": {
-                "framework_version": "0.12.0",
+                "framework_version": "0.13.0",
                 "source_types": list(SOURCE_TYPES),
             },
         },
@@ -284,7 +285,7 @@ PREDECESSOR_MIGRATION_REGISTRY_SHA256 = hashlib.sha256(
     ).encode("utf-8")
 ).hexdigest()
 EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256 = (
-    "2bd4f69282952136004fbe5a66a7efe785ae407d55f36ed3b6b9f08bedb669d0"
+    "3251575ce4b07f405ef74ba57b3276e65c3dc7595d672db4044be34a008b8b80"
 )
 if PREDECESSOR_MIGRATION_REGISTRY_SHA256 != (
     EXPECTED_PREDECESSOR_MIGRATION_REGISTRY_SHA256
@@ -378,6 +379,7 @@ TAKEOVER_REASON_CODES = (
     "verification-failed", "verification-skipped", "verification-error",
     "target-rule-blocker", "material-user-decision", "host-permission-required",
     "internal-error",
+    "maintenance-required",
 )
 TAKEOVER_NEXT_ACTION_CODES = (
     "select-trusted-source", "use-conformant-maintenance-entry",
@@ -389,6 +391,7 @@ TAKEOVER_NEXT_ACTION_CODES = (
     "resolve-project-context", "inspect-adaptation-changes",
     "fix-configured-check", "resolve-target-rule-blocker",
     "answer-material-decision", "report-internal-failure",
+    "review-maintenance-adaptation",
 )
 TAKEOVER_REASON_ACTION = {
     "source-untrusted": "select-trusted-source",
@@ -425,6 +428,7 @@ TAKEOVER_REASON_ACTION = {
     "activation-receipt-invalid": "report-internal-failure",
     "handoff-failed": "report-internal-failure",
     "internal-error": "report-internal-failure",
+    "maintenance-required": "review-maintenance-adaptation",
 }
 TAKEOVER_REASON_STAGE = {
     "source-untrusted": "source-resolved",
@@ -461,6 +465,7 @@ TAKEOVER_REASON_STAGE = {
     "target-rule-blocker": "re-evaluated",
     "material-user-decision": "re-evaluated",
     "internal-error": "ready",
+    "maintenance-required": "verified",
 }
 TAKEOVER_GOAL_CUSTODY = (
     "none",
@@ -1497,8 +1502,8 @@ def predecessor_migration_evidence(phase: str) -> Dict[str, object]:
 
 
 def validate_target_predecessor_migration_contract(root: Path) -> None:
-    if framework_version(root) != "0.12.0":
-        raise VibeError("predecessor migration is supported only by target 0.12.0")
+    if framework_version(root) != "0.13.0":
+        raise VibeError("predecessor migration is supported only by target 0.13.0")
     contract = load_agent_install_contract(root)
     try:
         protocol = load_json_object_strict(root / ".vibe/core/protocol.json")
@@ -5758,7 +5763,7 @@ def upgrade_plan(
             )],
             "<transaction-active>", version, [], bridge,
         )
-    if version == "0.12.0":
+    if version == "0.13.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -6217,7 +6222,7 @@ def upgrade(
             None, "inspect-upgrade-transaction" if active_kind == "invalid" else "recover-upgrade",
             output_format,
         )
-    if version == "0.12.0":
+    if version == "0.13.0":
         validate_target_predecessor_migration_contract(source)
         migration_decision = predecessor_migration_decision(target)
     else:
@@ -9682,9 +9687,9 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
     expected_bridge = {
         "schema_version": MAINTENANCE_BRIDGE_SCHEMA_VERSION,
         "supported_installed_manifest_schemas": [1],
-        "supported_installed_agent_protocols": [0, 1, 2, 3],
+        "supported_installed_agent_protocols": [0, 1, 2, 3, 4],
         "minimum_installed_kit_version": "0.2.0",
-        "maximum_installed_kit_version_exclusive": "0.12.0",
+        "maximum_installed_kit_version_exclusive": "0.13.0",
         "target_agent_install_schema": AGENT_INSTALL_SCHEMA,
         "target_agent_install_protocol": AGENT_INSTALL_PROTOCOL,
         "target_cli_result_schema": AGENT_RESULT_SCHEMA,
@@ -9897,6 +9902,9 @@ def validate_agent_install_contract_shape(contract: Dict[str, object]) -> List[s
         "network_attestation": "not-provided",
     }:
         errors.append("agent install verify contract is unsupported")
+
+    if cli.get("check_upgrade_compatibility") != UPGRADE_COMPATIBILITY_CONTRACT:
+        errors.append("agent install upgrade compatibility contract is unsupported")
 
     if cli.get("inspect_run") != INSPECT_RUN_CONTRACT:
         errors.append("agent install inspect-run contract is unsupported")
@@ -11682,6 +11690,29 @@ PUBLICATION_PROFILES = {
         "issue_policy": {"mode": "after-public-verification", "issues": [20, 22, 23], "allowed_operations": ["create-exact-evidence-comment", "close-issue"]},
         "kinds": {"prepublication-qa": "vibe-kit-v0.12.0-prepublication-qa", "configured-checks": "vibe-kit-v0.12.0-configured-checks", "python-3.9": "vibe-kit-v0.12.0-python-3.9", "clean-build": "vibe-kit-v0.12.0-clean-build", "release-gate-evidence": "vibe-kit-v0.12.0-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.12.0-postpublication-acceptance"},
     },
+    8: {
+        "schema": 8, "version": "0.13.0", "tag": "v0.13.0", "title": "Vibe Kit v0.13.0",
+        "profile": "vibe-kit-v0.13.0-prerelease", "body_path": "docs/releases/0.13.0.md",
+        "direct": "vibe-kit-0.13.0.zip", "plugin": "vibe-kit-plugin-0.13.0.zip", "distribution": "vibe-kit-distribution-0.13.0.zip",
+        "smokes": (
+            "public-direct-init-doctor", "public-plugin-bundled-plan-init-doctor",
+            "public-upgrade-v0.3-to-v0.13.0", "public-upgrade-v0.5-to-v0.13.0",
+            "public-upgrade-v0.6-to-v0.13.0", "public-upgrade-v0.7-to-v0.13.0",
+            "public-upgrade-v0.8-to-v0.13.0", "public-upgrade-v0.9-to-v0.13.0",
+            "public-upgrade-v0.10.0-to-v0.13.0", "public-upgrade-v0.10.1-to-v0.13.0",
+            "public-upgrade-v0.11.0-to-v0.13.0", "public-upgrade-v0.12.0-to-v0.13.0",
+            "public-repeat-upgrade-v0.13.0", "public-onboarding-exact-integer-entrypoints",
+            "public-focused-entry-evidence-python-node", "public-inspect-run-evidence-separation",
+            "public-inspect-run-interruption-readonly", "public-inspect-run-wrong-run-isolation",
+            "public-extension-contract-templates-python-node", "public-upgrade-compatibility-readonly-python-node",
+        ),
+        "states": {"AC-1": "passed", "AC-2": "passed", "AC-3": "passed", "AC-4": "passed", "AC-5": "passed", "AC-6": "passed", "AC-7": "passed", "AC-8": "passed", "AC-9": "not-runnable-before-publication", "AC-10": "not-runnable-before-publication"},
+        "requirements": {"AC-1": "none", "AC-2": "none", "AC-3": "none", "AC-4": "none", "AC-5": "none", "AC-6": "none", "AC-7": "none", "AC-8": "none", "AC-9": "live-read-back", "AC-10": "public-smoke"},
+        "post_criteria": ["AC-1", "AC-2", "AC-3", "AC-4", "AC-5", "AC-6", "AC-7", "AC-8", "AC-9", "AC-10"],
+        "authorization_fields": ("authorization_source_ref", "bound_at"),
+        "issue_policy": {"mode": "none", "issues": [], "allowed_operations": []},
+        "kinds": {"prepublication-qa": "vibe-kit-v0.13.0-prepublication-qa", "configured-checks": "vibe-kit-v0.13.0-configured-checks", "python-3.9": "vibe-kit-v0.13.0-python-3.9", "clean-build": "vibe-kit-v0.13.0-clean-build", "release-gate-evidence": "vibe-kit-v0.13.0-release-gate-evidence", "postpublication-acceptance": "vibe-kit-v0.13.0-postpublication-acceptance"},
+    },
 }
 
 REMOTE_WRITE_STATES = ("none", "confirmed-partial", "confirmed-complete", "uncertain")
@@ -12663,7 +12694,7 @@ def validate_profile_authorization(value: object, intent: Dict[str, object], *, 
     errors: List[str] = []
     if any((not isinstance(value.get(key), str) or not value.get(key) or len(value[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
         errors.append('publication authorization identity is invalid')
-    if profile['schema'] in (3, 4, 5, 6, 7) and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
+    if profile['schema'] in (3, 4, 5, 6, 7, 8) and (not isinstance(value.get('authorization_source_ref'), str) or not value.get('authorization_source_ref') or contains_secret(value['authorization_source_ref']) or not is_iso8601(value.get('bound_at'))):
         errors.append('authorization source reference or binding time is invalid')
     expected = {'repository': 'mintgao/vibe-kit', 'version': profile['version'], 'release_kind': 'prerelease', 'allowed_operations': list(V080_PUBLICATION_ALLOWED_OPERATIONS), 'publication_intent_sha256': canonical_json_sha256(intent)}
     if any((value.get(key) != expected[key] for key in expected)):
@@ -12773,7 +12804,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
         return ['schema-2 publication intent fields are unknown or incomplete']
     intent = value
     errors: List[str] = []
-    if profile["schema"] in (6, 7) and type(value.get("schema_version")) is not int:
+    if profile["schema"] in (6, 7, 8) and type(value.get("schema_version")) is not int:
         errors.append("publication schema must be an integer")
     if intent.get('schema_version') != profile['schema'] or intent.get('kind') != 'vibe-kit-publication' or intent.get('profile') != profile['profile'] or (intent.get('repository') != publication_repository()) or (intent.get('version') != profile['version']) or (not valid_oid(intent.get('source_commit'))):
         errors.append('schema-2 publication profile identity is invalid')
@@ -12799,7 +12830,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
                 errors.append('schema-2 publication asset identity is invalid')
         if intent.get('asset_set_sha256') != canonical_json_sha256(assets):
             errors.append('schema-2 publication asset-set digest is invalid')
-    if profile['schema'] in (3, 4, 5, 6, 7) and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
+    if profile['schema'] in (3, 4, 5, 6, 7, 8) and {item.get('name') for item in assets if isinstance(item, dict)} != set(expected_names_roles):
         errors.append('publication requires each exact asset name once')
     gates = intent.get('local_gates')
     if not exact_keys(gates, ('release_gate_evidence_sha256',)) or not valid_sha256(gates.get('release_gate_evidence_sha256')):
@@ -12819,7 +12850,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
         if not exact_keys(operation, fields):
             errors.append('schema-2 publication operation fields are invalid')
             continue
-        if profile['schema'] in (3, 4, 5, 6, 7):
+        if profile['schema'] in (3, 4, 5, 6, 7, 8):
             exact_keys_by_operation = (
                 "mintgao/vibe-kit:main", f"mintgao/vibe-kit:tag:{profile['tag']}",
                 f"mintgao/vibe-kit:release:{profile['tag']}", f"mintgao/vibe-kit:release:{profile['tag']}:assets",
@@ -12869,7 +12900,7 @@ def validate_profile_intent(value: object, *, profile) -> List[str]:
 def validate_publication_intent(value: object) -> List[str]:
     if isinstance(value, dict) and value.get("schema_version") == 1:
         return validate_publication_intent_v1(value)
-    if isinstance(value, dict) and value.get("schema_version") in (2, 3, 4, 5, 6, 7):
+    if isinstance(value, dict) and value.get("schema_version") in (2, 3, 4, 5, 6, 7, 8):
         return validate_profile_intent(value, profile=PUBLICATION_PROFILES[value["schema_version"]])
     return ["publication intent schema/profile is unsupported"]
 
@@ -12895,7 +12926,7 @@ def publication_plan(
         request["asset_set_sha256"] = canonical_json_sha256(assets)
         errors = validate_publication_intent(request)
         schema = request.get("schema_version")
-        expected_version = "0.7.0" if schema == 1 else (PUBLICATION_PROFILES[schema]["version"] if schema in (2, 3, 4, 5, 6, 7) else None)
+        expected_version = "0.7.0" if schema == 1 else (PUBLICATION_PROFILES[schema]["version"] if schema in (2, 3, 4, 5, 6, 7, 8) else None)
         if manifest.get("kit_version") != expected_version or manifest.get("status") != "prerelease":
             errors.append(
                 f"publication candidate must be the exact {expected_version} prerelease"
@@ -12921,7 +12952,7 @@ def publication_plan(
             candidate_status = validate_release(release_dir, "json")
         if candidate_status != 0:
             errors.append("publication candidate does not pass validate-release")
-        if schema in (2, 3, 4, 5, 6, 7):
+        if schema in (2, 3, 4, 5, 6, 7, 8):
             if comparison_candidate is None:
                 errors.append("schema-2 publication planning requires --comparison-candidate")
             if release_gate_evidence is None:
@@ -13313,7 +13344,7 @@ def validate_profile_receipt(value: object, intent: Dict[str, object], *, profil
         return ['schema-2 publication receipt fields are unknown or incomplete']
     receipt = value
     errors: List[str] = []
-    if profile["schema"] in (6, 7) and type(value.get("schema_version")) is not int:
+    if profile["schema"] in (6, 7, 8) and type(value.get("schema_version")) is not int:
         errors.append("publication receipt schema must be an integer")
     if receipt.get('schema_version') != profile['schema'] or receipt.get('kind') != 'vibe-kit-publication-receipt' or receipt.get('profile') != profile['profile'] or (receipt.get('version') != profile['version']) or (receipt.get('repository') != 'mintgao/vibe-kit') or (receipt.get('intent_sha256') != canonical_json_sha256(intent)) or any((not isinstance(receipt.get(key), str) or not receipt.get(key) or len(receipt[key]) > 256 for key in ('authorization_id', 'host_operation_id'))):
         errors.append('schema-2 publication receipt identity is invalid')
@@ -13421,7 +13452,7 @@ def validate_publication_receipt_shape(
 ) -> List[str]:
     if isinstance(receipt, dict) and receipt.get("schema_version") == 1:
         return validate_publication_receipt_shape_v1(receipt)
-    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3, 4, 5, 6, 7) and isinstance(intent, dict):
+    if isinstance(receipt, dict) and receipt.get("schema_version") in (2, 3, 4, 5, 6, 7, 8) and isinstance(intent, dict):
         return validate_profile_receipt(receipt, intent, profile=PUBLICATION_PROFILES[receipt["schema_version"]])
     return ["publication receipt schema/profile is unsupported"]
 
@@ -13653,7 +13684,7 @@ def validate_publication(
         if authorization_path is not None:
             raise VibeError("historical schema-1 validation does not accept --authorization")
         return validate_publication_v1(intent_path, receipt_path, release_dir, output_format)
-    if schema in (2, 3, 4, 5, 6, 7):
+    if schema in (2, 3, 4, 5, 6, 7, 8):
         return validate_publication_profile(
             intent_path, receipt_path, release_dir, authorization_path, output_format, profile=PUBLICATION_PROFILES[schema]
         )
@@ -15439,7 +15470,682 @@ def dispatch_main(argv: Optional[Sequence[str]] = None) -> int:
     return 2
 
 
+# This command owns a separate, closed result and never enters the legacy dispatcher.
+COMPATIBILITY_LIMITS = {
+    "declaration": 65536, "json_depth": 8, "version": 64,
+    "file": 8388608, "total": 67108864, "files": 4096,
+    "directories": 1024, "entries": 16384, "depth": 32,
+    "component": 255, "path": 4096, "paths": 4194304,
+    "ancestors": 64, "buffer": 65536, "result": 32768,
+}
+COMPATIBILITY_FINDINGS = (
+    "invalid-arguments", "invalid-declaration", "duplicate-rule-id", "unsupported-schema",
+    "invalid-source-type", "invalid-source-ref", "invalid-artifact-sha256",
+    "invalid-expected-payload-sha256", "invalid-source-version", "source-version-mismatch",
+    "missing-source-evidence", "source-digest-mismatch", "unsafe-path", "input-unavailable",
+    "read-permission-denied", "resource-limit", "input-changed", "unsupported-safety-primitive",
+    "execution-interrupted", "internal-error",
+)
+COMPATIBILITY_ROLES = ("project-maintainer", "vibe-tech-lead", "vibe-rd")
+COMPATIBILITY_KINDS = ("payload-tree-allowlist", "composite-candidate", "merged-file", "command")
+
+
+UPGRADE_COMPATIBILITY_CONTRACT = {
+    "schema_version": 1, "result_schema_version": 2, "compatibility_schema_version": 1,
+    "declaration_schema_version": 1, "declaration_path": ".vibe/upgrade-compatibility.json",
+    "scope": "payload-identity-only", "authority": "static-comparison",
+    "source_authentication": "not-attested", "side_effects": "none",
+    "statuses": list(AGENT_COMMAND_STATUSES["check-upgrade-compatibility"]),
+    "result_fields": ["schema_version", "command", "status", "compatibility", "write_state", "writes_performed"],
+    "compatibility_fields": ["schema_version", "scope", "authority", "source_authentication", "project_binding", "source", "rules", "findings", "next_action"],
+    "rule_kinds": list(COMPATIBILITY_KINDS), "owners": list(COMPATIBILITY_ROLES),
+    "finding_codes": list(COMPATIBILITY_FINDINGS), "limits": dict(COMPATIBILITY_LIMITS),
+}
+
+
+class CompatibilityFailure(Exception):
+    def __init__(self, code, path):
+        self.code, self.path = code, path
+
+
+def compatibility_fail(code, path):
+    raise CompatibilityFailure(code, path)
+
+
+def compatibility_os_error(error, path):
+    if error.errno in (errno.EACCES, errno.EPERM):
+        compatibility_fail("read-permission-denied", path)
+    if error.errno in (errno.ENOSYS, errno.ENOTSUP):
+        compatibility_fail("unsupported-safety-primitive", path)
+    if error.errno in (errno.ELOOP, errno.ENOTDIR):
+        compatibility_fail("unsafe-path", path)
+    compatibility_fail("input-unavailable", path)
+
+
+def compatibility_primitives():
+    flags = ("O_DIRECTORY", "O_NOFOLLOW", "O_CLOEXEC", "O_NONBLOCK")
+    if (any(not hasattr(os, flag) for flag in flags)
+            or os.open not in os.supports_dir_fd or os.stat not in os.supports_dir_fd
+            or os.stat not in os.supports_follow_symlinks or os.scandir not in os.supports_fd):
+        compatibility_fail("unsupported-safety-primitive", "$.project.root")
+
+
+def compatibility_identity(metadata):
+    return metadata.st_dev, metadata.st_ino, stat.S_IFMT(metadata.st_mode)
+
+
+def compatibility_signature(metadata):
+    return (metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_size,
+            metadata.st_mtime_ns, metadata.st_ctime_ns)
+
+
+def compatibility_path(value, logical):
+    try:
+        if not isinstance(value, str) or not value or "\x00" in value or ".." in value.split("/"):
+            compatibility_fail("invalid-arguments" if logical == "$.arguments.target" else "unsafe-path", logical)
+        value.encode("utf-8", "strict")
+        absolute = value if value.startswith("/") else os.path.join(os.getcwd(), value)
+        parts = [part for part in absolute.split("/") if part not in ("", ".")]
+        if (len(absolute.encode("utf-8")) > COMPATIBILITY_LIMITS["path"]
+                or len(parts) > COMPATIBILITY_LIMITS["ancestors"]
+                or any(len(part.encode("utf-8")) > COMPATIBILITY_LIMITS["component"] for part in parts)):
+            compatibility_fail("resource-limit", "$.project.root" if logical == "$.arguments.target" else logical)
+        return "/" + "/".join(parts), parts
+    except UnicodeError:
+        compatibility_fail("invalid-arguments" if logical == "$.arguments.target" else "unsafe-path", logical)
+
+
+class CompatibilityRoot:
+    """Pinned no-follow names, nonblocking leaves, and one bounded final recheck."""
+    def __init__(self, path, logical, *, target=False):
+        self.logical = logical
+        self.fds, self.edges, self.files, self.absences = [], [], {}, []
+        self.directories = {}
+        self.directory_observations = {}
+        self.payload_bytes_read = 0
+        self.verification_completed = False
+        self.root_verification_completed = False
+        self.path, parts = compatibility_path(path, "$.arguments.target" if target else logical)
+        try:
+            fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            self.fds.append(fd)
+            for name in parts:
+                fd = self.open_directory(fd, name, logical)
+            self.fd = fd
+            self.directories[""] = fd
+            metadata = os.fstat(fd)
+            self.root_identity = compatibility_identity(metadata)
+            self.root_edge_count = len(self.edges)
+            if self.logical == "$.source.root":
+                self.directory_observations[""] = (compatibility_signature(metadata), logical)
+            self.binding = canonical_json_sha256({"path": self.path, "device": metadata.st_dev, "inode": metadata.st_ino})
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self):
+        for descriptor in reversed(self.fds):
+            with contextlib.suppress(OSError):
+                os.close(descriptor)
+        self.fds = []
+
+    def metadata(self, parent, name, logical):
+        try:
+            return os.stat(name, dir_fd=parent, follow_symlinks=False)
+        except OSError as error:
+            compatibility_os_error(error, logical)
+
+    def open_directory(self, parent, name, logical, *, content=False):
+        before = self.metadata(parent, name, logical)
+        if not stat.S_ISDIR(before.st_mode):
+            compatibility_fail("unsafe-path", logical)
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+            self.fds.append(fd)
+            after = os.fstat(fd)
+            named = self.metadata(parent, name, logical)
+        except OSError as error:
+            compatibility_os_error(error, logical)
+        identity = compatibility_identity(before)
+        if identity != compatibility_identity(after) or identity != compatibility_identity(named):
+            compatibility_fail("input-changed", logical)
+        if content and (compatibility_signature(before) != compatibility_signature(after)
+                        or compatibility_signature(before) != compatibility_signature(named)):
+            compatibility_fail("input-changed", logical)
+        self.edges.append((parent, name, fd, identity, logical))
+        return fd
+
+    def directory(self, relative, logical, optional=False):
+        fd, prefix = self.fd, ""
+        for name in relative.split("/") if relative else ():
+            prefix = prefix + "/" + name if prefix else name
+            if prefix in self.directories:
+                fd = self.directories[prefix]
+                continue
+            try:
+                os.stat(name, dir_fd=fd, follow_symlinks=False)
+            except FileNotFoundError:
+                if optional:
+                    self.absences.append((fd, name, logical))
+                    return None
+                compatibility_fail("input-unavailable", logical)
+            except OSError as error:
+                compatibility_os_error(error, logical)
+            fd = self.open_directory(fd, name, logical, content=self.logical == "$.source.root")
+            self.directories[prefix] = fd
+            if self.logical == "$.source.root":
+                self.directory_observations[prefix] = (compatibility_signature(os.fstat(fd)), logical)
+        return fd
+
+    def leaf_stat(self, relative, logical, optional=False):
+        parent, _, name = relative.rpartition("/")
+        fd = self.directory(parent, logical, optional)
+        if fd is None:
+            return None
+        try:
+            value = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        except FileNotFoundError:
+            if optional:
+                self.absences.append((fd, name, logical))
+                return None
+            compatibility_fail("input-unavailable", logical)
+        except OSError as error:
+            compatibility_os_error(error, logical)
+        if not stat.S_ISREG(value.st_mode):
+            compatibility_fail("unsafe-path", logical)
+        return value
+
+    def read(self, relative, maximum, logical, *, optional=False, retain=True, expected=None):
+        before = self.leaf_stat(relative, logical, optional)
+        if before is None:
+            return None
+        signature = compatibility_signature(before)
+        if expected is not None and signature != expected:
+            compatibility_fail("input-changed", logical)
+        if before.st_size > maximum:
+            compatibility_fail("resource-limit", logical)
+        parent, _, name = relative.rpartition("/")
+        descriptor = None
+        try:
+            descriptor = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                 dir_fd=self.directory(parent, logical))
+            opened = os.fstat(descriptor)
+            if not stat.S_ISREG(opened.st_mode):
+                compatibility_fail("unsafe-path", logical)
+            if compatibility_signature(opened) != signature:
+                compatibility_fail("input-changed", logical)
+            chunks, size, digest = [], 0, hashlib.sha256()
+            while True:
+                available = maximum - size
+                if self.logical == "$.source.root":
+                    available = min(available, COMPATIBILITY_LIMITS["total"] - self.payload_bytes_read)
+                if available <= 0:
+                    # A stable regular-file size proves EOF without an extra byte
+                    # beyond either hard stream budget. Growth is not consumed.
+                    if os.fstat(descriptor).st_size > size:
+                        compatibility_fail("resource-limit", logical)
+                    break
+                chunk = os.read(descriptor, min(COMPATIBILITY_LIMITS["buffer"], available))
+                if not chunk:
+                    break
+                size += len(chunk)
+                if self.logical == "$.source.root":
+                    self.payload_bytes_read += len(chunk)
+                if size > maximum or (self.logical == "$.source.root" and self.payload_bytes_read > COMPATIBILITY_LIMITS["total"]):
+                    compatibility_fail("resource-limit", logical)
+                digest.update(chunk)
+                if retain:
+                    chunks.append(chunk)
+            if (compatibility_signature(os.fstat(descriptor)) != signature
+                    or compatibility_signature(self.leaf_stat(relative, logical)) != signature):
+                compatibility_fail("input-changed", logical)
+            self.files[relative] = (signature, logical, digest.hexdigest())
+            return b"".join(chunks) if retain else digest.hexdigest()
+        except OSError as error:
+            compatibility_os_error(error, logical)
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+
+    def verify(self):
+        self.verification_completed = False
+        self.root_verification_completed = False
+        if self.root_edge_count == 0:
+            if compatibility_identity(os.fstat(self.fd)) != self.root_identity:
+                compatibility_fail("input-changed", self.logical)
+            self.root_verification_completed = True
+        for index, (parent, name, descriptor, identity, logical) in enumerate(self.edges):
+            try:
+                named = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                if compatibility_identity(named) != identity or compatibility_identity(os.fstat(descriptor)) != identity:
+                    compatibility_fail("input-changed", logical)
+            except FileNotFoundError:
+                compatibility_fail("input-changed", logical)
+            except OSError as error:
+                compatibility_os_error(error, logical)
+            if index + 1 == self.root_edge_count:
+                self.root_verification_completed = True
+        for parent, name, logical in self.absences:
+            try:
+                os.stat(name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            except OSError as error:
+                compatibility_os_error(error, logical)
+            compatibility_fail("input-changed", logical)
+        for relative, (signature, logical) in self.directory_observations.items():
+            try:
+                current = os.fstat(self.directories[relative])
+            except OSError as error:
+                compatibility_os_error(error, logical)
+            if compatibility_signature(current) != signature:
+                compatibility_fail("input-changed", logical)
+        for relative, (signature, logical, digest) in self.files.items():
+            parent, _, name = relative.rpartition("/")
+            try:
+                # A consumed leaf is never reopened. A replacement type is drift,
+                # whereas an actual permission denial remains a permission gap.
+                current = os.stat(name, dir_fd=self.directories[parent], follow_symlinks=False)
+            except FileNotFoundError:
+                compatibility_fail("input-changed", logical)
+            except OSError as error:
+                compatibility_os_error(error, logical)
+            if compatibility_signature(current) != signature:
+                compatibility_fail("input-changed", logical)
+        self.verification_completed = True
+
+
+class CompatibilityBudget:
+    def __init__(self):
+        self.directories, self.entries, self.paths, self.files, self.bytes = set(), 0, 0, 0, 0
+
+    def path(self, relative):
+        try:
+            encoded = relative.encode("utf-8", "strict")
+            parts = relative.split("/")
+            if (len(encoded) > COMPATIBILITY_LIMITS["path"] or len(parts) > COMPATIBILITY_LIMITS["depth"]
+                    or any(len(part.encode("utf-8")) > COMPATIBILITY_LIMITS["component"] for part in parts)):
+                compatibility_fail("resource-limit", "$.source.payload")
+        except UnicodeError:
+            compatibility_fail("unsafe-path", "$.source.payload")
+        if self.paths + len(encoded) > COMPATIBILITY_LIMITS["paths"]:
+            compatibility_fail("resource-limit", "$.source.payload")
+        self.paths += len(encoded)
+
+    def directory(self, relative):
+        if relative not in self.directories:
+            if len(self.directories) >= COMPATIBILITY_LIMITS["directories"]:
+                compatibility_fail("resource-limit", "$.source.payload")
+            self.directories.add(relative)
+
+    def entry(self, relative):
+        if self.entries >= COMPATIBILITY_LIMITS["entries"]:
+            compatibility_fail("resource-limit", "$.source.payload")
+        self.path(relative)
+        self.entries += 1
+
+
+def compatibility_payload_members(source, version):
+    """Same allowlist as release_payload_files, with a fresh per-round budget."""
+    budget, members, directories = CompatibilityBudget(), {}, {}
+    logical = "$.source.payload"
+    budget.directory("")
+
+    def directory(relative, optional=True):
+        # Charge every traversed source directory before opening or caching it.
+        components = relative.split("/") if relative else []
+        for index in range(len(components)):
+            budget.directory("/".join(components[:index + 1]))
+        return source.directory(relative, logical, optional)
+
+    def add(relative, metadata):
+        if relative in members:
+            return
+        if (budget.files >= COMPATIBILITY_LIMITS["files"] or metadata.st_size > COMPATIBILITY_LIMITS["file"]
+                or budget.bytes + metadata.st_size > COMPATIBILITY_LIMITS["total"]):
+            compatibility_fail("resource-limit", logical)
+        budget.path(relative)
+        if not stat.S_ISREG(metadata.st_mode):
+            compatibility_fail("unsafe-path", logical)
+        if "__pycache__" in relative.split("/") or relative.endswith(".pyc"):
+            compatibility_fail("unsafe-path", logical)
+        budget.files += 1; budget.bytes += metadata.st_size
+        members[relative] = compatibility_signature(metadata)
+
+    def explicit(relative, required=False):
+        parent, _, name = relative.rpartition("/")
+        if directory(parent) is None:
+            if required:
+                compatibility_fail("input-unavailable", logical)
+            return
+        value = source.leaf_stat(relative, logical, optional=not required)
+        if value is not None:
+            add(relative, value)
+
+    def scan(relative, mode="recursive"):
+        fd = directory(relative)
+        if fd is None:
+            return
+        before = compatibility_signature(os.fstat(fd))
+        names = set()
+        try:
+            with os.scandir(fd) as entries:
+                for entry in entries:
+                    name = entry.name
+                    child = relative + "/" + name if relative else name
+                    budget.entry(child)  # before append, storage, sorting or descent
+                    names.add(name)
+                    selected = mode == "recursive" or (mode == "agents" and name.startswith("vibe-") and name.endswith(".toml")) or (mode == "skills" and name.startswith("vibe-"))
+                    if not selected:
+                        continue
+                    metadata = source.metadata(fd, name, logical)
+                    if stat.S_ISDIR(metadata.st_mode):
+                        if mode != "agents":
+                            scan(child)
+                    elif stat.S_ISREG(metadata.st_mode):
+                        if mode != "skills":
+                            add(child, metadata)
+                    else:
+                        compatibility_fail("unsafe-path", logical)
+        except OSError as error:
+            compatibility_os_error(error, logical)
+        if compatibility_signature(os.fstat(fd)) != before:
+            compatibility_fail("input-changed", logical)
+        directories[relative] = (before, names)
+
+    for name in ("AGENT_INSTALL.md", "agent-install.json", "bin/vibe", "AGENTS.md", "README.md", "CHANGELOG.md", "LICENSE"):
+        explicit(name, required=name == "bin/vibe")
+    scan(".vibe/core")
+    scan(".codex/agents", "agents")
+    scan(".agents/skills", "skills")
+    scan("templates")
+    explicit("docs/releases/" + version + ".md")
+    return members, directories
+
+
+def compatibility_json(raw):
+    try:
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=reject_duplicate_json_keys,
+                           parse_constant=lambda value: (_ for _ in ()).throw(ValueError()))
+    except RecursionError:
+        compatibility_fail("resource-limit", "$.declaration")
+    except (UnicodeError, ValueError):
+        compatibility_fail("invalid-declaration", "$.declaration")
+    def depth(item, level):
+        if type(item) is float and not (-float("inf") < item < float("inf")):
+            compatibility_fail("invalid-declaration", "$.declaration")
+        if level > COMPATIBILITY_LIMITS["json_depth"]:
+            compatibility_fail("resource-limit", "$.declaration")
+        if isinstance(item, dict):
+            for child in item.values(): depth(child, level + 1)
+        elif isinstance(item, list):
+            for child in item: depth(child, level + 1)
+    depth(value, 0)
+    return value
+
+
+def compatibility_declaration(value):
+    base = "$.declaration"
+    if not exact_keys(value, ("schema_version", "enabled", "rules")):
+        compatibility_fail("invalid-declaration", base)
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+        compatibility_fail("unsupported-schema", base + ".schema_version")
+    if type(value["enabled"]) is not bool:
+        compatibility_fail("invalid-declaration", base + ".enabled")
+    rules = value["rules"]
+    if not isinstance(rules, list) or len(rules) > 32 or (value["enabled"] and not rules):
+        compatibility_fail("invalid-declaration", base + ".rules")
+    ids = set()
+    for index, rule in enumerate(rules):
+        path = base + ".rules[" + str(index) + "]"
+        if not isinstance(rule, dict):
+            compatibility_fail("invalid-declaration", path)
+        for field in ("id", "owner", "kind"):
+            if field not in rule:
+                compatibility_fail("invalid-declaration", path)
+        if type(rule["id"]) is not str or re.fullmatch(r"[A-Za-z0-9._-]{1,64}", rule["id"]) is None:
+            compatibility_fail("invalid-declaration", path + ".id")
+        if rule["id"] in ids:
+            compatibility_fail("duplicate-rule-id", path + ".id")
+        ids.add(rule["id"])
+        if rule["owner"] not in COMPATIBILITY_ROLES:
+            compatibility_fail("invalid-declaration", path + ".owner")
+        if rule["kind"] not in COMPATIBILITY_KINDS:
+            compatibility_fail("invalid-declaration", path + ".kind")
+        field = "allowed_payload_tree_sha256" if rule["kind"] == "payload-tree-allowlist" else "parameters"
+        if not exact_keys(rule, ("id", "owner", "kind", field)):
+            compatibility_fail("invalid-declaration", path)
+        data = rule[field]
+        if field == "parameters":
+            if not isinstance(data, dict):
+                compatibility_fail("invalid-declaration", path + ".parameters")
+        else:
+            if not isinstance(data, list) or not 1 <= len(data) <= 32:
+                compatibility_fail("invalid-declaration", path + "." + field)
+            for offset, digest in enumerate(data):
+                if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                    compatibility_fail("invalid-declaration", path + "." + field + "[" + str(offset) + "]")
+            if len(set(data)) != len(data):
+                compatibility_fail("invalid-declaration", path + "." + field)
+    return value
+
+
+def compatibility_arguments(argv):
+    if argv == ["--help"]:
+        return None
+    names = {"--source-type":"source_type", "--source-ref":"source_ref", "--artifact-sha256":"artifact_sha256",
+             "--expected-payload-tree-sha256":"expected_payload_tree_sha256", "--format":"format"}
+    result, index = {}, 0
+    while index < len(argv):
+        token = argv[index]
+        if token.startswith("--"):
+            option, separator, value = token.partition("=")
+            if option not in names or names[option] in result:
+                compatibility_fail("invalid-arguments", "$.arguments")
+            if not separator:
+                index += 1
+                if index >= len(argv) or argv[index].startswith("--"):
+                    compatibility_fail("invalid-arguments", "$.arguments")
+                value = argv[index]
+            result[names[option]] = value
+        elif token.startswith("-") or "target" in result:
+            compatibility_fail("invalid-arguments", "$.arguments")
+        else:
+            result["target"] = token
+        index += 1
+    if "target" not in result or result.get("format", "json") != "json":
+        compatibility_fail("invalid-arguments", "$.arguments")
+    return result
+
+
+def compatibility_source_fields(args):
+    kind = args.get("source_type", "local-payload")
+    if kind not in SOURCE_TYPES:
+        compatibility_fail("invalid-source-type", "$.arguments.source_type")
+    ref = args.get("source_ref")
+    if ref is None:
+        compatibility_fail("missing-source-evidence", "$.arguments.source_ref")
+    ref = ref.strip()
+    if re.fullmatch(r"(?:[0-9a-fA-F]{40,64}|v?\d+\.\d+\.\d+|https://github\.com/mintgao/vibe-kit/(?:releases/tag|tree)/v?\d+\.\d+\.\d+/?)", ref) is None:
+        compatibility_fail("invalid-source-ref", "$.arguments.source_ref")
+    artifact = args.get("artifact_sha256")
+    if kind in ("local-payload", "plugin-bundled") and artifact is not None:
+        compatibility_fail("invalid-artifact-sha256", "$.arguments.artifact_sha256")
+    if kind in ("github-release", "offline-bundle") and artifact is None:
+        compatibility_fail("missing-source-evidence", "$.arguments.artifact_sha256")
+    if artifact is not None:
+        if re.fullmatch(r"[0-9a-fA-F]{64}", artifact) is None:
+            compatibility_fail("invalid-artifact-sha256", "$.arguments.artifact_sha256")
+        artifact = artifact.lower()
+    expected = args.get("expected_payload_tree_sha256")
+    if expected is None:
+        compatibility_fail("missing-source-evidence", "$.arguments.expected_payload_tree_sha256")
+    if re.fullmatch(r"[0-9a-fA-F]{64}", expected) is None:
+        compatibility_fail("invalid-expected-payload-sha256", "$.arguments.expected_payload_tree_sha256")
+    return kind, ref, artifact, expected.lower()
+
+
+def compatibility_empty_result():
+    return {"schema_version": 2, "command": "check-upgrade-compatibility", "status": "error",
+            "compatibility": {"schema_version": 1, "scope": "payload-identity-only", "authority": "static-comparison",
+                "source_authentication": "not-attested", "project_binding": {"root_identity_sha256": None,
+                "declaration_state": "unavailable", "declaration_sha256": None}, "source": None,
+                "rules": [], "findings": [], "next_action": None}, "write_state": "none", "writes_performed": False}
+
+
+def compatibility_apply_failure(result, failure):
+    result["status"] = ("invalid" if failure.code.startswith("invalid-") or failure.code in ("duplicate-rule-id", "unsupported-schema")
+                        else "error" if failure.code in ("internal-error", "execution-interrupted") else "blocked")
+    data = result["compatibility"]
+    data.update(source=None, rules=[], findings=[{"code": failure.code, "path": failure.path}],
+                next_action={"code":"resolve-compatibility-input", "owner":"project-maintainer"})
+    return 1 if result["status"] == "invalid" else 2
+
+
+def compatibility_check(args, result):
+    compatibility_primitives()
+    project, source, failure = None, None, None
+    data = result["compatibility"]; binding = data["project_binding"]
+    exit_code = 0
+    try:
+        project = CompatibilityRoot(args["target"], "$.project.root", target=True)
+        raw = project.read(".vibe/upgrade-compatibility.json", COMPATIBILITY_LIMITS["declaration"], "$.declaration", optional=True)
+        if raw is None:
+            binding["declaration_state"] = "absent"
+            result["status"] = "not-configured"
+        else:
+            binding["declaration_sha256"] = hashlib.sha256(raw).hexdigest()
+            binding["declaration_state"] = "invalid"
+            declaration = compatibility_declaration(compatibility_json(raw))
+            binding["declaration_state"] = "enabled" if declaration["enabled"] else "disabled"
+            if not declaration["enabled"]:
+                result["status"] = "not-configured"
+            else:
+                kind, ref, artifact, expected = compatibility_source_fields(args)
+                filename = __file__ if os.path.isabs(__file__) else os.path.join(os.getcwd(), __file__)
+                source = CompatibilityRoot(os.path.dirname(os.path.dirname(filename)), "$.source.root")
+                version_bytes = source.read(".vibe/core/version", COMPATIBILITY_LIMITS["version"], "$.source.version")
+                try:
+                    version = version_bytes.decode("utf-8").strip()
+                except UnicodeError:
+                    compatibility_fail("invalid-source-version", "$.source.version")
+                if re.fullmatch(r"\d+\.\d+\.\d+", version) is None:
+                    compatibility_fail("invalid-source-version", "$.source.version")
+                ref_version = re.search(r"v?(\d+\.\d+\.\d+)/?$", ref)
+                if ref_version and ref_version.group(1) != version:
+                    compatibility_fail("source-version-mismatch", "$.source.version")
+                members, directories = compatibility_payload_members(source, version)
+                hashes = {}
+                for relative in sorted(members):
+                    if relative in source.files:
+                        if source.files[relative][0] != members[relative]:
+                            compatibility_fail("input-changed", "$.source.payload")
+                        hashes[relative] = source.files[relative][2]
+                    else:
+                        hashes[relative] = source.read(relative, COMPATIBILITY_LIMITS["file"], "$.source.payload", retain=False, expected=members[relative])
+                digest = payload_tree_sha256_from_hashes(hashes)
+                if digest != expected:
+                    compatibility_fail("source-digest-mismatch", "$.source.payload")
+                final_members, final_directories = compatibility_payload_members(source, version)
+                if final_members != members or final_directories != directories:
+                    compatibility_fail("input-changed", "$.source.payload")
+                rules = []
+                for index, rule in enumerate(declaration["rules"]):
+                    supported = rule["kind"] == "payload-tree-allowlist"
+                    allowed = supported and digest in rule["allowed_payload_tree_sha256"]
+                    rules.append({"index":index,"id_sha256":hashlib.sha256(rule["id"].encode("ascii")).hexdigest(),
+                                  "owner":rule["owner"],"kind":rule["kind"],
+                                  "outcome":"satisfied" if allowed else "adaptation-required" if supported else "not-evaluated",
+                                  "reason_code":"identity-allowed" if allowed else "identity-not-allowed" if supported else "unsupported-rule-kind"})
+                unknown = any(rule["outcome"] == "not-evaluated" for rule in rules)
+                unmet = any(rule["outcome"] == "adaptation-required" for rule in rules)
+                data.update(source={"type":kind,"ref":ref,"artifact_sha256":artifact,"payload_tree_sha256":digest,"expected_payload_tree_sha256":expected},
+                            rules=rules,next_action={"code":"resolve-compatibility-input" if unknown else "review-maintenance-adaptation" if unmet else "review-upgrade-plan",
+                                                    "owner":"vibe-tech-lead" if unknown or unmet else "project-maintainer"})
+                result["status"] = "checked"
+                exit_code = 2 if unknown or unmet else 0
+    except CompatibilityFailure as error:
+        failure = error
+    except OSError as error:
+        try: compatibility_os_error(error, "$.source.payload" if source else "$.project.root")
+        except CompatibilityFailure as fixed: failure = fixed
+    except KeyboardInterrupt:
+        failure = CompatibilityFailure("execution-interrupted", "$")
+    except Exception:
+        failure = CompatibilityFailure("internal-error", "$")
+    finally:
+        # Independent finalization lanes: interruption of one never skips the
+        # other root's verification or cleanup. Facts publish only after proof.
+        project_complete, project_root_confirmed = False, False
+        finalization_interrupted = failure is not None and failure.code == "execution-interrupted"
+        for reader in (source, project):
+            if reader is None:
+                continue
+            try:
+                reader.verify()
+                if reader is project:
+                    project_complete = reader.verification_completed
+                    project_root_confirmed = reader.root_verification_completed
+            except CompatibilityFailure as error:
+                failure = error
+                if reader is project:
+                    project_root_confirmed = reader.root_verification_completed
+            except KeyboardInterrupt:
+                failure = CompatibilityFailure("execution-interrupted", "$")
+                finalization_interrupted = True
+                if reader is project:
+                    project_root_confirmed = False
+            except OSError as error:
+                try:
+                    compatibility_os_error(error, reader.logical)
+                except CompatibilityFailure as fixed:
+                    failure = fixed
+            except Exception:
+                failure = CompatibilityFailure("internal-error", "$")
+            finally:
+                reader.close()
+        if finalization_interrupted:
+            project_complete, project_root_confirmed = False, False
+        binding["root_identity_sha256"] = project.binding if project is not None and project_root_confirmed else None
+        if not project_complete:
+            binding["declaration_state"], binding["declaration_sha256"] = "unavailable", None
+    if failure is not None:
+        if failure.path == "$.declaration" and failure.code in ("resource-limit", "read-permission-denied", "input-unavailable", "unsafe-path", "input-changed"):
+            binding["declaration_state"], binding["declaration_sha256"] = "unavailable", None
+        return compatibility_apply_failure(result, failure)
+    return exit_code
+
+
+def compatibility_main(argv):
+    result = compatibility_empty_result()
+    try:
+        args = compatibility_arguments(list(argv))
+        if args is None:
+            sys.stdout.write("check-upgrade-compatibility TARGET [source options] [--format json]\nRead-only payload identity comparison; source authentication is host-owned.\n")
+            return 0
+        exit_code = compatibility_check(args, result)
+    except CompatibilityFailure as failure:
+        exit_code = compatibility_apply_failure(result, failure)
+    except KeyboardInterrupt:
+        exit_code = compatibility_apply_failure(result, CompatibilityFailure("execution-interrupted", "$"))
+    except Exception:
+        exit_code = compatibility_apply_failure(result, CompatibilityFailure("internal-error", "$"))
+    encoded = json.dumps(result, ensure_ascii=True, sort_keys=True, separators=(",", ":")) + "\n"
+    if len(encoded.encode("utf-8")) > COMPATIBILITY_LIMITS["result"]:
+        result = compatibility_empty_result()
+        exit_code = compatibility_apply_failure(result, CompatibilityFailure("resource-limit", "$"))
+        encoded = json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n"
+    try:
+        sys.stdout.write(encoded)
+    except (OSError, KeyboardInterrupt):
+        return 2
+    return exit_code
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    actual = list(sys.argv[1:] if argv is None else argv)
+    if actual and actual[0] == "check-upgrade-compatibility":
+        return compatibility_main(actual[1:])
     RECEIPT_CONTEXT[0] = None
     try:
         return dispatch_main(argv)
