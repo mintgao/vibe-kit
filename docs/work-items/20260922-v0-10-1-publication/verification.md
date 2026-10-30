@@ -36,7 +36,7 @@ and its own re-derivation of the gate evidence.
   Raw stdout: `.vibe/local/v0-10-1-gate/qa/qa-stdout.txt` (24 lines, sha256
   `9d89ff5f…`); raw results `qa/verify.json` (`dd58b43f…`), `qa/doctor.json`
   (`4ed7b2ee…`), `qa/readiness.json` (`d53f5b69…`), `qa/managed-agents.json`
-  (`28084424…`); transcript `~/.hermes/cache/delegation/live/deleg_d131ec19/task-0.log`.
+  (`28084424…`); private release-QA transcript location omitted.
   The orchestrator read all four files back itself before writing this record.
 
 ## Acceptance evidence

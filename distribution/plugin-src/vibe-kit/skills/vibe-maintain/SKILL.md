@@ -8,12 +8,39 @@ description: Let an agent host diagnose or safely upgrade a repository-pinned Vi
 Keep the repository-pinned installation as the runtime source of truth. This Plugin is only a versioned maintenance channel.
 
 - Diagnose with `<target>/bin/vibe doctor <target> --format json` when the installed CLI is runnable. Present health and onboarding readiness in goal language, not raw JSON.
-- A request to “check the latest version” is read-only and does not authorize network access or upgrade. Report the installed project version and this Plugin's bundled version separately. Call `0.12.0` the bundled payload version; claim latest-public status only from separately observed release evidence. A public latest-release lookup is a separate, explicitly authorized trusted-channel operation; this Skill does not perform it automatically.
-- Before upgrading, validate the target payload's maintenance bridge schema 2, resolve this Skill's directory and run `python3 scripts/vibe_from_plugin.py plan upgrade <target> --format json --source-type plugin-bundled --source-ref 0.12.0`. The wrapper verifies the Plugin version and payload-tree identity before target-CLI execution. Report current/target versions, onboarding-bridge state, transaction capability and material preserved/conflict states only.
+- A request to “check the latest version” is read-only and does not authorize network access or upgrade. Report the installed project version and this Plugin's bundled version separately. Call `0.13.0` the bundled payload version; claim latest-public status only from separately observed release evidence. A public latest-release lookup is a separate, explicitly authorized trusted-channel operation; this Skill does not perform it automatically.
+- Before upgrading, validate the target payload's maintenance bridge schema 2, resolve this Skill's directory and run `python3 scripts/vibe_from_plugin.py plan upgrade <target> --format json --source-type plugin-bundled --source-ref 0.13.0`. The wrapper verifies the Plugin version and payload-tree identity before target-CLI execution. Report current/target versions, onboarding-bridge state, transaction capability and material preserved/conflict states only.
 - For an exact healthy official v0.5.0 source checkout, accept the target CLI's paired authenticated-predecessor `update` entries and `compatibility_migrations` evidence. The compiled target registry, not predecessor source text, authorizes the complete set. Never delete either contract, force adoption, follow a symlink, accept a partial/mixed pair or bypass a paired conflict.
-- Run `python3 scripts/vibe_from_plugin.py upgrade <target> --format json --source-type plugin-bundled --source-ref 0.12.0` only after the user requested that exact scoped upgrade and the plan status is `safe`; do not ask for redundant confirmation. If upgrade reports `rolled-back`, inspect the bounded error and plan again. If it reports `recovery-required`, run the target payload's `recover-upgrade` exactly once; if it reports `unknown-partial`, stop and inspect transaction evidence. Never rerun ordinary upgrade over active state. Then run the installed `<target>/bin/vibe doctor <target> --format json`. Apply and doctor prove upgraded files/health only.
+- Run `python3 scripts/vibe_from_plugin.py upgrade <target> --format json --source-type plugin-bundled --source-ref 0.13.0` only after the user requested that exact scoped upgrade and the plan status is `safe`; do not ask for redundant confirmation. If upgrade reports `rolled-back`, inspect the bounded error and plan again. If it reports `recovery-required`, run the target payload's `recover-upgrade` exactly once; if it reports `unknown-partial`, stop and inspect transaction evidence. Never rerun ordinary upgrade over active state. Then run the installed `<target>/bin/vibe doctor <target> --format json`. Apply and doctor prove upgraded files/health only.
 - Confirm installed doctor recognizes the framework-managed `AGENT_INSTALL.md` and `agent-install.json`; a missing, modified or unauthenticated contract is broken. This Plugin supplies neither same-task reload nor automatic successor handoff. Unless the running host independently supplies a conforming live receipt bound to the actual target activation set, end in the manual fallback: say the files were upgraded and checked but are not activated, do not say ready, and give exactly one action—create a new task in the same project. The manual path is host-neutral: any host that can start a new task in the same project may own the successor task. Preserve or provide one copyable original-goal sentence without persisting it. The activated successor validates its takeover object with installed `bin/vibe validate-takeover --format json`; `valid` is structural only and never replaces the manual-start receipt.
 - The activated successor owns evidence-backed onboarding/adaptation, default `<target>/bin/vibe verify <target> --format json`, target-rule re-evaluation, original-goal resumption and the sole final completion message. Failed/skipped configured checks, blocking/unknown diagnostics or a newly exposed readiness blocker prevent ready.
 - To validate a transferred release candidate, run `python3 scripts/vibe_from_plugin.py validate-release <release-directory> --format json` before using any contained payload.
 
 Upgrade never replaces `.vibe/project.yaml`, `.vibe/project-rules.md`, or `docs/`; the Plugin must not regenerate project facts. Do not auto-update, fetch from the network, erase local modifications, resolve a three-way conflict silently, or edit version files to bypass diagnostics. If the bundled payload is older than the project, stop and obtain an explicitly selected trusted release.
+
+## Optional preflight and controlled maintenance
+
+Before execution the host selects/authenticates the exact Plugin artifact, its
+bundled payload location and expected payload digest. Missing evidence stops at
+the source gap. Call this previously authenticated payload directly:
+
+```text
+python3 -I -S -B <trusted-plugin-root>/payload/bin/vibe check-upgrade-compatibility <target> --source-type plugin-bundled --source-ref 0.13.0 --expected-payload-tree-sha256 <previously-authenticated-digest> --format json
+```
+
+Do not enter preflight through `vibe_from_plugin.py`, before or after comparison.
+The old wrapper remains responsible for the separate plan/upgrade/doctor
+operations with its existing guarantees. Preflight authenticates no source,
+runs no hook, writes no state and grants no apply permission; retain the original
+plan's changes, protected scope and conflicts beside its finite rule results.
+
+Use installed `.vibe/core/upgrade-maintenance.md` for stage/gap/owner/one-action
+projection and unknown/partial/denied readback. Preserve A during authorized
+diagnosis. Actual activation, known installation/no active transaction, existing
+maintenance authority, readiness, independent review, orchestrator gate and one
+RD writer are required for bounded repair before final QA; business stays paused.
+Known pre-default blockers use maintenance-required / verified /
+review-maintenance-adaptation; real failures retain original receipts. Preserve
+guards and owned before/after state. One independent complete final candidate
+run plus current doctor may satisfy repair and takeover; only then re-evaluate
+business. Denied stops the action; reconnection/prior authority is not new consent.

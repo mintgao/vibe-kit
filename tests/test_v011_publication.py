@@ -166,7 +166,7 @@ class V011PublicationProfileTests(unittest.TestCase):
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
         self.assertEqual(
             (self.m.PUBLICATION_INTENT_SCHEMA, self.m.PUBLICATION_RECEIPT_SCHEMA, self.m.ISSUE_CLOSEOUT_INTENT_SCHEMA),
-            (7, 7, 5),
+            (8, 8, 5),
         )
         self.assertEqual(
             (
@@ -174,7 +174,7 @@ class V011PublicationProfileTests(unittest.TestCase):
                 contract["publication"]["receipt_schema"],
                 contract["publication"]["issue_closeout_intent_schema"],
             ),
-            (7, 7, 5),
+            (8, 8, 5),
         )
         self.assertEqual(
             (
@@ -182,9 +182,9 @@ class V011PublicationProfileTests(unittest.TestCase):
                 protocol["publication_receipt_schema"],
                 protocol["issue_closeout_intent_schema"],
             ),
-            (7, 7, 5),
+            (8, 8, 5),
         )
-        self.assertEqual(contract["kit_version"], "0.12.0")
+        self.assertEqual(contract["kit_version"], "0.13.0")
         for host in ("codex", "hermes"):
             self.assertEqual(contract["hosts"][host]["conformance"]["label"], "verified")
         self.assertEqual(
@@ -202,7 +202,7 @@ class V011PublicationProfileTests(unittest.TestCase):
         publication_profile = self.m.PUBLICATION_PROFILES[
             self.m.PUBLICATION_INTENT_SCHEMA
         ]
-        self.assertEqual(publication_profile["version"], "0.12.0")
+        self.assertEqual(publication_profile["version"], "0.13.0")
         self.assertEqual(match.group("version"), publication_profile["version"])
         self.assertEqual(match.group("schema"), str(self.m.PUBLICATION_INTENT_SCHEMA))
 
@@ -271,14 +271,14 @@ class V011MigrationBoundaryTests(unittest.TestCase):
         contract = json.loads((ROOT / "agent-install.json").read_text())
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_text())
         version = self.m.framework_version(ROOT)
-        self.assertEqual(version, "0.12.0")
+        self.assertEqual(version, "0.13.0")
         self.assertEqual(contract["kit_version"], version)
         bridge = contract["maintenance_bridge"]
         self.assertEqual(bridge["maximum_installed_kit_version_exclusive"], version)
         self.assertEqual(bridge["minimum_installed_kit_version"], "0.2.0")
-        self.assertEqual(bridge["supported_installed_agent_protocols"], [0, 1, 2, 3])
+        self.assertEqual(bridge["supported_installed_agent_protocols"], [0, 1, 2, 3, 4])
         self.assertEqual(bridge["target_agent_install_schema"], 4)
-        self.assertEqual(bridge["target_agent_install_protocol"], 4)
+        self.assertEqual(bridge["target_agent_install_protocol"], 5)
         entry = self.m.PREDECESSOR_MIGRATION_REGISTRY["entries"][3]
         self.assertEqual(entry["migration_id"], "v0.5.0-unmanaged-agent-contracts-v1")
         self.assertEqual(entry["target"]["framework_version"], version)
@@ -295,14 +295,14 @@ class V011MigrationBoundaryTests(unittest.TestCase):
         self.assertEqual(protocol["predecessor_migrations"], bridge["predecessor_migrations"])
 
     def test_the_target_cli_refuses_a_different_migration_target(self):
-        self.assertEqual(self.m.framework_version(ROOT), "0.12.0")
+        self.assertEqual(self.m.framework_version(ROOT), "0.13.0")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / ".vibe/core").mkdir(parents=True)
             (root / ".vibe/core/version").write_text("0.10.0\n")
             with self.assertRaises(self.m.VibeError) as raised:
                 self.m.validate_target_predecessor_migration_contract(root)
-            self.assertIn("supported only by target 0.12.0", str(raised.exception))
+            self.assertIn("supported only by target 0.13.0", str(raised.exception))
 
 
 if __name__ == "__main__":

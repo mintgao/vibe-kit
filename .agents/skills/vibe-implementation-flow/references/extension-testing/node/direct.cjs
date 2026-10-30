@@ -1,0 +1,1 @@
+const assert=require('node:assert/strict');const value=require('./new-helper.cjs').check(require('../receipt.json'),'receipt','default');assert.deepEqual(value.findings,[]);assert.deepEqual(value.arguments,['receipt','default']);

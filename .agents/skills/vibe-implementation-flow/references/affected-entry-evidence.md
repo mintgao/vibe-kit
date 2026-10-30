@@ -22,3 +22,5 @@ nothing and embed no host-specific runtime path in the core. A missing runtime o
 dispatcher is unavailable evidence, not a passing Node scenario. This aid is
 applicable only to affected shared entries; S work has no mandatory table. It
 never asks RD to pre-run QA's complete default matrix.
+
+Runnable [extension-testing templates](extension-testing/README.md) exercise strict receipt shape, set-layer rejection, semantic/integrity separation and real doctor lifecycles through Python discovery and Node package scripts.

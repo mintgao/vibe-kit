@@ -80,3 +80,12 @@ Mark this inapplicable when no shared entry changes; S work gains no mandatory
 table or ceremony. RD runs focused checks; independent QA still owns one complete
 default verification per unchanged final candidate. See the
 [Python and Node example](../vibe-implementation-flow/references/affected-entry-evidence.md) in the installed workflow.
+
+Use the same [extension contract templates](../vibe-implementation-flow/references/extension-testing/README.md)
+for strict receipt/set-layer, inert-output/integrity and real loader lifecycle
+evidence. [Upgrade maintenance](../../../.vibe/core/upgrade-maintenance.md) keeps
+known pre-default blockers distinct from real failed receipts. A single
+independent complete default run on the same final candidate, target, tool/config
+state and current doctor may satisfy maintenance and takeover together; cite it
+twice rather than running twice. Read back the original run after observation
+loss; keep its workload spawnCount at one and count read-only probes separately.

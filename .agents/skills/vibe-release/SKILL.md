@@ -231,3 +231,90 @@ plan/upgrade/target doctor, preserving unknown-path ownership and local work.
 Never hand-edit manifest/version to force health. Upgraded health alone requires
 the installed activation boundary; absent positive conforming host evidence,
 provide exactly the manual action: create a new task in the same project.
+
+
+## Current v0.13.0 exact profile and final-target acceptance
+
+ADR0026 and `docs/work-items/20261029-v0-13-publication/feature-contract.md`
+govern exclusive publication intent/receipt schema 8 for
+`vibe-kit-v0.13.0-prerelease`. It selects `mintgao/vibe-kit`, exact version
+`0.13.0`, tag `v0.13.0`, title `Vibe Kit v0.13.0` and
+`docs/releases/0.13.0.md`. The five UTF-8-name-sorted assets are `SHA256SUMS`,
+`release-manifest.json`, `vibe-kit-0.13.0.zip`,
+`vibe-kit-distribution-0.13.0.zip` and `vibe-kit-plugin-0.13.0.zip`.
+
+Keep the existing six-operation graph and child ledgers. Issue policy is exactly
+none with empty issue/operation lists; receipt issue_closeout is null. Schema 8
+has no closeout or project-upgrade requirement. Historical publication 1–7 and
+closeout 1–5 retain their exact verdicts; schema 7 and closeout 5 remain exclusive
+to v0.12.0. Schema 8 rejects boolean, float, string and cross-profile inputs.
+
+Require every original N01–N36 product criterion, including genuine final-target
+Python/Node successor activation and bounded maintenance. Source tests, package
+identity and public smokes cannot replace live host criteria. Preserve old
+frozen candidates and fixtures and keep every receipt's actual source identity.
+
+H is the reviewed public PR head, M the actual server merge and E a later fact
+commit. Before public push require final product acceptance, independent source
+privacy/review and H QA. Use a normal reviewed PR and actual current-head approval
+and checks/protections; never self-approve, bypass or push source directly to
+main. A human explicitly reviews H-to-M applicability; equality does not relabel
+receipts or authenticate a new host. Changed relevant bytes require fresh
+affected acceptance and activation. Independent QA owns the distinct canonical
+complete M verify on actual CPython 3.9. That one run may supply truthful
+QA/configured/Python views. Require two clean M builds from distinct checkouts
+and output locations, identical five assets and target validate-release for both.
+
+The ten prepublication criteria are AC-1–AC-8 passed, then AC-9/10
+not-runnable-before-publication, with requirements none eight times,
+live-read-back and public-smoke. Bind existing authorization through
+`authorization_source_ref` and `bound_at` to the exact frozen intent and one host
+operation. Main already at M is read-matched with zero writes. Before each
+natural-key write and after every response, read complete actual state. A second
+write needs positive absence and unchanged precondition; denial, failure,
+divergence or still-unknown state stops. Never force, delete, replace, move a tag
+or promote stable.
+
+Freshly download/hash all five assets, validate nested checksums/distribution,
+run downloaded-target validate-release and these twenty ordered public smokes:
+
+1. public-direct-init-doctor
+2. public-plugin-bundled-plan-init-doctor
+3. public-upgrade-v0.3-to-v0.13.0
+4. public-upgrade-v0.5-to-v0.13.0
+5. public-upgrade-v0.6-to-v0.13.0
+6. public-upgrade-v0.7-to-v0.13.0
+7. public-upgrade-v0.8-to-v0.13.0
+8. public-upgrade-v0.9-to-v0.13.0
+9. public-upgrade-v0.10.0-to-v0.13.0
+10. public-upgrade-v0.10.1-to-v0.13.0
+11. public-upgrade-v0.11.0-to-v0.13.0
+12. public-upgrade-v0.12.0-to-v0.13.0
+13. public-repeat-upgrade-v0.13.0
+14. public-onboarding-exact-integer-entrypoints
+15. public-focused-entry-evidence-python-node
+16. public-inspect-run-evidence-separation
+17. public-inspect-run-interruption-readonly
+18. public-inspect-run-wrong-run-isolation
+19. public-extension-contract-templates-python-node
+20. public-upgrade-compatibility-readonly-python-node
+
+Use authenticated official predecessor bytes, including the existing public
+0.12 release, and actual downloaded target entrypoints. Repeat runs two actual
+same-version upgrades. Template smokes execute real Python discovery and Node
+package scripts against the production validator with independent semantic,
+integrity, field/set/summary and lifecycle controls. Compatibility smokes cover
+both authenticated direct and bundled entrypoints, demonstrate the old wrapper
+was not invoked, and verify the complete read-only call and binding/drift
+negatives. Preserve the exact contract's substantive coverage; skipped Node and
+static strings cannot pass execution.
+
+Run actual CPython 3.9 validate-publication with read-only receipt input and only
+an optional distinct create-only result. Later independent postpublication
+acceptance binds that actual result and all ten passed criteria. Only completed
+remote/public validation/acceptance permits observed publication facts in E.
+Review both homepages together before identity freeze, retaining published
+v0.12.0 and candidate 0.13.0 until actual completion. No issue operation follows.
+Origin remains not-attested, current applicability unproven and liveness
+not-assessed; no signing, immutability, live-model or measured-efficiency claim
+follows from structural validation.

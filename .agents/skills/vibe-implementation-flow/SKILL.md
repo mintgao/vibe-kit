@@ -78,3 +78,19 @@ Mark this inapplicable when no shared entry changes; S work gains no mandatory
 table or ceremony. RD runs focused checks; independent QA still owns one complete
 default verification per unchanged final candidate. See the
 [Python and Node example](references/affected-entry-evidence.md) in the installed workflow.
+
+## Controlled upgrade maintenance
+
+Original-business resumption still requires complete target-version takeover.
+Before final verification, the narrow [upgrade maintenance](../../../.vibe/core/upgrade-maintenance.md)
+branch may diagnose and repair only the authorized compatibility scope after
+actual target activation, known installation with no active transaction,
+applicable readiness, independent technical review, orchestrator gate and one
+RD writer. Original business remains paused; guard strength, historical
+assertions, checks/order/budgets and owned before/after evidence are preserved.
+A known blocker before the first default uses protocol-5 maintenance-required /
+verified / review-maintenance-adaptation, never an invented QA failure. Real
+failures retain original receipts. Missing permission or denied stops that action.
+Read back unknown writes and the original QA run before continuing; do not
+replay completed work. Independent final default QA plus target doctor may
+satisfy repair and takeover with one candidate-bound run.

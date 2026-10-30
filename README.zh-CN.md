@@ -8,9 +8,9 @@
 
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-<p align="center">最新已发布 · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.11.0"><code>v0.11.0 Pre-release</code></a></p>
+<p align="center">最新已发布 · <a href="https://github.com/mintgao/vibe-kit/releases/tag/v0.12.0"><code>v0.12.0 Pre-release</code></a></p>
 
-本 checkout 另含 **未发布的 0.12.0 源码候选**，增加精确的 onboarding 版本校验、有界只读 `inspect-run` 与真实入口聚焦证据指引。见[本地候选说明](docs/releases/0.12.0.md)；下方公开安装链接仍指向 v0.11.0。
+本 checkout 包含 **未发布的 0.13.0 源码候选**，提供可运行的 Python/Node 扩展测试模板、可选的 payload 身份检查，以及受控升级维护和证据读回指引。见[候选说明](docs/releases/0.13.0.md)。下方公开安装链接选择已发布的 v0.12.0 Pre-release。
 
 ## 把开发目标变成有依据、可跟进的工作
 
@@ -29,13 +29,13 @@
 | 看懂长时间检查 | “现在跑到哪一项了，什么时候开始的？” | 可用的本地进度元数据，也覆盖静默检查；需要时可保留完整日志供事后查看。 |
 | 更新开发规范 | “升级这个项目的 Vibe Kit，保留我的项目文件。” | 写入前先看计划，保留冲突保护与恢复路径，单独核实安装健康度。 |
 
-交付指引要求 Agent 说明做完了什么、检查过什么、还缺什么动作或权限。未完成的步骤应继续保留，不能算成整个目标已完成。
+交付指引要求 Agent 说明做完了什么、检查过什么、还缺什么动作或权限。标为未验证（Unverified）的阶段仍未完成。完整成功日志需通过 `all-configured` 主动开启，并保持私有。
 
 ## 快速开始
 
-当前版本为 **[v0.11.0 Pre-release](https://github.com/mintgao/vibe-kit/releases/tag/v0.11.0)**。用 Codex 打开项目，发送下面这段话，替换最后的目标：
+公开安装选择 **[v0.12.0 Pre-release](https://github.com/mintgao/vibe-kit/releases/tag/v0.12.0)**。用 Codex 打开项目，发送下面这段话，替换最后的目标：
 
-> 请把 https://github.com/mintgao/vibe-kit/releases/tag/v0.11.0 接入当前项目。保留已有文件和项目文档，验证安装并建立项目上下文，然后继续处理这个目标：[我想做的功能或要修复的问题]。
+> 请把 https://github.com/mintgao/vibe-kit/releases/tag/v0.12.0 接入当前项目。保留已有文件和项目文档，验证安装并建立项目上下文，然后继续处理这个目标：[我想做的功能或要修复的问题]。
 
 **从零新建应用**时，把应用想法、技术栈偏好和目标目录一起写进去。例如：“在 `./my-app` 新建一个记账应用，然后接入上面这个固定版本的 Vibe Kit。”
 
@@ -43,17 +43,17 @@
 
 激活流程提示时，**在同一项目新建一个任务**。安装健康和新规则已生效是两个事实；自动重载或接续仍须有宿主证据。
 
-如需手动获取：[直接 Kit ZIP](https://github.com/mintgao/vibe-kit/releases/download/v0.11.0/vibe-kit-0.11.0.zip) · [Codex 引导 Plugin ZIP](https://github.com/mintgao/vibe-kit/releases/download/v0.11.0/vibe-kit-plugin-0.11.0.zip)。Agent 使用下载内容前会核对发布摘要。所有资产与技术步骤见[安装和维护指南](docs/maintainers-guide.zh-CN.md)。
+如需手动获取：[直接 Kit ZIP](https://github.com/mintgao/vibe-kit/releases/download/v0.12.0/vibe-kit-0.12.0.zip) · [Codex 引导 Plugin ZIP](https://github.com/mintgao/vibe-kit/releases/download/v0.12.0/vibe-kit-plugin-0.12.0.zip)。Agent 使用下载内容前会核对发布摘要。所有资产与技术步骤见[安装和维护指南](docs/maintainers-guide.zh-CN.md)。
 
-## 0.11.0 最近更新
+## 0.12.0 最近更新
 
-- **检查过程更容易查阅。** 可按需开启完整脱敏成功日志（`all-configured`）；可用的持久进度能定位当前检查，即使它长时间没有输出。
-- **可以再次执行同版本升级。** 再次运行升级时，继续保留原有的冲突保护与恢复路径。
-- **多阶段任务保留未完成项。** 适用的工作指引可记录阶段覆盖、下一步、负责人和等待条件；标为未验证（Unverified）的阶段仍未完成。
+- **不重跑检查也能查看历史。** `inspect-run` 分别报告历史 receipt、日志和覆盖情况，不把它们当作当前就绪结论。
+- **核实实际运行的入口。** 适用的共享 helper 工作通过真实 Python discovery 或 Node package script，观察加载来源和参数。
+- **准确处理 onboarding 状态。** 未知、布尔和小数 schema 版本会被拒绝，已有状态不被重写。
 
-进度属于诊断信息，可能过期或不可用。完整成功日志需主动开启，并须保持私有。多阶段结果指引的证据限于静态契约和场景检查，不代表已测得实际模型遵循或效率提升。
+检查有界且只读，不能证明项目来源、当前候选适用性或进程存活。独立 QA 和真实宿主激活仍须分别提供证据。
 
-[完整更新说明](docs/releases/0.11.0.md) · [实际发布验收记录](docs/work-items/20261010-feedback-closure/postpublication.md)
+[0.12.0 完整更新说明](docs/releases/0.12.0.md) · [已发布的 Pre-release](https://github.com/mintgao/vibe-kit/releases/tag/v0.12.0)
 
 ## 适合哪些项目？
 
@@ -62,7 +62,7 @@
 - **愿意配置项目检查。** Kit 报告观察到的结果，以及缺失或阻塞的步骤；它不会替每个项目提供测试，也不能保证 Agent 每次都严格遵循指令。
 - **希望明确控制分享。** 不采集遥测，也不会静默公开提交反馈。日志须保持私有；按已知模式脱敏不能识别所有秘密。
 
-当前是 Pre-release，没有 stable Release 或发布者签名。进一步了解[能力与限制](docs/maintainers-guide.zh-CN.md)、[验证和日志设置](docs/verification-observability.md)、[Agent 安装契约](AGENT_INSTALL.md)。历史版本：[v0.10.1](https://github.com/mintgao/vibe-kit/releases/tag/v0.10.1)。
+当前是 Pre-release，没有 stable Release 或发布者签名。进一步了解[能力与限制](docs/maintainers-guide.zh-CN.md)、[验证和日志设置](docs/verification-observability.md)、[Agent 安装契约](AGENT_INSTALL.md)。历史版本：[v0.11.0](https://github.com/mintgao/vibe-kit/releases/tag/v0.11.0)。
 
 ## 维护检查
 

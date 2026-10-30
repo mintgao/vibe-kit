@@ -68,3 +68,19 @@ historical work gain no required artifact. Keep host goal text, transfer payload
 and custody outside repository documents; readiness and independent QA remain
 required. Unverified is a coverage state, not a new QA result enum. Static
 scenarios do not prove live-model compliance or measured efficiency.
+
+## Controlled upgrade maintenance
+
+Original-business resumption still requires complete target-version takeover.
+Before final verification, the narrow [upgrade maintenance](../../../.vibe/core/upgrade-maintenance.md)
+branch may diagnose and repair only the authorized compatibility scope after
+actual target activation, known installation with no active transaction,
+applicable readiness, independent technical review, orchestrator gate and one
+RD writer. Original business remains paused; guard strength, historical
+assertions, checks/order/budgets and owned before/after evidence are preserved.
+A known blocker before the first default uses protocol-5 maintenance-required /
+verified / review-maintenance-adaptation, never an invented QA failure. Real
+failures retain original receipts. Missing permission or denied stops that action.
+Read back unknown writes and the original QA run before continuing; do not
+replay completed work. Independent final default QA plus target doctor may
+satisfy repair and takeover with one candidate-bound run.

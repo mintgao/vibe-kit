@@ -20,7 +20,7 @@
 | `./bin/vibe upgrade .` | Pass | Self-upgrade aligned manifest, installed version, core version, and managed hashes at `0.2.0`. |
 | `./bin/vibe doctor .` | Pass | Version integrity OK; 0 warnings. |
 | `./bin/vibe verify .` | Pass | Configured test command passed 9/9 scenarios. |
-| `/usr/bin/python3 -m py_compile bin/vibe tests/test_cli.py` with `PYTHONPYCACHEPREFIX=/private/tmp/vibe-kit-pycache` | Pass | Actual Python 3.9.6 syntax/bytecode check. |
+| `/usr/bin/python3 -m py_compile bin/vibe tests/test_cli.py` with `PYTHONPYCACHEPREFIX` set to a private cache directory (path omitted) | Pass | Actual Python 3.9.6 syntax/bytecode check. |
 | `/usr/bin/python3 -m unittest discover -s tests -v` with the same cache prefix | Pass | Actual Python 3.9.6 passed 9/9 tests. |
 | Independent Python 3.11.15 and 3.14.6 runs | Pass | 9/9 tests on both; QA did not modify files. |
 | Independent 11-state doctor matrix | Pass | All exit 1, aggregate status, repair guidance, and read-only snapshots. |

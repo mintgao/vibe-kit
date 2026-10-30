@@ -157,9 +157,9 @@ class V120PublicationTests(unittest.TestCase):
     def test_current_mirrors_exact_kinds_and_semantic_mapping_are_declared(self):
         contract = json.loads((ROOT / "agent-install.json").read_bytes())
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_bytes())
-        self.assertEqual((self.m.PUBLICATION_INTENT_SCHEMA, self.m.PUBLICATION_RECEIPT_SCHEMA, self.m.ISSUE_CLOSEOUT_INTENT_SCHEMA), (7, 7, 5))
-        self.assertEqual(tuple(contract["publication"][name] for name in ("intent_schema", "receipt_schema", "issue_closeout_intent_schema")), (7, 7, 5))
-        self.assertEqual(tuple(protocol[name] for name in ("publication_intent_schema", "publication_receipt_schema", "issue_closeout_intent_schema")), (7, 7, 5))
+        self.assertEqual((self.m.PUBLICATION_INTENT_SCHEMA, self.m.PUBLICATION_RECEIPT_SCHEMA, self.m.ISSUE_CLOSEOUT_INTENT_SCHEMA), (8, 8, 5))
+        self.assertEqual(tuple(contract["publication"][name] for name in ("intent_schema", "receipt_schema", "issue_closeout_intent_schema")), (8, 8, 5))
+        self.assertEqual(tuple(protocol[name] for name in ("publication_intent_schema", "publication_receipt_schema", "issue_closeout_intent_schema")), (8, 8, 5))
         for kind in ("prepublication-qa", "configured-checks", "python-3.9", "clean-build", "release-gate-evidence", "postpublication-acceptance"):
             self.assertEqual(self.profile["kinds"][kind], "vibe-kit-v0.12.0-" + kind)
         decision = (ROOT / "docs/decisions/0024-v0-12-publication-and-separate-closeout.md").read_text()

@@ -133,8 +133,8 @@
   passed the same 45 tests in 56.584 seconds; lint, typecheck and build were
   explicitly unconfigured, with no failed or skipped configured check.
 - Two unpublished packages at
-  `/private/tmp/vibe-kit-0.6-authpred-a.tacn7X` and
-  `/private/tmp/vibe-kit-0.6-authpred-b.ZOdDXa` were byte-identical throughout.
+  private package output A (path omitted) and
+  private package output B (path omitted) were byte-identical throughout.
   Nested and explicit `validate-release --format json` returned `valid`, 35
   payload files and `network_used=false`. Final payload tree is
   `f71275ecd44d841cc89d043292e6b565cf4aa16d721fdd8f7c9157b13b35b835`;
@@ -150,7 +150,7 @@
   `865048c76782083f5a75cc47b800095c9ad7190c9fa608a02adc5fb636b41a6e`
   and exact activation match.
 - Preserved official-source acceptance target
-  `/private/tmp/vibe-kit-0.6-real-upgrade.HWPfdr/project`: clean 0.5.0 state,
+  a private official-source acceptance project (path omitted): clean 0.5.0 state,
   read-only safe plan with the exact paired updates/evidence, successful apply and
   healthy target doctor. Project-owned hashes were unchanged and activation was
   correctly `not-proven`/manual fallback. Its default verification truthfully
@@ -158,7 +158,7 @@
   incompatible v0.5 Plugin/test source; no framework code or project-owned file
   was changed to conceal that result.
 - Current-project acceptance target
-  `/private/tmp/vibe-kit-0.6-current-project-upgrade.WjTQ15/project`: committed
+  a private current-project acceptance fixture (path omitted): committed
   clean baseline `041a0f0` retained all 23 official v0.5 managed paths, the old
   managed AGENTS block, official two-contract bytes and installation state while
   overlaying 100 current project/application-owned files. Their canonical digest

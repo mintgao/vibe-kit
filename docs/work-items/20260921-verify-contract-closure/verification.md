@@ -5,7 +5,7 @@ Verifier: independent QA subagent (Hermes, dispatched 2026-09-21; read-only in t
 
 ## Host capability limitation
 
-- `- limitation:` this host's subagent sessions are capped at a 600 s budget and its lifecycle guard refuses to scan `./bin/vibe` while a subagent runs on the gateway host; the independent QA subagent completed the freeze check, the focused subset and its own acceptance demos, then timed out on the guard while finishing AC-7 and never issued a report. Its evidence is taken from its live transcript and by re-running its own harness (`/tmp/vibe-qa-demo.py`) on the same frozen candidate.
+- `- limitation:` this host's subagent sessions are capped at a 600 s budget and its lifecycle guard refuses to scan `./bin/vibe` while a subagent runs on the gateway host; the independent QA subagent completed the freeze check, the focused subset and its own acceptance demos, then timed out on the guard while finishing AC-7 and never issued a report. Its evidence is taken from its live transcript and by re-running its own harness (private QA harness path omitted) on the same frozen candidate.
 - `- complete run:` orchestrator, on the frozen candidate: `python3 -W ignore::DeprecationWarning -m unittest discover -s tests` => `Ran 96 tests in 40.059s`, `OK` (86 pre-existing plus 7 added here plus the readiness work item's 3); `python3 bin/vibe doctor . --format json` => `status: healthy`, activation `50852b031713…`; `python3 bin/vibe validate-readiness . --brief docs/work-items/20260921-verify-contract-closure/brief.md --format json` => `status: valid`, findings `[]`.
 - `- independent focused re-run:` independent QA subagent, pre-chosen subset = the seven new verify-declaration tests plus the whole `test_release_identity` module, run from the repository root where the tests' module imports resolve => `Ran 13 tests in 2.178s`, `OK`; plus its own acceptance demos, re-executed on the same candidate (below).
 
@@ -33,7 +33,7 @@ Verifier: independent QA subagent (Hermes, dispatched 2026-09-21; read-only in t
 
 ## Manual scenarios
 
-- The independent demos listed under the acceptance criteria ran as throwaway `/tmp` projects created by the QA subagent's harness (`/tmp/vibe-qa-demo.py`), re-executed by the orchestrator on the same frozen candidate; the repository stayed clean throughout.
+- The independent demos listed under the acceptance criteria ran as throwaway `/tmp` projects created by the QA subagent's harness (private QA harness path omitted), re-executed by the orchestrator on the same frozen candidate; the repository stayed clean throughout.
 
 ## Limitations and follow-ups
 

@@ -155,9 +155,9 @@ class V110PublicationTests(unittest.TestCase):
     def test_current_mirrors_homepages_and_prospective_outcome_contract(self):
         contract = json.loads((ROOT / "agent-install.json").read_bytes())
         protocol = json.loads((ROOT / ".vibe/core/protocol.json").read_bytes())
-        self.assertEqual((self.m.PUBLICATION_INTENT_SCHEMA, self.m.PUBLICATION_RECEIPT_SCHEMA, self.m.ISSUE_CLOSEOUT_INTENT_SCHEMA), (7, 7, 5))
-        self.assertEqual((contract["publication"]["intent_schema"], contract["publication"]["receipt_schema"], contract["publication"]["issue_closeout_intent_schema"]), (7, 7, 5))
-        self.assertEqual((protocol["publication_intent_schema"], protocol["publication_receipt_schema"], protocol["issue_closeout_intent_schema"]), (7, 7, 5))
+        self.assertEqual((self.m.PUBLICATION_INTENT_SCHEMA, self.m.PUBLICATION_RECEIPT_SCHEMA, self.m.ISSUE_CLOSEOUT_INTENT_SCHEMA), (8, 8, 5))
+        self.assertEqual((contract["publication"]["intent_schema"], contract["publication"]["receipt_schema"], contract["publication"]["issue_closeout_intent_schema"]), (8, 8, 5))
+        self.assertEqual((protocol["publication_intent_schema"], protocol["publication_receipt_schema"], protocol["issue_closeout_intent_schema"]), (8, 8, 5))
         for name in ("README.md", "README.zh-CN.md"):
             homepage = (ROOT / name).read_text()
             self.assertRegex(homepage, r'releases/tag/v0\.(?:11|12)\.0')

@@ -36,7 +36,7 @@ Vibe Kit v0.4.0 is published at <https://github.com/mintgao/vibe-kit/releases/ta
 
 ## Manual scenarios
 
-- The ignored dirty-tree unpublished candidate was moved intact to `/private/tmp/vibe-kit-0.4-unpublished.9X2mHE/`; it was not uploaded.
+- The ignored dirty-tree unpublished candidate was moved intact to a private preserved-candidate directory (path omitted); it was not uploaded.
 - Before writing, authenticated account `mintgao`, public repository `mintgao/vibe-kit`, absent remote Release and absent remote tag were verified.
 - After upload, remote `main`, annotated tag, Release state and all asset digests were read back before any further action.
 - The GitHub-downloaded assets matched local files byte-for-byte before the distribution bundle was unpacked and validated.

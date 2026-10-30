@@ -1,0 +1,113 @@
+{
+  "schema_version": 2,
+  "command": "verify",
+  "status": "passed",
+  "target": ".",
+  "selection": {
+    "mode": "default",
+    "requested": [],
+    "coverage": "all-configured"
+  },
+  "producer": "cli",
+  "cli_invoked": true,
+  "default_order": [
+    "lint",
+    "typecheck",
+    "test",
+    "build"
+  ],
+  "toolchain": {
+    "python": null,
+    "node": null,
+    "pnpm": null
+  },
+  "checks": [
+    {
+      "name": "lint",
+      "configured": false,
+      "applicability": "not-applicable",
+      "required": false,
+      "outcome": "unconfigured",
+      "exit_code": null,
+      "reason_code": "not-configured",
+      "provenance": {
+        "kind": "cli",
+        "task_id": null,
+        "operation_id": null
+      },
+      "output": {
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      }
+    },
+    {
+      "name": "typecheck",
+      "configured": false,
+      "applicability": "not-applicable",
+      "required": false,
+      "outcome": "unconfigured",
+      "exit_code": null,
+      "reason_code": "not-configured",
+      "provenance": {
+        "kind": "cli",
+        "task_id": null,
+        "operation_id": null
+      },
+      "output": {
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      }
+    },
+    {
+      "name": "test",
+      "configured": false,
+      "applicability": "not-applicable",
+      "required": false,
+      "outcome": "unconfigured",
+      "exit_code": null,
+      "reason_code": "not-configured",
+      "provenance": {
+        "kind": "cli",
+        "task_id": null,
+        "operation_id": null
+      },
+      "output": {
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      }
+    },
+    {
+      "name": "build",
+      "configured": false,
+      "applicability": "not-applicable",
+      "required": false,
+      "outcome": "unconfigured",
+      "exit_code": null,
+      "reason_code": "not-configured",
+      "provenance": {
+        "kind": "cli",
+        "task_id": null,
+        "operation_id": null
+      },
+      "output": {
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      }
+    }
+  ],
+  "summary": {
+    "passed": 0,
+    "failed": 0,
+    "unconfigured": 4,
+    "skipped": 0,
+    "environment-limited": 0
+  }
+}

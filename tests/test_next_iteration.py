@@ -557,20 +557,20 @@ class InspectRunTests(unittest.TestCase):
 
 
 class CurrentUnpublishedIdentityTests(unittest.TestCase):
-    def test_real_012_package_is_rejected_by_exact_schema6_publication_plan(self):
+    def test_real_013_package_is_rejected_by_exact_schema6_publication_plan(self):
         m=load_cli_module()
-        self.assertEqual(m.framework_version(ROOT),"0.12.0")
+        self.assertEqual(m.framework_version(ROOT),"0.13.0")
         self.assertEqual(m.PUBLICATION_PROFILES[6]["version"],"0.11.0")
-        self.assertEqual(sorted(m.PUBLICATION_PROFILES),[2,3,4,5,6,7])
+        self.assertEqual(sorted(m.PUBLICATION_PROFILES),[2,3,4,5,6,7,8])
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory).resolve();candidate=root/"candidate"
             built=run_cli(CLI,"package","--status","release-candidate-unpublished","--output",str(candidate))
             self.assertEqual(built.returncode,0,built.stdout+built.stderr)
             manifest=json.loads((candidate/"release-manifest.json").read_bytes())
-            self.assertEqual((manifest["kit_version"],manifest["status"]),("0.12.0","release-candidate-unpublished"))
+            self.assertEqual((manifest["kit_version"],manifest["status"]),("0.13.0","release-candidate-unpublished"))
             reference=".agents/skills/vibe-implementation-flow/references/affected-entry-evidence.md"
             self.assertIn(reference,manifest["payload_files"])
-            for archive,prefix in ((candidate/"vibe-kit-0.12.0.zip","vibe-kit-0.12.0/"),(candidate/"vibe-kit-plugin-0.12.0.zip","vibe-kit/payload/")):
+            for archive,prefix in ((candidate/"vibe-kit-0.13.0.zip","vibe-kit-0.13.0/"),(candidate/"vibe-kit-plugin-0.13.0.zip","vibe-kit/payload/")):
                 with zipfile.ZipFile(archive) as bundle:
                     self.assertIn("Node package script",bundle.read(prefix+reference).decode())
                     for skill in ("vibe-implementation-flow","vibe-verification-flow"):

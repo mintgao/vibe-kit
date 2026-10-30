@@ -74,12 +74,12 @@ for all five assets.
 ## Source, test and Python 3.9 evidence
 
 - Exact release worktree:
-  `/private/tmp/vibe-kit-0.6-release-source.vjpMvo/repo`.
+  a private release-source worktree (path omitted).
 - Deterministic prerelease builds:
-  `/private/tmp/vibe-kit-0.6-release-source.vjpMvo/build-a/release` and
-  `/private/tmp/vibe-kit-0.6-release-source.vjpMvo/build-b/release`.
+  private build-A output (path omitted) and
+  private build-B output (path omitted).
 - Actual runtime:
-  `/Users/bytedance/.local/share/uv/python/cpython-3.9.25-macos-aarch64-none/bin/python3.9`
+  `[machine path omitted]`
   reported Python 3.9.25.
 - Python 3.9 bytecode compilation passed for `bin/vibe`, the two Plugin wrappers,
   fake host and both test modules.
@@ -96,7 +96,7 @@ for all five assets.
 ## Public-download and installation evidence
 
 Public re-download root:
-`/private/tmp/vibe-kit-0.6-public-download.a2QdWW`.
+a private public-download validation directory (path omitted).
 
 ### Distribution validation
 

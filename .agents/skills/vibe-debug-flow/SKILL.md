@@ -38,3 +38,19 @@ absent or uncertain, preserve required perspectives and record
 For M/L incidents, create or update a work item. Record root cause, evidence, fix, regression coverage, skipped checks, and follow-ups. Do not present temporal correlation or a plausible code path as proven causation.
 
 For newly adopted applicable M/L work, the orchestrator runs `./bin/vibe validate-readiness . --brief docs/work-items/<id>/brief.md --format json` before implementation release and after referenced evidence changes. Nonzero blocks release. QA verifies the persisted release evidence; a passed structural check does not establish human applicability, independence or product acceptance. Implemented notes do not replace Accepted ADRs.
+
+## Controlled upgrade maintenance
+
+Original-business resumption still requires complete target-version takeover.
+Before final verification, the narrow [upgrade maintenance](../../../.vibe/core/upgrade-maintenance.md)
+branch may diagnose and repair only the authorized compatibility scope after
+actual target activation, known installation with no active transaction,
+applicable readiness, independent technical review, orchestrator gate and one
+RD writer. Original business remains paused; guard strength, historical
+assertions, checks/order/budgets and owned before/after evidence are preserved.
+A known blocker before the first default uses protocol-5 maintenance-required /
+verified / review-maintenance-adaptation, never an invented QA failure. Real
+failures retain original receipts. Missing permission or denied stops that action.
+Read back unknown writes and the original QA run before continuing; do not
+replay completed work. Independent final default QA plus target doctor may
+satisfy repair and takeover with one candidate-bound run.

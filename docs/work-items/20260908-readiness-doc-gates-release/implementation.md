@@ -50,7 +50,7 @@ Actual CPython 3.9.25 ran 38 focused tests successfully in 17.193s, then one add
 
 New behavioral tests cover Accepted ADR success; implemented/wrong-kind/fenced/duplicate/missing evidence failure; field/enum/state/size/rationale/review/blocker errors; escaping and symlink paths; authenticated spans and tamper/malformed-manifest failures; whole-file 2858 > 2800; unchanged project bytes through actual healthy v0.8 installation/upgrade; schema/profile/authorization/asset rejection; pre/postpublication phase mapping; seven-smoke/five-asset receipts; separate closeout scope, state, comments, read-back and parent binding.
 
-Earlier focused failures were resolved: absent local public v0.8 tag (orchestrator fetched the exact published tag), a test's trailing-marker paragraph assumption, changed expected rationale/version mirrors, and the canonical activation-set declaration needing regeneration. Focused logs remain task-local under `/tmp/v09-py39-focused-final.log`, `/tmp/v09-new-final.log`, `/tmp/v09-integration.log`; QA should collect its own final evidence.
+Earlier focused failures were resolved: absent local public v0.8 tag (orchestrator fetched the exact published tag), a test's trailing-marker paragraph assumption, changed expected rationale/version mirrors, and the canonical activation-set declaration needing regeneration. Focused logs remain task-local (three private log paths omitted); QA should collect its own final evidence.
 
 Final `git diff --check` passed. The actual work-item `validate-readiness` result is valid. `inspect-managed-agents . --format json` is valid. Source `doctor . --format json` is healthy; this does not prove host activation.
 
@@ -75,7 +75,7 @@ Closeout `overall_state` retains `not-run|confirmed-partial|confirmed-complete|u
 
 ## QA correction: exact Size quoting
 
-Independent QA reproduced malformed `- Size: `L` (unclosed quote) and doubled-backtick Size acceptance on frozen candidate `f6ab721`; its evidence is `/private/tmp/vibe-v09-qa/independent-size-negative.json`. The parser had used a stripping operation that removed any number of edge backticks. RD replaced it with one shared exact-pair literal helper: plain values pass through, exactly one complete pair is unwrapped, malformed quoting remains invalid. Existing outcome/gate/review enum parsing already used the exact-pair rule; it now shares the helper and has explicit malformed-quote regressions.
+Independent QA reproduced malformed `- Size: `L` (unclosed quote) and doubled-backtick Size acceptance on frozen candidate `f6ab721`; its evidence is a private QA negative-case JSON record (path omitted). The parser had used a stripping operation that removed any number of edge backticks. RD replaced it with one shared exact-pair literal helper: plain values pass through, exactly one complete pair is unwrapped, malformed quoting remains invalid. Existing outcome/gate/review enum parsing already used the exact-pair rule; it now shares the helper and has explicit malformed-quote regressions.
 
 The focused regression verifies plain and singly paired M/L positives; unclosed, doubled, uneven and internally spaced Size negatives; and unclosed/doubled outcome, gate, review-mode and review-result negatives. Actual CPython 3.9.25 ran all 15 `tests.test_readiness_doc_gates` tests successfully in 1.486s. Current work-item readiness passes; source doctor is healthy; `git diff --check` passes. No full default verification was run by RD.
 
